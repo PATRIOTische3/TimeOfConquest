@@ -21,15 +21,15 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .btn.dim{border-color:#333;color:#666}
 
 /* INTRO */
-#s-intro{align-items:center;justify-content:center;gap:16px;padding:24px;
-  background:radial-gradient(ellipse at center,rgba(201,168,76,.07) 0%,transparent 60%),
-  repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(201,168,76,.015) 40px),
-  repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(201,168,76,.015) 40px),#06080e}
-.i-year{font-family:'Cinzel Decorative',serif;font-size:clamp(58px,14vw,108px);color:var(--gold);line-height:1;text-shadow:0 0 40px rgba(201,168,76,.5);animation:flicker 8s ease-in-out infinite}
+#s-intro{align-items:center;justify-content:center;gap:0;padding:0;position:relative;overflow:hidden;background:#06080e}
+#intro-map-canvas{position:absolute;inset:0;width:100%;height:100%;opacity:.38;pointer-events:none;z-index:0}
+#intro-vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(6,8,14,.25) 0%,rgba(6,8,14,.80) 100%);z-index:1;pointer-events:none}
+#intro-content{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:20px;padding:24px}
+.i-eyebrow{font-family:'Cinzel',serif;font-size:clamp(9px,2vw,12px);color:var(--dim);letter-spacing:8px;text-transform:uppercase}
+.i-title{font-family:'Cinzel Decorative',serif;font-size:clamp(28px,8vw,80px);color:var(--gold);text-align:center;letter-spacing:3px;text-shadow:0 0 60px rgba(201,168,76,.5),0 2px 24px rgba(0,0,0,.9);animation:titlePulse 5s ease-in-out infinite;line-height:1.1}
+@keyframes titlePulse{0%,100%{text-shadow:0 0 40px rgba(201,168,76,.3),0 2px 20px rgba(0,0,0,.9)}50%{text-shadow:0 0 90px rgba(201,168,76,.7),0 2px 24px rgba(0,0,0,.9)}}
+.i-rule{width:min(320px,60%);height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:2px 0}
 @keyframes flicker{0%,88%,92%,96%,100%{opacity:1}89%,93%,97%{opacity:.75}}
-.i-title{font-family:'Cinzel Decorative',serif;font-size:clamp(20px,5vw,44px);color:var(--text);text-align:center;letter-spacing:4px}
-.i-rule{width:min(260px,55%);height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent)}
-.i-sub{font-size:clamp(8px,1.8vw,11px);color:var(--dim);letter-spacing:5px;text-transform:uppercase}
 
 /* SETUP */
 #s-setup{align-items:center;justify-content:flex-start;padding:10px;overflow-y:auto}
@@ -216,11 +216,14 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 <body>
 <!-- INTRO -->
 <div class="scr on" id="s-intro">
-  <div class="i-year">1936</div>
-  <div class="i-title">Time of Conquest</div>
-  <div class="i-rule"></div>
-  <div class="i-sub">Europe · Grand Strategy · Age of Ideologies</div>
-  <button class="btn" onclick="show('setup')" style="margin-top:12px">▶ Begin Campaign</button>
+  <canvas id="intro-map-canvas"></canvas>
+  <div id="intro-vignette"></div>
+  <div id="intro-content">
+    <div class="i-eyebrow">Grand Strategy · 1936</div>
+    <div class="i-title">Time of Conquest</div>
+    <div class="i-rule"></div>
+    <button class="btn" onclick="show('setup')" style="margin-top:16px;padding:13px 38px;font-size:12px;letter-spacing:3px">▶ Begin Campaign</button>
+  </div>
 </div>
 
 <!-- SETUP -->
@@ -395,5 +398,86 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 <div id="popup"></div>
 <script src="map.js"></script>
 <script src="game.js"></script>
+<script>
+// ── INTRO ANIMATED MAP ──────────────────────────────────────
+(function(){
+  const ic=document.getElementById('intro-map-canvas');
+  if(!ic)return;
+  const ictx=ic.getContext('2d');
+
+  // Hex colors matching the political map (nation colors)
+  const NAT_COLS=['#5c3c1a','#4a1a1a','#1e2e52','#1c3a2a','#3e2c0a','#3c1c1c','#3a1a1a','#2e2212','#2e1e0e','#1e2a1a','#222a1a','#1a2c3a','#2a322e','#1c2a32','#321a1a','#2e2212','#2a220e','#2e2a2a','#321e12','#1e2a32','#2a1e12','#222630','#2a221e','#222a1e','#2a261e','#1e2a22','#1e1e2a','#1e3222'];
+  const SEA='#08162a';
+
+  // Pan state
+  let panX=0, panDir=1, panSpeed=0.12, lastT=0;
+  let mapReady=false;
+
+  function hexP(ctx2,cx,cy,r){
+    ctx2.beginPath();
+    for(let i=0;i<6;i++){
+      const a=Math.PI/3*i-Math.PI/6;
+      i===0?ctx2.moveTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r):ctx2.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r);
+    }
+    ctx2.closePath();
+  }
+
+  function drawIntroMap(t){
+    const W=ic.width, H=ic.height;
+    if(!W||!H)return;
+
+    // Animate pan: slow oscillation
+    const dt=t-lastT; lastT=t;
+    panX+=panDir*panSpeed*(dt/16);
+    if(panX>30){panDir=-1;}
+    if(panX<-30){panDir=1;}
+
+    ictx.clearRect(0,0,W,H);
+    ictx.fillStyle=SEA;
+    ictx.fillRect(0,0,W,H);
+
+    if(!window.PROVINCES||!PROVINCES.length){requestAnimationFrame(drawIntroMap);return;}
+
+    // Compute scale/offset to fit map
+    const xs=PROVINCES.map(p=>p.cx), ys=PROVINCES.map(p=>p.cy);
+    const minX=Math.min(...xs), maxX=Math.max(...xs);
+    const minY=Math.min(...ys), maxY=Math.max(...ys);
+    const mw=maxX-minX+30, mh=maxY-minY+30;
+    const s=Math.min(W/mw,H/mh)*0.92;
+    const tx=(W-mw*s)/2 - (minX-15)*s + panX;
+    const ty=(H-mh*s)/2 - (minY-15)*s;
+
+    const r=Math.max(4, mw<700 ? s*7 : s*6.5);
+
+    // Draw filled hexes
+    PROVINCES.forEach(p=>{
+      hexP(ictx,p.cx*s+tx,p.cy*s+ty,r);
+      const col=p.nation>=0?NAT_COLS[p.nation%NAT_COLS.length]:'#181618';
+      ictx.fillStyle=col;
+      ictx.fill();
+    });
+    // Draw borders
+    ictx.strokeStyle='rgba(0,0,0,.55)';
+    ictx.lineWidth=0.8;
+    PROVINCES.forEach(p=>{
+      hexP(ictx,p.cx*s+tx,p.cy*s+ty,r);
+      ictx.stroke();
+    });
+
+    requestAnimationFrame(drawIntroMap);
+  }
+
+  function resizeIntro(){
+    const wrap=document.getElementById('s-intro');
+    if(!wrap)return;
+    ic.width=wrap.clientWidth||window.innerWidth;
+    ic.height=wrap.clientHeight||window.innerHeight;
+  }
+
+  resizeIntro();
+  window.addEventListener('resize',resizeIntro);
+  requestAnimationFrame(drawIntroMap);
+})();
+</script>
 </body>
 </html>
