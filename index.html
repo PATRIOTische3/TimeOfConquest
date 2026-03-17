@@ -388,6 +388,19 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     </div>
     <div class="mp-rule"></div>
 
+    <!-- Firebase config -->
+    <div id="mp-firebase-setup" style="background:rgba(180,60,0,.12);border:1px solid #c06020;padding:12px 14px;display:none">
+      <div style="font-family:Cinzel,serif;font-size:clamp(9px,.9vw,11px);color:#e08040;letter-spacing:1px;margin-bottom:8px">⚠ FIREBASE SETUP REQUIRED</div>
+      <div style="font-size:clamp(9px,.9vw,11px);color:var(--dim);line-height:1.9;margin-bottom:10px">
+        1. Open <b style="color:var(--text)">console.firebase.google.com</b><br>
+        2. Create project → Build → <b style="color:var(--text)">Realtime Database</b><br>
+        3. Select <b style="color:var(--text)">"Start in test mode"</b> → Done<br>
+        4. Copy the database URL and paste it here:
+      </div>
+      <input id="mp-fb-url-inp" class="mp-inp" placeholder="https://your-project-default-rtdb.firebaseio.com" style="font-size:clamp(9px,.9vw,11px);letter-spacing:0;text-transform:none;margin-bottom:8px">
+      <button class="btn full" onclick="mpSetFirebase()" style="padding:8px;font-size:clamp(9px,.9vw,11px)">✓ Save & Connect</button>
+    </div>
+
     <!-- Status bar -->
     <div class="mp-status-bar">
       <div class="mp-dot" id="mp-status-dot"></div>
@@ -1129,9 +1142,26 @@ window.refreshWorldsList=function(){
 let _mpHostNation = -1;
 
 function initMpScreen() {
+  // Test Firebase connection
+  fetch('https://timeofconquest-default-rtdb.firebaseio.com/.json')
+    .then(r => {
+      if(r.ok){
+        document.getElementById('mp-status-text').textContent = 'Firebase connected';
+        document.getElementById('mp-status-dot').style.background = '#40a830';
+      } else {
+        document.getElementById('mp-status-text').textContent = 'Firebase error — check rules';
+        document.getElementById('mp-status-dot').style.background = '#cc3030';
+        document.getElementById('mp-firebase-setup').style.display = 'block';
+      }
+    })
+    .catch(() => {
+      document.getElementById('mp-status-text').textContent = 'Cannot reach Firebase';
+      document.getElementById('mp-status-dot').style.background = '#cc3030';
+    });
+
   // Build host nation picker
   const list = document.getElementById('mp-host-nation-list');
-  if (!list || list.children.length > 0) return; // already built
+  if (!list || list.children.length > 0) return;
   NATIONS.forEach((nat,i) => {
     const ideo = IDEOLOGIES[nat.ideology];
     const row = document.createElement('div');
@@ -1188,7 +1218,6 @@ function mpCopyId() {
   if (!id || id === '—') return;
   navigator.clipboard?.writeText(id).then(() => popup('✓ Room code copied!', 1800))
     .catch(() => {
-      // fallback
       const ta = document.createElement('textarea');
       ta.value = id; document.body.appendChild(ta);
       ta.select(); document.execCommand('copy');
@@ -1196,6 +1225,37 @@ function mpCopyId() {
       popup('✓ Copied!', 1800);
     });
 }
+
+function mpSetFirebase() {
+  const inp = document.getElementById('mp-fb-url-inp');
+  let url = (inp?.value || '').trim().replace(/\/$/, '');
+  if (!url.startsWith('https://') || !url.includes('firebaseio.com')) {
+    popup('Invalid URL — needs to be https://....firebaseio.com');
+    return;
+  }
+  window.TOC_FIREBASE_URL = url;
+  try { localStorage.setItem('toc_firebase_url', url); } catch(e) {}
+  document.getElementById('mp-firebase-setup').style.display = 'none';
+  // Quick connectivity test
+  fetch(url + '/.json').then(r => {
+    if (r.ok) popup('✓ Firebase connected — ready to play!', 2500);
+    else popup('⚠ Check Firebase "test mode" rules in console');
+  }).catch(() => popup('⚠ Could not reach Firebase URL'));
+}
+
+// Restore saved Firebase URL on page load
+(function(){
+  try {
+    const saved = localStorage.getItem('toc_firebase_url');
+    if (saved) {
+      window.TOC_FIREBASE_URL = saved;
+      const inp = document.getElementById('mp-fb-url-inp');
+      if (inp) inp.value = saved;
+      const setup = document.getElementById('mp-firebase-setup');
+      if (setup) setup.style.display = 'none';
+    }
+  } catch(e) {}
+})();
 </script>
 </body>
 </html>

@@ -1,21 +1,31 @@
 // ════════════════════════════════════════════════════════════
 //  TIME OF CONQUEST — ONLINE MULTIPLAYER
-//  Uses Firebase Realtime Database as signaling + relay.
-//  Free tier: 1GB storage, 10GB/month transfer — more than enough.
+//  Uses Firebase Realtime Database as relay.
 //
-//  How it works:
-//    1. Host generates a 6-digit room code
-//    2. Both players write/read messages via Firebase
-//    3. All game state synced through Firebase
-//    No server needed beyond Firebase (Google's free tier)
+//  ⚠ SETUP REQUIRED (2 minutes, free):
+//  1. Go to console.firebase.google.com
+//  2. Create project → Build → Realtime Database
+//  3. "Start in test mode" → copy your DB URL
+//  4. Replace FB_URL below with your URL
 // ════════════════════════════════════════════════════════════
 
 const MP = (() => {
 
-  // ── Firebase config ───────────────────────────────────────
-  // Using a public demo project — replace with your own for production
-  // To get your own (free): console.firebase.google.com → new project → Realtime DB
-  const FB_URL = 'https://toc1936-default-rtdb.firebaseio.com';
+  // ── YOUR FIREBASE URL HERE ────────────────────────────────
+  // Replace with your own from console.firebase.google.com
+  // Format: https://YOUR-PROJECT-default-rtdb.firebaseio.com
+  const FB_URL = (window.TOC_FIREBASE_URL || 'https://timeofconquest-default-rtdb.firebaseio.com').replace(/\/$/, '');
+
+  function checkConfig() {
+    if (!FB_URL) {
+      const msg = `⚠ Firebase not configured!\n\nTo enable multiplayer:\n1. Go to console.firebase.google.com\n2. Create project → Realtime Database → Test mode\n3. Copy your DB URL\n4. Open multiplayer.js and set FB_URL`;
+      mpLog('⚠ Firebase URL not set — see instructions below', 'err');
+      setStatus('Not configured', 'err');
+      document.getElementById('mp-firebase-setup')?.style && (document.getElementById('mp-firebase-setup').style.display='block');
+      return false;
+    }
+    return true;
+  }
 
   let role = null;
   let roomId = null;
@@ -273,6 +283,7 @@ const MP = (() => {
     canAct() { return !role || myTurn; },
 
     createRoom(nation) {
+      if (!checkConfig()) return;
       hostNation = nation;
       role = 'host';
       // Generate a simple 6-digit code
@@ -300,6 +311,7 @@ const MP = (() => {
     },
 
     joinRoom(id, nation) {
+      if (!checkConfig()) return;
       if (!id || !id.trim()) { mpLog('Enter a room code!', 'warn'); return; }
       guestNation = nation;
       role = 'guest';
