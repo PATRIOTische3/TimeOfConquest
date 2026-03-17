@@ -1,48 +1,47 @@
 // ════════════════════════════════════════════════════════════
-//  TIME OF CONQUEST — ONLINE MULTIPLAYER
-//  Uses Firebase Realtime Database as relay.
+//  TIME OF CONQUEST — ONLINE MULTIPLAYER v3
+//  Firebase Realtime Database relay
 //
-//  ⚠ SETUP REQUIRED (2 minutes, free):
-//  1. Go to console.firebase.google.com
-//  2. Create project → Build → Realtime Database
-//  3. "Start in test mode" → copy your DB URL
-//  4. Replace FB_URL below with your URL
+//  Architecture (fixed):
+//  - HOST owns the canonical game state + runs AI for all nations
+//  - After host's turn: host runs AI, sends full G to guest
+//  - Guest acts on their own copy, sends ONLY their delta (gold spent,
+//    armies moved, buildings built) back to host
+//  - Host applies guest delta, runs one more AI pass, syncs state
+//  - playerNation is NEVER overwritten during syncs
 // ════════════════════════════════════════════════════════════
 
 const MP = (() => {
 
-  // ── YOUR FIREBASE URL HERE ────────────────────────────────
-  // Replace with your own from console.firebase.google.com
-  // Format: https://YOUR-PROJECT-default-rtdb.firebaseio.com
-  const FB_URL = (window.TOC_FIREBASE_URL || 'https://timeofconquest-default-rtdb.europe-west1.firebasedatabase.app').replace(/\/$/, '');
+  const FB_URL = (window.TOC_FIREBASE_URL ||
+    'https://timeofconquest-default-rtdb.europe-west1.firebasedatabase.app')
+    .replace(/\/$/, '');
 
-  function checkConfig() {
-    if (!FB_URL) {
-      const msg = `⚠ Firebase not configured!\n\nTo enable multiplayer:\n1. Go to console.firebase.google.com\n2. Create project → Realtime Database → Test mode\n3. Copy your DB URL\n4. Open multiplayer.js and set FB_URL`;
-      mpLog('⚠ Firebase URL not set — see instructions below', 'err');
-      setStatus('Not configured', 'err');
-      document.getElementById('mp-firebase-setup')?.style && (document.getElementById('mp-firebase-setup').style.display='block');
-      return false;
-    }
-    return true;
-  }
-
-  let role = null;
-  let roomId = null;
-  let guestNation = -1;
+  // ── Internal state ────────────────────────────────────────
+  let role        = null;   // 'host' | 'guest' | null
+  let roomId      = null;
   let hostNation  = -1;
-  let myTurn = false;
-  let connected = false;
-  let _pollTimer = null;
-  let _lastMsgId = 0;
-  let _msgQueue = [];
+  let guestNation = -1;
+  let myTurn      = false;
+  let connected   = false;
+  let _pollTimer  = null;
+  let _seenKeys   = new Set();
+  let _origEndTurn = null;
 
-  // ── Firebase REST helpers ──────────────────────────────────
+  // Guest delta — actions taken this turn to send to host
+  let _delta = {
+    armyMoves: [],   // [{from,to,amount}]
+    drafts:    [],   // [{prov,amount,goldCost}]
+    builds:    [],   // [{prov,building,cost}]
+    attacks:   [],   // [{from,to,force}]
+    goldSpent: 0,
+  };
+
+  // ── Firebase helpers ──────────────────────────────────────
   async function fbSet(path, data) {
     try {
       const r = await fetch(`${FB_URL}/${path}.json`, {
-        method: 'PUT',
-        body: JSON.stringify(data)
+        method: 'PUT', body: JSON.stringify(data)
       });
       return r.ok;
     } catch(e) { return false; }
@@ -67,18 +66,16 @@ const MP = (() => {
   }
 
   async function fbDelete(path) {
-    try {
-      await fetch(`${FB_URL}/${path}.json`, { method: 'DELETE' });
-    } catch(e) {}
+    try { await fetch(`${FB_URL}/${path}.json`, { method: 'DELETE' }); } catch(e) {}
   }
 
-  // ── UI helpers ────────────────────────────────────────────
+  // ── UI ────────────────────────────────────────────────────
   function mpLog(msg, type='info') {
     const el = document.getElementById('mp-log');
     if (!el) return;
     const colors = { info:'#8a7848', ok:'#40a830', warn:'#cc8030', err:'#cc3030', chat:'#c9a84c' };
     const div = document.createElement('div');
-    div.style.cssText = `padding:3px 0;border-bottom:1px solid rgba(42,36,24,.15);font-size:10px;color:${colors[type]||colors.info};animation:mpFadeIn .3s ease`;
+    div.style.cssText = `padding:3px 0;border-bottom:1px solid rgba(42,36,24,.15);font-size:10px;color:${colors[type]||colors.info}`;
     div.innerHTML = `<span style="color:var(--dim);font-size:8px">${new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit'})}</span> ${msg}`;
     el.insertAdjacentElement('afterbegin', div);
     while (el.children.length > 40) el.removeChild(el.lastChild);
@@ -90,74 +87,106 @@ const MP = (() => {
     const txt = document.getElementById('mp-status-text');
     if (dot) dot.style.background = colors[type] || colors.idle;
     if (txt) txt.textContent = text;
-    const ig = document.getElementById('mp-ingame-bar');
     const igDot = document.getElementById('mp-ig-dot');
     const igTxt = document.getElementById('mp-ig-txt');
-    if (ig) ig.style.display = connected ? 'flex' : 'none';
+    const igBar = document.getElementById('mp-ingame-bar');
+    if (igBar) igBar.style.display = connected ? 'flex' : 'none';
     if (igDot) igDot.style.background = colors[type] || colors.idle;
     if (igTxt) igTxt.textContent = text;
   }
 
-  function setTurnUI(isMine) {
-    myTurn = isMine;
+  // Dim/undim the UI panels (not the map) while waiting
+  function setWaitingUI(waiting) {
+    myTurn = !waiting;
+    // Disable action buttons and advance button
     const endBtn = document.getElementById('end-btn');
     const endBtnMob = document.getElementById('end-btn-mob');
-    const overlay = document.getElementById('mp-turn-overlay');
-    if (endBtn) endBtn.disabled = !isMine;
-    if (endBtnMob) endBtnMob.disabled = !isMine;
-    if (overlay) overlay.style.display = isMine ? 'none' : 'flex';
-    if (isMine) {
-      popup('⚔ Your turn!', 2200);
+    if (endBtn) endBtn.disabled = waiting;
+    if (endBtnMob) endBtnMob.disabled = waiting;
+
+    // Dim side panel content (not map) 
+    const sp = document.getElementById('side-panel');
+    const bottom = document.getElementById('bottom');
+    if (sp) sp.style.opacity = waiting ? '0.4' : '1';
+    if (sp) sp.style.pointerEvents = waiting ? 'none' : '';
+    if (bottom) bottom.style.opacity = waiting ? '0.4' : '1';
+    if (bottom) bottom.style.pointerEvents = waiting ? 'none' : '';
+
+    // Show/hide slim turn indicator on map
+    const indWrap = document.getElementById('mp-turn-indicator-wrap');
+    const indicator = document.getElementById('mp-turn-indicator');
+    const oppName = role === 'host'
+      ? (NATIONS[guestNation]?.name || 'Opponent')
+      : (NATIONS[hostNation]?.name || 'Opponent');
+    if (indWrap) indWrap.style.display = connected ? 'block' : 'none';
+    if (indicator) {
+      indicator.textContent = waiting ? `⏳ ${oppName}'s turn` : '⚔ Your turn';
+      indicator.style.color = waiting ? '#8060c0' : '#40a830';
+    }
+    // Show MP bar in HUD
+    const igBar = document.getElementById('mp-ingame-bar');
+    if (igBar) igBar.style.display = connected ? 'flex' : 'none';
+
+    if (!waiting) {
+      popup('⚔ Your turn!', 2000);
       addLog('── Your turn ──', 'diplo');
       setStatus('Your turn', 'ok');
     } else {
-      setStatus('Waiting for opponent…', 'waiting');
+      setStatus('Opponent\'s turn…', 'waiting');
     }
   }
 
-  // ── Send message via Firebase ─────────────────────────────
+  // ── Send ─────────────────────────────────────────────────
   async function send(type, payload = {}) {
     if (!roomId) return;
     const channel = role === 'host' ? 'host_to_guest' : 'guest_to_host';
     await fbPush(`rooms/${roomId}/${channel}`, { type, ...payload });
   }
 
-  // ── Poll for messages ─────────────────────────────────────
-  let _seenKeys = new Set();
-
+  // ── Poll ─────────────────────────────────────────────────
   function startPolling() {
     if (_pollTimer) clearInterval(_pollTimer);
     _pollTimer = setInterval(async () => {
       if (!roomId) return;
       const channel = role === 'host' ? 'guest_to_host' : 'host_to_guest';
       const msgs = await fbGet(`rooms/${roomId}/${channel}`);
-      if (!msgs) return;
+      if (!msgs || typeof msgs !== 'object') return;
       const entries = Object.entries(msgs).sort((a,b) => (a[1]._ts||0)-(b[1]._ts||0));
       for (const [key, msg] of entries) {
         if (_seenKeys.has(key)) continue;
         _seenKeys.add(key);
-        handleMessage(msg);
+        try { handleMessage(msg); } catch(e) { console.error('MP msg error', e); }
       }
-    }, 1500); // poll every 1.5 seconds
+    }, 1500);
   }
 
   function stopPolling() {
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
   }
 
+  // ── Apply state safely (never overwrite playerNation) ─────
+  function applySyncedState(state) {
+    const myPN = G.playerNation; // save
+    const myIdeology = G.ideology; // save player ideology
+    Object.assign(G, state);
+    G.playerNation = myPN;        // restore
+    G.ideology = myIdeology;      // restore
+  }
+
   // ── Message handler ───────────────────────────────────────
   function handleMessage(msg) {
-    switch(msg.type) {
+    switch (msg.type) {
+
       case 'GUEST_ARRIVED':
-        mpLog('👤 Guest joined!', 'ok');
-        setStatus('Guest connected — pick nations', 'ok');
+        mpLog('👤 Guest connected!', 'ok');
+        setStatus('Guest joined — awaiting nation pick', 'ok');
         connected = true;
         send('HELLO', { hostNation, availableNations: getAvailableNations() });
         break;
 
       case 'HELLO':
         hostNation = msg.hostNation;
-        mpLog(`🤝 Host plays as <b>${NATIONS[hostNation]?.name}</b>`, 'ok');
+        mpLog(`🤝 Host plays <b>${NATIONS[hostNation]?.name}</b>`, 'ok');
         showGuestNationPick(msg.availableNations);
         break;
 
@@ -173,52 +202,55 @@ const MP = (() => {
         document.getElementById('mp-start-game-btn')?.removeAttribute('disabled');
         break;
 
-      case 'GAME_START':
+      case 'GAME_START': {
+        // Guest receives full initial game state
         guestNation = msg.guestNation;
         hostNation  = msg.hostNation;
+        // Apply state but set our own playerNation
         Object.assign(G, msg.state);
         G.playerNation = guestNation;
+        G.ideology = NATIONS[guestNation]?.ideology || 'democracy';
+        connected = true;
         show('game');
         setTimeout(() => {
           computeHexRadius(); buildCanvas(); zoomReset();
           updateHUD(); updateIdeoHUD(); updateSeasonUI();
-          addLog('🌐 Online game started!', 'diplo');
+          addLog('🌐 Multiplayer game started!', 'diplo');
           addLog(`You control: ${NATIONS[guestNation]?.name}`, 'event');
+          _delta = emptyDelta();
+          setWaitingUI(false); // guest goes first simultaneously with host
         }, 80);
-        setTurnUI(false);
-        connected = true;
-        setStatus('Connected — opponent\'s turn', 'waiting');
         mpLog('🎮 Game started!', 'ok');
         break;
+      }
 
-      case 'YOUR_TURN':
-        Object.assign(G, msg.state);
+      case 'HOST_STATE': {
+        // Host sent updated state after processing turn
+        // Guest applies it WITHOUT overwriting own playerNation
+        applySyncedState(msg.state);
         updateHUD(); updateIdeoHUD(); updateSeasonUI(); scheduleDraw();
         if (G.sel >= 0) updateSP(G.sel);
-        connected = true;
-        setTurnUI(true);
-        mpLog('🔄 State synced — your turn', 'info');
+        _delta = emptyDelta(); // clear delta for new turn
+        setWaitingUI(false);   // guest's turn now
+        mpLog('🔄 New turn synced', 'info');
         break;
+      }
 
-      case 'STATE_SYNC':
-        Object.assign(G, msg.state);
-        updateHUD(); updateIdeoHUD(); updateSeasonUI(); scheduleDraw();
-        if (G.sel >= 0) updateSP(G.sel);
-        setTurnUI(true);
-        mpLog('🔄 State synced', 'info');
-        break;
-
-      case 'GUEST_TURN_END':
-        waitingForGuest = false;
-        mpLog('📨 Guest ended turn', 'ok');
-        // Host processes full turn then syncs back
+      case 'GUEST_STATE': {
+        // Guest sent their delta for this turn
+        // Host applies guest's actions then runs AI + endTurn for everyone
+        applyGuestDelta(msg.delta);
+        // Now run the actual game turn (AI + time advance)
         _origEndTurn();
+        // Sync canonical state back to guest
         const snap = JSON.parse(JSON.stringify(G));
-        send('STATE_SYNC', { state: snap });
-        setTurnUI(true);
+        send('HOST_STATE', { state: snap });
+        setWaitingUI(false); // host's turn again
+        mpLog('✅ Turn processed — waiting for guest', 'info');
         break;
+      }
 
-      case 'CHAT':
+      case 'CHAT': {
         const who = msg.from === 'host'
           ? (NATIONS[hostNation]?.name || 'Host')
           : (NATIONS[guestNation]?.name || 'Guest');
@@ -226,11 +258,140 @@ const MP = (() => {
         mpLog(`💬 <b>${who}:</b> ${msg.text}`, 'chat');
         popup(`💬 ${who}: ${msg.text}`, 3500);
         break;
+      }
     }
   }
 
-  let waitingForGuest = false;
+  // ── Guest delta helpers ───────────────────────────────────
+  function emptyDelta() {
+    return { armyMoves:[], drafts:[], builds:[], attacks:[], goldSpent:0 };
+  }
 
+  function applyGuestDelta(delta) {
+    if (!delta) return;
+    const gn = guestNation;
+    // Apply moves
+    (delta.armyMoves||[]).forEach(({from,to,amount}) => {
+      G.army[from] = Math.max(0, (G.army[from]||0) - amount);
+      G.army[to] = (G.army[to]||0) + amount;
+      if (G.owner[to] < 0) G.owner[to] = gn;
+    });
+    // Apply drafts
+    (delta.drafts||[]).forEach(({prov,amount,goldCost}) => {
+      G.army[prov] = (G.army[prov]||0) + amount;
+      G.pop[prov] = Math.max(1000, (G.pop[prov]||0) - amount*1000);
+      G.gold[gn] = Math.max(0, (G.gold[gn]||0) - goldCost);
+    });
+    // Apply builds
+    (delta.builds||[]).forEach(({prov,building,cost}) => {
+      G.gold[gn] = Math.max(0, (G.gold[gn]||0) - cost);
+      (G.buildings[prov] = G.buildings[prov]||[]).push(building);
+    });
+    // Apply attacks (simplified: just record, runBattle handles UI on guest side)
+    (delta.attacks||[]).forEach(({from,to,force}) => {
+      // Re-resolve combat on host side
+      const aio = IDEOLOGIES[NATIONS[gn]?.ideology||'democracy'];
+      const terrain = TERRAIN[PROVINCES[to]?.terrain||'plains'];
+      const hasFort = (G.buildings[to]||[]).includes('fortress');
+      const defM = terrain.defB*(hasFort?1.6:1);
+      const effAtk = force*aio.atk*rf(.75,1.25);
+      const effDef = (G.army[to]||0)*defM*rf(.75,1.25);
+      const win = effAtk > effDef;
+      const prev = G.owner[to];
+      if (win) {
+        const al = Math.floor(force*rf(.15,.3));
+        G.army[from] = Math.max(0,(G.army[from]||0)-force);
+        G.army[to] = Math.max(50, force-al);
+        G.owner[to] = gn;
+        G.instab[to] = ri(30,60); G.assim[to] = ri(5,20);
+        if (prev>=0 && regsOf(prev).length===0) G.war[gn][prev]=G.war[prev][gn]=false;
+        if (PROVINCES[to]?.isCapital && prev>=0) G.capitalPenalty[gn]=3;
+        addLog(`⚔ ${NATIONS[gn]?.name} seized ${PROVINCES[to]?.name}!`, 'war');
+      } else {
+        G.army[from] = Math.max(0,(G.army[from]||0)-Math.floor(force*rf(.1,.3)));
+        G.army[to] = Math.max(50,(G.army[to]||0)-Math.floor((G.army[to]||0)*rf(.08,.25)));
+      }
+    });
+  }
+
+  // ── Intercept guest actions ───────────────────────────────
+  // We patch key game functions to record guest's actions into _delta
+  function patchGuestActions() {
+    // Patch confirmMove
+    const origMove = window.confirmMove;
+    window.confirmMove = function(from, to) {
+      if (role === 'guest' && myTurn) {
+        const v = +(document.getElementById('msl')?.value || G.army[from]);
+        const s = season();
+        const terrMod = s.winterTerrain?.includes(PROVINCES[to].terrain)?s.moveMod:1.0;
+        const actual = Math.round(v*terrMod);
+        _delta.armyMoves.push({from, to, amount: actual});
+      }
+      origMove(from, to);
+    };
+
+    // Patch confirmDraft
+    const origDraft = window.confirmDraft;
+    window.confirmDraft = function() {
+      if (role === 'guest' && myTurn) {
+        const r = window._dr;
+        const v = +(document.getElementById('dsl')?.value||0);
+        if (r>=0 && v>0) _delta.drafts.push({prov:r, amount:v, goldCost:v});
+      }
+      origDraft();
+    };
+
+    // Patch queueBuild / doB
+    const origBuild = window.queueBuild;
+    window.queueBuild = function(k, ri2) {
+      if (role === 'guest' && myTurn) {
+        const io = ideol();
+        const cost = Math.round(BUILDINGS[k].cost*(io.buildCostMod||1));
+        _delta.builds.push({prov:ri2, building:k, cost});
+      }
+      if(origBuild) origBuild(k, ri2);
+    };
+
+    // Patch launchAtk
+    const origLaunch = window.launchAtk;
+    window.launchAtk = function(breakDiplo) {
+      if (role === 'guest' && myTurn) {
+        const fr = window._af, to = window._at;
+        const force = +(document.getElementById('asl')?.value||G.army[fr]);
+        _delta.attacks.push({from:fr, to, force});
+        if(breakDiplo && G.owner[to]>=0) G.war[guestNation][G.owner[to]]=G.war[G.owner[to]][guestNation]=true;
+      }
+      if(origLaunch) origLaunch(breakDiplo);
+    };
+  }
+
+  // ── Patch endTurn ─────────────────────────────────────────
+  function patchEndTurn() {
+    if (_origEndTurn) return;
+    _origEndTurn = window.endTurn;
+    window.endTurn = function() {
+      if (role === 'host') {
+        // Host runs full endTurn (includes AI for all non-player nations)
+        _origEndTurn();
+        // Send updated state to guest, wait for their delta
+        setWaitingUI(true);
+        send('HOST_STATE', { state: JSON.parse(JSON.stringify(G)) });
+        mpLog('⏳ Sent turn to guest…', 'info');
+        return;
+      }
+      if (role === 'guest') {
+        // Guest sends delta, waits for host to process
+        setWaitingUI(true);
+        send('GUEST_STATE', { delta: _delta });
+        _delta = emptyDelta();
+        mpLog('📤 Sent actions to host…', 'info');
+        return;
+      }
+      _origEndTurn();
+    };
+  }
+
+  // ── Nation helpers ────────────────────────────────────────
   function getAvailableNations() {
     return NATIONS.map((n,i) => ({ i, name: n.name, color: n.color, ideology: n.ideology }))
       .filter(n => n.i !== hostNation);
@@ -243,131 +404,95 @@ const MP = (() => {
     const list = document.getElementById('mp-guest-nation-list');
     if (!list) return;
     list.innerHTML = nations.map(n => `
-      <div class="mp-nat-row" onclick="MP.pickGuestNation(${n.i})" style="display:flex;align-items:center;gap:9px;padding:7px 10px;background:rgba(0,0,0,.2);border:1px solid var(--border);cursor:pointer;margin-bottom:3px;transition:all .12s">
+      <div class="mp-nat-row" onclick="MP.pickGuestNation(${n.i})"
+        style="display:flex;align-items:center;gap:9px;padding:7px 10px;background:rgba(0,0,0,.2);border:1px solid var(--border);cursor:pointer;margin-bottom:3px;transition:all .12s">
         <div style="width:14px;height:14px;border-radius:2px;background:${n.color};flex-shrink:0"></div>
         <span style="font-family:Cinzel,serif;font-size:10px;flex:1">${n.name}</span>
         <span style="font-size:8px;color:var(--dim)">${n.ideology}</span>
       </div>`).join('');
   }
 
-  // ── Patch endTurn ─────────────────────────────────────────
-  let _origEndTurn = null;
-  function patchEndTurn() {
-    if (_origEndTurn) return;
-    _origEndTurn = window.endTurn;
-    window.endTurn = function() {
-      if (role === 'host') {
-        _origEndTurn();
-        waitingForGuest = true;
-        setTurnUI(false);
-        mpLog('⏳ Waiting for guest…', 'info');
-        send('YOUR_TURN', { state: JSON.parse(JSON.stringify(G)) });
-        return;
-      }
-      if (role === 'guest') {
-        send('GUEST_TURN_END', {});
-        setTurnUI(false);
-        mpLog('📤 Turn sent to host…', 'info');
-        return;
-      }
-      _origEndTurn();
-    };
-  }
-
   // ── PUBLIC API ────────────────────────────────────────────
   return {
-    get role() { return role; },
+    get role()      { return role; },
     get connected() { return connected; },
-    get myTurn() { return myTurn; },
-    get active() { return role !== null; },
-    canAct() { return !role || myTurn; },
+    get myTurn()    { return myTurn; },
+    get active()    { return role !== null; },
+    canAct()        { return !role || myTurn; },
 
     createRoom(nation) {
-      if (!checkConfig()) return;
       hostNation = nation;
       role = 'host';
-      // Generate a simple 6-digit code
       roomId = Math.floor(100000 + Math.random() * 900000).toString();
-      mpLog(`✅ Room code: <b>${roomId}</b>`, 'ok');
+      mpLog(`✅ Room: <b>${roomId}</b>`, 'ok');
       setStatus('Waiting for guest…', 'connecting');
 
-      // Show room ID
       const ridEl = document.getElementById('mp-room-id');
-      if (ridEl) {
-        ridEl.textContent = roomId;
-        const disp = document.getElementById('mp-room-display');
-        if (disp) disp.style.display = 'flex';
-      }
+      if (ridEl) { ridEl.textContent = roomId; }
+      const disp = document.getElementById('mp-room-display');
+      if (disp) disp.style.display = 'flex';
       const wt = document.getElementById('mp-waiting-text');
       if (wt) wt.style.display = 'flex';
 
-      // Write room to Firebase so guest can find it
       fbSet(`rooms/${roomId}/info`, { host: nation, created: Date.now() });
-
-      // Start polling for guest messages
       _seenKeys.clear();
       startPolling();
       patchEndTurn();
     },
 
     joinRoom(id, nation) {
-      if (!checkConfig()) return;
-      if (!id || !id.trim()) { mpLog('Enter a room code!', 'warn'); return; }
+      if (!id?.trim()) { mpLog('Enter a room code!', 'warn'); return; }
       guestNation = nation;
       role = 'guest';
       roomId = id.trim();
-      mpLog(`⏳ Joining room ${roomId}…`, 'info');
+      mpLog(`⏳ Joining ${roomId}…`, 'info');
       setStatus('Connecting…', 'connecting');
 
-      // Verify room exists then send HELLO response trigger
       fbGet(`rooms/${roomId}/info`).then(info => {
         if (!info) {
-          mpLog('❌ Room not found — check the code', 'err');
+          mpLog('❌ Room not found', 'err');
           setStatus('Room not found', 'err');
           role = null; roomId = null;
           return;
         }
-        mpLog('✅ Room found! Waiting for host to send nations…', 'ok');
+        mpLog('✅ Room found!', 'ok');
         setStatus('Waiting for host…', 'waiting');
         _seenKeys.clear();
         startPolling();
         patchEndTurn();
-        // Notify host a guest arrived
+        patchGuestActions();
         send('GUEST_ARRIVED', { ts: Date.now() });
       });
     },
 
-    // Host checks for guest arrival (called from mpCreateRoom polling)
-    checkGuestArrived() {
-      // handled by polling + GUEST_ARRIVED message
-    },
-
     pickGuestNation(i) {
       guestNation = i;
-      document.querySelectorAll('.mp-nat-row').forEach(r => r.style.borderColor = 'var(--border)');
+      document.querySelectorAll('.mp-nat-row').forEach(r => r.style.borderColor='var(--border)');
       send('NATION_PICK', { nation: i });
-      mpLog(`✓ You picked <b>${NATIONS[i]?.name}</b>`, 'ok');
+      mpLog(`✓ Picked <b>${NATIONS[i]?.name}</b>`, 'ok');
       document.getElementById('mp-join-ready-btn')?.removeAttribute('disabled');
     },
 
     startMultiplayerGame() {
-      if (guestNation < 0) { popup('Guest hasn\'t picked a nation yet!'); return; }
+      if (guestNation < 0) { popup('Guest hasn\'t picked a nation!'); return; }
+      // Set up the game as host
       SC = hostNation; SI = NATIONS[hostNation].ideology;
-      startGame();
+      startGame(); // initialises full G, shows game screen
       G.playerNation = hostNation;
+      G.ideology = NATIONS[hostNation].ideology;
+
       setTimeout(() => {
-        send('GAME_START', {
-          hostNation, guestNation,
-          state: JSON.parse(JSON.stringify(G))
-        });
+        const snap = JSON.parse(JSON.stringify(G));
+        send('GAME_START', { hostNation, guestNation, state: snap });
         connected = true;
-        setTurnUI(true);
-        mpLog('🎮 Game started! You go first.', 'ok');
-      }, 200);
+        patchGuestActions(); // also patch on host (no-op since role check guards it)
+        setWaitingUI(false); // host goes first
+        mpLog('🎮 Started — your turn', 'ok');
+      }, 250);
     },
 
     guestReady() {
-      mpLog('✅ Ready! Waiting for host…', 'ok');
+      mpLog('✅ Ready!', 'ok');
       setStatus('Waiting for host…', 'waiting');
       const pp = document.getElementById('mp-guest-pick-panel');
       if (pp) pp.style.display = 'none';
@@ -385,18 +510,12 @@ const MP = (() => {
       stopPolling();
       if (roomId) fbDelete(`rooms/${roomId}`);
       role = null; roomId = null; connected = false; myTurn = false;
+      if (_origEndTurn) { window.endTurn = _origEndTurn; _origEndTurn = null; }
       setStatus('Disconnected', 'idle');
       mpLog('Disconnected', 'warn');
-      // Restore endTurn
-      if (_origEndTurn) { window.endTurn = _origEndTurn; _origEndTurn = null; }
+      // Restore UI
+      const sp = document.getElementById('side-panel');
+      if (sp) { sp.style.opacity='1'; sp.style.pointerEvents=''; }
     }
   };
-})();
-
-// Handle GUEST_ARRIVED on host side via polling
-(function() {
-  const _origPoll = setInterval; // just ensure GUEST_ARRIVED triggers HELLO
-  // We handle this in handleMessage above when guest sends GUEST_ARRIVED
-  // But host needs to send HELLO in response — patch handleMessage
-  const origHandle = MP._handleMessage; // already wired internally
 })();
