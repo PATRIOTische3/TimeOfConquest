@@ -65,45 +65,65 @@ const MP = (() => {
   function _showAfkWarning() {
     if (_afkDialogOpen) return;
     _afkDialogOpen = true;
-    const oppName = role === 'host'
-      ? (NATIONS[guestNation] && NATIONS[guestNation].name || 'Guest')
-      : (NATIONS[hostNation] && NATIONS[hostNation].name || 'Host');
-
-    // Send a PING to opponent — they should respond with PONG
+    // Send PING silently — no UI shown, just wait for PONG
     send('PING', { ts: Date.now() });
-
-    // Build dialog
-    let dlg = document.getElementById('mp-afk-dialog');
-    if (!dlg) {
-      dlg = document.createElement('div');
-      dlg.id = 'mp-afk-dialog';
-      dlg.style.cssText = 'position:fixed;inset:0;z-index:600;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.75)';
-      document.body.appendChild(dlg);
-    }
-    dlg.innerHTML = `
-      <div style="background:linear-gradient(160deg,#0e1018,#06080e);border:1px solid rgba(201,168,76,.4);padding:24px 28px;max-width:360px;text-align:center;font-family:'IM Fell English',serif;color:#e8d5a3;box-shadow:0 0 60px rgba(0,0,0,.9)">
-        <div style="font-family:'Cinzel Decorative',serif;font-size:15px;color:#c9a84c;letter-spacing:2px;margin-bottom:10px">⏳ Waiting…</div>
-        <p style="font-size:12px;margin-bottom:6px"><b>${oppName}</b> hasn't made a move for 1.5 minutes.</p>
-        <p style="font-size:10px;color:#8a7848;margin-bottom:18px">If they don't respond in <b id="afk-countdown">60</b>s, an AI will take their place.</p>
-        <div style="font-size:9px;color:#4a3828;letter-spacing:1px">Waiting for response…</div>
-      </div>
-    `;
-    dlg.style.display = 'flex';
-
-    // Countdown display
-    let secs = Math.floor(AFK_KICK_MS / 1000);
-    const countEl = document.getElementById('afk-countdown');
-    const _cd = setInterval(() => {
-      secs--;
-      if (countEl) countEl.textContent = secs;
-      if (secs <= 0) clearInterval(_cd);
-    }, 1000);
-
-    // Kick timer — if no PONG received
+    // Kick timer — if no PONG received within AFK_KICK_MS
     _afkKickTimer = setTimeout(() => {
-      clearInterval(_cd);
       _kickAfkPlayer();
     }, AFK_KICK_MS);
+  }
+
+  function _showKickBanner(msg) {
+    // Remove old if present
+    const old = document.getElementById('mp-kick-banner');
+    if (old) old.remove();
+
+    const banner = document.createElement('div');
+    banner.id = 'mp-kick-banner';
+    banner.style.cssText = [
+      'position:fixed',
+      'top:0','left:0','right:0',
+      'z-index:700',
+      'height:28px',
+      'background:linear-gradient(90deg,#1a0404,#3a0808,#1a0404)',
+      'border-bottom:1px solid rgba(200,40,40,.5)',
+      'overflow:hidden',
+      'display:flex',
+      'align-items:center',
+    ].join(';');
+
+    const ticker = document.createElement('div');
+    ticker.style.cssText = [
+      'white-space:nowrap',
+      'font-family:Cinzel,serif',
+      'font-size:11px',
+      'color:#ff6060',
+      'letter-spacing:2px',
+      'padding-left:100%',
+      'animation:mpTickerScroll 8s linear forwards',
+    ].join(';');
+    ticker.textContent = `⚡ ${msg}`;
+
+    // Inject keyframe if needed
+    if (!document.getElementById('mp-ticker-style')) {
+      const st = document.createElement('style');
+      st.id = 'mp-ticker-style';
+      st.textContent = '@keyframes mpTickerScroll{from{transform:translateX(0)}to{transform:translateX(-200%)}}';
+      document.head.appendChild(st);
+    }
+
+    banner.appendChild(ticker);
+    document.body.appendChild(banner);
+
+    // Push game HUD down slightly
+    const hud = document.getElementById('hud');
+    if (hud) { hud.style.transition='margin-top .3s ease'; hud.style.marginTop='28px'; }
+
+    // Auto-remove after animation + restore HUD
+    setTimeout(() => {
+      banner.remove();
+      if (hud) { hud.style.marginTop=''; }
+    }, 8500);
   }
 
   function _kickAfkPlayer() {
@@ -111,8 +131,10 @@ const MP = (() => {
     const oppName = role === 'host'
       ? (NATIONS[guestNation] && NATIONS[guestNation].name || 'Guest')
       : (NATIONS[hostNation] && NATIONS[hostNation].name || 'Host');
+    const oppNation = role === 'host' ? guestNation : hostNation;
+    const natName = (NATIONS[oppNation] && NATIONS[oppNation].name) || oppName;
 
-    // Close dialog
+    // Close any stale dialog
     const dlg = document.getElementById('mp-afk-dialog');
     if (dlg) dlg.remove();
     _afkDialogOpen = false;
@@ -120,11 +142,12 @@ const MP = (() => {
     // Notify opponent
     send('KICKED', { reason: 'afk' });
 
+    // Show scrolling ticker
+    _showKickBanner(`${oppName} (${natName}) was removed for inactivity — AI takes over`);
+
     addLog(`⚠ ${oppName} disconnected (AFK). AI takes over.`, 'warn');
-    popup(`${oppName} was removed — AI takes their place`, 3500);
     mpLog(`🤖 ${oppName} AFK-kicked — AI takes over`, 'warn');
 
-    // Convert to singleplayer: restore original endTurn, stop MP
     _convertToSingleplayer();
   }
 
@@ -412,22 +435,23 @@ const MP = (() => {
         send('PONG', { ts: Date.now() });
         break;
 
-      case 'PONG':
+      case 'PONG': {
         // Opponent is alive — cancel kick, close dialog
         _resetAfkWatch();
         clearTimeout(_afkKickTimer);
-        const dlg = document.getElementById('mp-afk-dialog');
-        if (dlg) dlg.remove();
+        const dlg2 = document.getElementById('mp-afk-dialog');
+        if (dlg2) dlg2.remove();
         _afkDialogOpen = false;
         mpLog('✅ Opponent responded — still connected', 'ok');
         // Restart AFK watch for this waiting period
         if (!myTurn) _startAfkWatch();
         break;
+      }
 
       case 'KICKED':
         // We were kicked for AFK — convert to singleplayer on our end too
+        _showKickBanner('You were removed for inactivity — game continues as single player');
         addLog('⚠ You were removed from the game (AFK). Switching to single player.', 'warn');
-        popup('You were disconnected for inactivity', 4000);
         _convertToSingleplayer();
         break;
     }
