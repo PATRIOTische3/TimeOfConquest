@@ -28,6 +28,145 @@ const MP = (() => {
   let _seenKeys   = new Set();
   let _origEndTurn = null;
 
+  // ── AFK Detection ─────────────────────────────────────────
+  const AFK_WARN_MS   = 90_000;  // 1.5 min → show "are you there?" dialog
+  const AFK_KICK_MS   = 60_000;  // +1 min of no response → disconnect
+  let _afkWarnTimer   = null;
+  let _afkKickTimer   = null;
+  let _afkDialogOpen  = false;
+  let _lastOpponentAct = 0;      // timestamp of last opponent activity (host tracks guest, guest tracks host)
+
+  // Host sends a heartbeat ping to guest every 30s while waiting
+  let _hbTimer = null;
+
+  function _resetAfkWatch() {
+    // Called when we know opponent is active (received any message)
+    _lastOpponentAct = Date.now();
+    clearTimeout(_afkWarnTimer);
+    clearTimeout(_afkKickTimer);
+    _afkDialogOpen = false;
+    // Close AFK dialog if it was open
+    const afkEl = document.getElementById('mp-afk-dialog');
+    if (afkEl) afkEl.remove();
+  }
+
+  function _startAfkWatch() {
+    // Start watching the opponent — called when we enter "waiting" state
+    _lastOpponentAct = Date.now();
+    clearTimeout(_afkWarnTimer);
+    clearTimeout(_afkKickTimer);
+
+    _afkWarnTimer = setTimeout(() => {
+      if (!connected || myTurn) return; // if it's our turn now, no need
+      _showAfkWarning();
+    }, AFK_WARN_MS);
+  }
+
+  function _showAfkWarning() {
+    if (_afkDialogOpen) return;
+    _afkDialogOpen = true;
+    const oppName = role === 'host'
+      ? (NATIONS[guestNation] && NATIONS[guestNation].name || 'Guest')
+      : (NATIONS[hostNation] && NATIONS[hostNation].name || 'Host');
+
+    // Send a PING to opponent — they should respond with PONG
+    send('PING', { ts: Date.now() });
+
+    // Build dialog
+    let dlg = document.getElementById('mp-afk-dialog');
+    if (!dlg) {
+      dlg = document.createElement('div');
+      dlg.id = 'mp-afk-dialog';
+      dlg.style.cssText = 'position:fixed;inset:0;z-index:600;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.75)';
+      document.body.appendChild(dlg);
+    }
+    dlg.innerHTML = `
+      <div style="background:linear-gradient(160deg,#0e1018,#06080e);border:1px solid rgba(201,168,76,.4);padding:24px 28px;max-width:360px;text-align:center;font-family:'IM Fell English',serif;color:#e8d5a3;box-shadow:0 0 60px rgba(0,0,0,.9)">
+        <div style="font-family:'Cinzel Decorative',serif;font-size:15px;color:#c9a84c;letter-spacing:2px;margin-bottom:10px">⏳ Waiting…</div>
+        <p style="font-size:12px;margin-bottom:6px"><b>${oppName}</b> hasn't made a move for 1.5 minutes.</p>
+        <p style="font-size:10px;color:#8a7848;margin-bottom:18px">If they don't respond in <b id="afk-countdown">60</b>s, an AI will take their place.</p>
+        <div style="font-size:9px;color:#4a3828;letter-spacing:1px">Waiting for response…</div>
+      </div>
+    `;
+    dlg.style.display = 'flex';
+
+    // Countdown display
+    let secs = Math.floor(AFK_KICK_MS / 1000);
+    const countEl = document.getElementById('afk-countdown');
+    const _cd = setInterval(() => {
+      secs--;
+      if (countEl) countEl.textContent = secs;
+      if (secs <= 0) clearInterval(_cd);
+    }, 1000);
+
+    // Kick timer — if no PONG received
+    _afkKickTimer = setTimeout(() => {
+      clearInterval(_cd);
+      _kickAfkPlayer();
+    }, AFK_KICK_MS);
+  }
+
+  function _kickAfkPlayer() {
+    if (!connected) return;
+    const oppName = role === 'host'
+      ? (NATIONS[guestNation] && NATIONS[guestNation].name || 'Guest')
+      : (NATIONS[hostNation] && NATIONS[hostNation].name || 'Host');
+
+    // Close dialog
+    const dlg = document.getElementById('mp-afk-dialog');
+    if (dlg) dlg.remove();
+    _afkDialogOpen = false;
+
+    // Notify opponent
+    send('KICKED', { reason: 'afk' });
+
+    addLog(`⚠ ${oppName} disconnected (AFK). AI takes over.`, 'warn');
+    popup(`${oppName} was removed — AI takes their place`, 3500);
+    mpLog(`🤖 ${oppName} AFK-kicked — AI takes over`, 'warn');
+
+    // Convert to singleplayer: restore original endTurn, stop MP
+    _convertToSingleplayer();
+  }
+
+  function _convertToSingleplayer() {
+    stopPolling();
+    clearTimeout(_afkWarnTimer);
+    clearTimeout(_afkKickTimer);
+    clearTimeout(_hbTimer);
+    if (roomId) fbDelete(`rooms/${roomId}`);
+
+    const wasGuest = role === 'guest';
+    const aiNation = wasGuest ? hostNation : guestNation;
+
+    role = null; roomId = null; connected = false; myTurn = true;
+
+    // Restore original endTurn
+    if (_origEndTurn) { window.endTurn = _origEndTurn; _origEndTurn = null; }
+
+    // Hide MP UI elements
+    const igBar = document.getElementById('mp-ingame-bar');
+    if (igBar) igBar.style.display = 'none';
+    const ind = document.getElementById('mp-turn-indicator-wrap');
+    if (ind) ind.style.display = 'none';
+
+    // Re-enable UI
+    const sp = document.getElementById('side-panel');
+    if (sp) { sp.style.opacity='1'; sp.style.pointerEvents=''; }
+    const bottom = document.getElementById('bottom');
+    if (bottom) { bottom.style.opacity='1'; bottom.style.pointerEvents=''; }
+    const endBtn = document.getElementById('end-btn');
+    const endBtnMob = document.getElementById('end-btn-mob');
+    if (endBtn) endBtn.disabled = false;
+    if (endBtnMob) endBtnMob.disabled = false;
+
+    // The AI nation (the kicked player's nation) will now be handled by the normal AI in doAI()
+    // We just need to make sure G.playerNation is set correctly
+    // (it already is — we never changed it)
+
+    addLog('🤖 Game continues as single player. AI controls the opponent.', 'diplo');
+    scheduleDraw(); updateHUD();
+  }
+
   // Guest delta — actions taken this turn to send to host
   let _delta = {
     armyMoves: [],   // [{from,to,amount}]
@@ -131,8 +270,13 @@ const MP = (() => {
       popup('⚔ Your turn!', 2000);
       addLog('── Your turn ──', 'diplo');
       setStatus('Your turn', 'ok');
+      // Cancel AFK watch — it's our turn now
+      clearTimeout(_afkWarnTimer);
+      clearTimeout(_afkKickTimer);
     } else {
       setStatus('Opponent\'s turn…', 'waiting');
+      // Start watching for AFK
+      _startAfkWatch();
     }
   }
 
@@ -175,6 +319,9 @@ const MP = (() => {
 
   // ── Message handler ───────────────────────────────────────
   function handleMessage(msg) {
+    // Any incoming message = opponent is active — reset AFK watch
+    _resetAfkWatch();
+
     switch (msg.type) {
 
       case 'GUEST_ARRIVED':
@@ -259,6 +406,30 @@ const MP = (() => {
         popup(`💬 ${who}: ${msg.text}`, 3500);
         break;
       }
+
+      case 'PING':
+        // Opponent checked if we're alive — respond immediately
+        send('PONG', { ts: Date.now() });
+        break;
+
+      case 'PONG':
+        // Opponent is alive — cancel kick, close dialog
+        _resetAfkWatch();
+        clearTimeout(_afkKickTimer);
+        const dlg = document.getElementById('mp-afk-dialog');
+        if (dlg) dlg.remove();
+        _afkDialogOpen = false;
+        mpLog('✅ Opponent responded — still connected', 'ok');
+        // Restart AFK watch for this waiting period
+        if (!myTurn) _startAfkWatch();
+        break;
+
+      case 'KICKED':
+        // We were kicked for AFK — convert to singleplayer on our end too
+        addLog('⚠ You were removed from the game (AFK). Switching to single player.', 'warn');
+        popup('You were disconnected for inactivity', 4000);
+        _convertToSingleplayer();
+        break;
     }
   }
 
@@ -508,6 +679,9 @@ const MP = (() => {
 
     disconnect() {
       stopPolling();
+      clearTimeout(_afkWarnTimer);
+      clearTimeout(_afkKickTimer);
+      clearTimeout(_hbTimer);
       if (roomId) fbDelete(`rooms/${roomId}`);
       role = null; roomId = null; connected = false; myTurn = false;
       if (_origEndTurn) { window.endTurn = _origEndTurn; _origEndTurn = null; }
