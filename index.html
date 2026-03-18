@@ -389,9 +389,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <button class="btn" onclick="show('worlds');refreshWorldsList()" style="margin-top:12px">▶ Single Player</button>
     <button class="btn" onclick="show('mp')" style="border-color:#4080c0;color:#80b8f0">⚡ Local</button>
   </div>
-  <div style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;color:rgba(100,88,60,.45);white-space:nowrap;pointer-events:none;user-select:none">
-    powered by v0.7.3-260318
-  </div>
+  <div id="version-label" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;color:rgba(100,88,60,.45);white-space:nowrap;pointer-events:none;user-select:none">powered by v…</div>
 </div>
 
 <!-- MULTIPLAYER LOBBY -->
@@ -431,20 +429,18 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 
         <!-- Room ID display (shown after room created) -->
         <div class="mp-room-display" id="mp-room-display">
-          <div class="mp-lbl">Share this code with your friend</div>
+          <div class="mp-lbl">Share code or link with friends (up to 6 players)</div>
           <div class="mp-room-code" id="mp-room-id" onclick="mpCopyId()" title="Click to copy">—</div>
-          <div class="mp-copy-hint">CLICK TO COPY · SEND VIA CHAT</div>
+          <div class="mp-copy-hint">CLICK CODE TO COPY</div>
+          <div style="margin:4px 0;font-size:9px;color:var(--dim)">Or share link:</div>
+          <a id="mp-invite-link" href="#" onclick="mpCopyLink(event)" style="font-size:9px;color:#4080c0;word-break:break-all;cursor:pointer;display:block;margin-bottom:6px">—</a>
           <div class="mp-waiting" id="mp-waiting-text">
             <div class="mp-spinner"></div>
-            Waiting for guest to join…
+            Waiting for players…
           </div>
-          <!-- Guest nation display once joined -->
-          <div id="mp-guest-joined" style="display:none">
-            <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:rgba(40,100,40,.15);border:1px solid var(--green2);font-size:10px;color:var(--green2)">
-              ✓ Guest joined as <b id="mp-guest-nation" style="margin-left:4px">—</b>
-            </div>
-            <button class="btn full grn" id="mp-start-game-btn" onclick="MP.startMultiplayerGame()" disabled style="margin-top:6px">⚔ Start Game</button>
-          </div>
+          <!-- Players list -->
+          <div id="mp-players-list" style="margin-top:6px;font-size:10px;color:var(--dim)"></div>
+          <button class="btn full grn" id="mp-start-game-btn" onclick="MP.startMultiplayerGame()" disabled style="margin-top:6px">🎲 Roll & Start Game</button>
         </div>
       </div>
     </div>
@@ -454,17 +450,17 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
       <div class="mp-lbl">Join a Room</div>
       <div class="mp-card">
         <div class="mp-card-title">🚩 Join Game</div>
-        <div class="mp-card-desc">Enter the room code your friend created.</div>
-        <input class="mp-inp" id="mp-join-id" placeholder="Enter room code…" maxlength="36" oninput="this.value=this.value.toUpperCase()">
+        <div class="mp-card-desc">Enter the room code your friend created — or use an invite link.</div>
+        <input class="mp-inp" id="mp-join-code" placeholder="Enter 6-digit room code…" maxlength="6" oninput="this.value=this.value.replace(/\D/g,'').slice(0,6)">
 
         <!-- Guest nation picker (shown after connecting) -->
         <div id="mp-guest-pick-panel">
-          <div class="mp-lbl" style="margin-bottom:5px">Pick Your Nation</div>
-          <div id="mp-guest-nation-list"></div>
-          <button class="btn full grn" id="mp-join-ready-btn" onclick="MP.guestReady()" disabled style="margin-top:6px">✓ Ready</button>
+          <div class="mp-lbl" style="margin-bottom:5px">Pick Your Nation (unavailable = taken)</div>
+          <div id="mp-guest-nation-list" style="max-height:200px;overflow-y:auto"></div>
+          <button class="btn full grn" id="mp-join-ready-btn" onclick="MP.playerReady()" disabled style="margin-top:6px">✓ Ready to Play</button>
         </div>
 
-        <div id="mp-guest-waiting">
+        <div id="mp-guest-waiting" style="display:none">
           <div class="mp-spinner"></div>
           Waiting for host to start the game…
         </div>
@@ -1235,17 +1231,19 @@ function mpCreateRoom() {
 }
 
 function mpJoinRoom() {
-  const id = document.getElementById('mp-join-id')?.value?.trim();
-  if (!id) { popup('Enter a room code!'); return; }
+  const id = (document.getElementById('mp-join-code')||document.getElementById('mp-join-id'));
+  const code = id&&id.value&&id.value.trim();
+  if (!code) { popup('Enter a room code!'); return; }
   document.getElementById('mp-join-btn').disabled = true;
-  document.getElementById('mp-chat-area').style.display = 'flex';
-  MP.joinRoom(id, -1); // nation picked via UI
+  const chatArea = document.getElementById('mp-chat-area');
+  if (chatArea) chatArea.style.display = 'flex';
+  MP.joinRoom(code);
 }
 
 function mpCopyId() {
-  const id = document.getElementById('mp-room-id')?.textContent;
+  const id = document.getElementById('mp-room-id')&&document.getElementById('mp-room-id').textContent;
   if (!id || id === '—') return;
-  navigator.clipboard?.writeText(id).then(() => popup('✓ Room code copied!', 1800))
+  navigator.clipboard&&navigator.clipboard.writeText(id).then(() => popup('✓ Room code copied!', 1800))
     .catch(() => {
       const ta = document.createElement('textarea');
       ta.value = id; document.body.appendChild(ta);
@@ -1255,9 +1253,40 @@ function mpCopyId() {
     });
 }
 
+function mpCopyLink(e) {
+  e&&e.preventDefault();
+  const linkEl = document.getElementById('mp-invite-link');
+  const url = linkEl&&linkEl.textContent;
+  if (!url||url==='—') return;
+  navigator.clipboard&&navigator.clipboard.writeText(url).then(() => popup('✓ Invite link copied!', 1800))
+    .catch(() => popup('Copy the link manually', 2000));
+}
+
+// Host can enable Start button once 2+ players joined
+window._mpCheckStartable = function() {
+  const btn = document.getElementById('mp-start-game-btn');
+  if (btn) btn.removeAttribute('disabled');
+};
+
 function mpSetFirebase() {
   // No longer needed — URL is hardcoded
 }
+
+// ── VERSION — loads from version.json ────────────────────
+// Format: MAJOR.MINOR.PATCH-YYMMDD
+// MAJOR = engine rewrite / save format break
+// MINOR = new gameplay system added
+// PATCH = bugfixes, balance, UI tweaks
+// YYMMDD = build date
+(function(){
+  fetch('version.json?_=' + Date.now())
+    .then(r => r.json())
+    .then(data => {
+      const el = document.getElementById('version-label');
+      if (el && data.version) el.textContent = 'powered by v' + data.version;
+    })
+    .catch(() => {});
+})();
 
 // Hardcoded Firebase URL — no input needed
 (function(){

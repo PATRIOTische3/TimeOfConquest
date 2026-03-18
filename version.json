@@ -1,0 +1,11 @@
+{
+  "_comment": "Version format: MAJOR.MINOR.PATCH-YYMMDD",
+  "_rules": [
+    "MAJOR — engine rewrites, map changes, save format breaks",
+    "MINOR — new gameplay systems (economy, multiplayer, battle queue...)",
+    "PATCH — bugfixes, UI tweaks, balance changes",
+    "YYMMDD — build date"
+  ],
+  "version": "0.7.4-260318",
+  "changelog": "none"
+}
