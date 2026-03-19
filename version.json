@@ -6,6 +6,6 @@
     "PATCH \u2014 bugfixes, UI tweaks, balance changes",
     "YYMMDD \u2014 build date"
   ],
-  "version": "0.8.1-260319",
-  "changelog": "Buildings map mode, draft queue, MP reconnect, move arrow fix, session banner, UI block on opponent turn"
+  "version": "0.8.2-260319",
+  "changelog": "MP nation list fix, invite link fix, session banners, reconnect"
 }

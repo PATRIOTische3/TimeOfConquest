@@ -634,9 +634,8 @@ const MP = (() => {
       // Show invite link
       const linkEl = document.getElementById('mp-invite-link');
       if (linkEl) {
-        const url = `${location.origin}${location.pathname}?room=${roomId}`;
+        const url = location.href.split('?')[0] + '?room=' + roomId;
         linkEl.textContent = url;
-        linkEl.href = url;
       }
 
       const disp = document.getElementById('mp-room-display');

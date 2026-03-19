@@ -433,7 +433,8 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
           <div class="mp-room-code" id="mp-room-id" onclick="mpCopyId()" title="Click to copy">—</div>
           <div class="mp-copy-hint">CLICK CODE TO COPY</div>
           <div style="margin:4px 0;font-size:9px;color:var(--dim)">Or share link:</div>
-          <a id="mp-invite-link" href="#" onclick="mpCopyLink(event)" style="font-size:9px;color:#4080c0;word-break:break-all;cursor:pointer;display:block;margin-bottom:6px">—</a>
+          <div id="mp-invite-link" onclick="mpCopyLink()" style="font-size:9px;color:#4080c0;word-break:break-all;cursor:pointer;padding:4px 0;margin-bottom:2px;min-height:14px">—</div>
+          <button class="btn" onclick="mpCopyLink()" style="padding:3px 10px;font-size:8px;margin-bottom:6px;width:auto">📋 Copy link</button>
           <div class="mp-waiting" id="mp-waiting-text">
             <div class="mp-spinner"></div>
             Waiting for players…
@@ -1127,7 +1128,7 @@ window.refreshWorldsList=function(){
       },30);
     }
     if(id==='worlds')refreshWorldsList();
-    if(id==='mp')initMpScreen();
+    if(id==='mp')setTimeout(initMpScreen,50);
   };
   window.addEventListener('resize',()=>{if(document.getElementById('s-setup')?.classList.contains('on'))rsz();});
 })();
@@ -1187,7 +1188,8 @@ function initMpScreen() {
 
   // Build host nation picker
   const list = document.getElementById('mp-host-nation-list');
-  if (!list || list.children.length > 0) return;
+  if (!list) return;
+  list.innerHTML = ''; // always rebuild
   NATIONS.forEach((nat,i) => {
     const ideo = IDEOLOGIES[nat.ideology];
     const row = document.createElement('div');
@@ -1213,22 +1215,7 @@ function initMpScreen() {
 function mpCreateRoom() {
   if (_mpHostNation < 0) { popup('Pick your nation first!'); return; }
   document.getElementById('mp-create-btn').disabled = true;
-  document.getElementById('mp-room-display').style.display = 'flex';
   MP.createRoom(_mpHostNation);
-
-  // When guest joins and picks nation, show them
-  const orig = MP.pickGuestNation?.bind(MP);
-  // Watch for guest nation set
-  const checkGuest = setInterval(() => {
-    if (MP.guestNation >= 0) {
-      clearInterval(checkGuest);
-      const gj = document.getElementById('mp-guest-joined');
-      const wt = document.getElementById('mp-waiting-text');
-      if (gj) gj.style.display = 'block';
-      if (wt) wt.style.display = 'none';
-      document.getElementById('mp-chat-area').style.display = 'flex';
-    }
-  }, 500);
 }
 
 function mpJoinRoom() {
@@ -1254,13 +1241,17 @@ function mpCopyId() {
     });
 }
 
-function mpCopyLink(e) {
-  e&&e.preventDefault();
+function mpCopyLink() {
   const linkEl = document.getElementById('mp-invite-link');
-  const url = linkEl&&linkEl.textContent;
-  if (!url||url==='—') return;
-  navigator.clipboard&&navigator.clipboard.writeText(url).then(() => popup('✓ Invite link copied!', 1800))
-    .catch(() => popup('Copy the link manually', 2000));
+  const url = linkEl&&linkEl.textContent&&linkEl.textContent.trim();
+  if (!url||url==='—') { popup('Create a room first!',1500); return; }
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(url).then(()=>popup('✓ Link copied!',1800)).catch(()=>{});
+  } else {
+    const ta=document.createElement('textarea');ta.value=url;
+    document.body.appendChild(ta);ta.select();document.execCommand('copy');
+    document.body.removeChild(ta);popup('✓ Copied!',1800);
+  }
 }
 
 // Host can enable Start button once 2+ players joined
