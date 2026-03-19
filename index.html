@@ -433,8 +433,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
           <div class="mp-room-code" id="mp-room-id" onclick="mpCopyId()" title="Click to copy">—</div>
           <div class="mp-copy-hint">CLICK CODE TO COPY</div>
           <div style="margin:4px 0;font-size:9px;color:var(--dim)">Or share link:</div>
-          <div id="mp-invite-link" onclick="mpCopyLink()" style="font-size:9px;color:#4080c0;word-break:break-all;cursor:pointer;padding:4px 0;margin-bottom:2px;min-height:14px">—</div>
-          <button class="btn" onclick="mpCopyLink()" style="padding:3px 10px;font-size:8px;margin-bottom:6px;width:auto">📋 Copy link</button>
+          <a id="mp-invite-link" href="#" onclick="mpCopyLink(event)" style="font-size:9px;color:#4080c0;word-break:break-all;cursor:pointer;display:block;margin-bottom:6px">—</a>
           <div class="mp-waiting" id="mp-waiting-text">
             <div class="mp-spinner"></div>
             Waiting for players…
@@ -583,9 +582,8 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
   </div>
   <div id="map-mode-bar">
     <button class="mmbtn on" id="mm-political" onclick="setMapMode('political')">🗺 Political</button>
-    <button class="mmbtn" id="mm-terrain" onclick="setMapMode('terrain')">⛰ Terrain</button>
+    <button class="mmbtn" id="mm-terrain" onclick="setMapMode('terrain')">🏔 Terrain</button>
     <button class="mmbtn" id="mm-resources" onclick="setMapMode('resources')">⛏ Resources</button>
-    <button class="mmbtn" id="mm-buildings" onclick="setMapMode('buildings')">🏛 Buildings</button>
     <button class="mmbtn" id="mm-disease" onclick="setMapMode('disease')">☣ Disease</button>
     <button class="mmbtn" id="mm-instab" onclick="setMapMode('instab')">⚡ Unrest</button>
   </div>
@@ -843,6 +841,7 @@ function loadFromSlot(slot){
   else if(Array.isArray(G._allyEpicNotified)) G._allyEpicNotified=new Set(G._allyEpicNotified);
   if(!G.moveQueue) G.moveQueue=[];
   if(!G.battleQueue) G.battleQueue=[];
+  if(!G.draftQueue) G.draftQueue=[];
   show('game');
   setTimeout(()=>{
     computeHexRadius();buildCanvas();zoomReset();
@@ -1128,7 +1127,7 @@ window.refreshWorldsList=function(){
       },30);
     }
     if(id==='worlds')refreshWorldsList();
-    if(id==='mp')setTimeout(initMpScreen,50);
+    if(id==='mp')initMpScreen();
   };
   window.addEventListener('resize',()=>{if(document.getElementById('s-setup')?.classList.contains('on'))rsz();});
 })();
@@ -1188,8 +1187,7 @@ function initMpScreen() {
 
   // Build host nation picker
   const list = document.getElementById('mp-host-nation-list');
-  if (!list) return;
-  list.innerHTML = ''; // always rebuild
+  if (!list || list.children.length > 0) return;
   NATIONS.forEach((nat,i) => {
     const ideo = IDEOLOGIES[nat.ideology];
     const row = document.createElement('div');
@@ -1215,7 +1213,22 @@ function initMpScreen() {
 function mpCreateRoom() {
   if (_mpHostNation < 0) { popup('Pick your nation first!'); return; }
   document.getElementById('mp-create-btn').disabled = true;
+  document.getElementById('mp-room-display').style.display = 'flex';
   MP.createRoom(_mpHostNation);
+
+  // When guest joins and picks nation, show them
+  const orig = MP.pickGuestNation?.bind(MP);
+  // Watch for guest nation set
+  const checkGuest = setInterval(() => {
+    if (MP.guestNation >= 0) {
+      clearInterval(checkGuest);
+      const gj = document.getElementById('mp-guest-joined');
+      const wt = document.getElementById('mp-waiting-text');
+      if (gj) gj.style.display = 'block';
+      if (wt) wt.style.display = 'none';
+      document.getElementById('mp-chat-area').style.display = 'flex';
+    }
+  }, 500);
 }
 
 function mpJoinRoom() {
@@ -1241,17 +1254,13 @@ function mpCopyId() {
     });
 }
 
-function mpCopyLink() {
+function mpCopyLink(e) {
+  e&&e.preventDefault();
   const linkEl = document.getElementById('mp-invite-link');
-  const url = linkEl&&linkEl.textContent&&linkEl.textContent.trim();
-  if (!url||url==='—') { popup('Create a room first!',1500); return; }
-  if(navigator.clipboard){
-    navigator.clipboard.writeText(url).then(()=>popup('✓ Link copied!',1800)).catch(()=>{});
-  } else {
-    const ta=document.createElement('textarea');ta.value=url;
-    document.body.appendChild(ta);ta.select();document.execCommand('copy');
-    document.body.removeChild(ta);popup('✓ Copied!',1800);
-  }
+  const url = linkEl&&linkEl.textContent;
+  if (!url||url==='—') return;
+  navigator.clipboard&&navigator.clipboard.writeText(url).then(() => popup('✓ Invite link copied!', 1800))
+    .catch(() => popup('Copy the link manually', 2000));
 }
 
 // Host can enable Start button once 2+ players joined
@@ -1285,71 +1294,50 @@ function mpSetFirebase() {
   window.TOC_FIREBASE_URL = 'https://timeofconquest-default-rtdb.europe-west1.firebasedatabase.app';
 })();
 
-// ── SESSION / MP RESTORE ─────────────────────────────────
-function _applyLiveState(state){
-  Object.assign(G,state);
-  if(G.epidemics)G.epidemics.forEach(ep=>{if(Array.isArray(ep.provinces))ep.provinces=new Set(ep.provinces);});
-  if(!G._allyEpicNotified)G._allyEpicNotified=new Set();
-  else if(Array.isArray(G._allyEpicNotified))G._allyEpicNotified=new Set(G._allyEpicNotified);
-  if(!G.moveQueue)G.moveQueue=[];
-  if(!G.battleQueue)G.battleQueue=[];
-  if(!G._enemyAttackQueue)G._enemyAttackQueue=[];
-  if(!G.draftQueue)G.draftQueue=[];
+// ── SESSION RESTORE ─────────────────────────────────────
+// Shows "Resume?" banner on the intro screen when live save exists.
+// Auto-clears when user explicitly exits to menu (saveAndExit/back btn).
+function _restoreSession(state){
+  try{
+    Object.assign(G,state);
+    if(G.epidemics)G.epidemics.forEach(ep=>{if(Array.isArray(ep.provinces))ep.provinces=new Set(ep.provinces);});
+    if(!G._allyEpicNotified)G._allyEpicNotified=new Set();
+    else if(Array.isArray(G._allyEpicNotified))G._allyEpicNotified=new Set(G._allyEpicNotified);
+    if(!G.moveQueue)G.moveQueue=[];
+    if(!G.battleQueue)G.battleQueue=[];
+    if(!G.draftQueue)G.draftQueue=[];
+    if(!G._enemyAttackQueue)G._enemyAttackQueue=[];
+    show('game');
+    setTimeout(()=>{
+      computeHexRadius();buildCanvas();zoomReset();
+      updateHUD();updateIdeoHUD();updateSeasonUI();
+      addLog('↺ Session restored.','event');
+    },80);
+  }catch(e){console.warn('Restore failed',e);}
 }
-
-// Helper functions referenced by banner buttons
-function _mpDiscard(){ localStorage.removeItem('toc_mp_session'); var b=document.getElementById('mp-reconnect-banner'); if(b)b.remove(); }
-function _mpReconnect(){ var d=localStorage.getItem('toc_mp_session'); if(!d)return; var s=JSON.parse(d); localStorage.removeItem('toc_mp_session'); var b=document.getElementById('mp-reconnect-banner'); if(b)b.remove(); MP.joinRoom(s.roomId); }
-function _spDiscard(){ localStorage.removeItem('toc_live'); var b=document.getElementById('resume-banner'); if(b)b.remove(); }
-function _spResume(){ var d=localStorage.getItem('toc_live'); if(!d)return; _applyLiveState(JSON.parse(d)); show('game'); setTimeout(function(){ computeHexRadius();buildCanvas();zoomReset();updateHUD();updateIdeoHUD();updateSeasonUI();addLog('\u21BA Session restored.','event'); },80); var b=document.getElementById('resume-banner'); if(b)b.remove(); }
-
 (function(){
   try{
-    var mpRaw=localStorage.getItem('toc_mp_session');
-    if(mpRaw){
-      var mps=JSON.parse(mpRaw);
-      if(mps&&mps.roomId&&mps.nation>=0){
-        setTimeout(function(){
-          show('mp');
-          var inp=document.getElementById('mp-join-code')||document.getElementById('mp-join-id');
-          if(inp)inp.value=mps.roomId;
-          var nm=(window.NATIONS&&NATIONS[mps.nation])?NATIONS[mps.nation].name:'?';
-          var banner=document.createElement('div');
-          banner.id='mp-reconnect-banner';
-          banner.style.cssText='position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:20;background:linear-gradient(160deg,#1e1208,#0c0804);border:1px solid rgba(201,168,76,.4);padding:12px 20px;text-align:center;font-family:Cinzel,serif;min-width:220px';
-          banner.innerHTML='<div style="font-size:9px;color:#8a7848;margin-bottom:6px;letter-spacing:2px">MP SESSION FOUND</div>'
-            +'<div style="font-size:12px;color:#c9a84c;margin-bottom:10px">'+nm+' &middot; Room '+mps.roomId+'</div>'
-            +'<div style="display:flex;gap:8px;justify-content:center">'
-            +'<button onclick="_mpDiscard()" style="padding:5px 12px;background:rgba(0,0,0,.3);border:1px solid #2a2418;color:#8a7848;font-family:Cinzel,serif;font-size:9px;cursor:pointer;letter-spacing:1px">DISCARD</button>'
-            +'<button onclick="_mpReconnect()" style="padding:5px 12px;background:rgba(201,168,76,.12);border:1px solid #c9a84c;color:#c9a84c;font-family:Cinzel,serif;font-size:9px;cursor:pointer;letter-spacing:1px">&#8629; REJOIN</button>'
-            +'</div>';
-          var mp=document.getElementById('s-mp');
-          if(mp)mp.appendChild(banner);
-        },300);
-        return;
-      }
-    }
-    var raw=localStorage.getItem('toc_live');
+    const raw=localStorage.getItem('toc_live');
     if(!raw)return;
-    var state=JSON.parse(raw);
+    const state=JSON.parse(raw);
     if(!state||state.playerNation==null)return;
-    var mn=state.playerNation;
-    var nat=(window.NATIONS&&NATIONS[mn])?NATIONS[mn]:null;
-    var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    var dateStr=mo[state.month||0]+' '+(state.year||1936);
-    setTimeout(function(){
-      var intro=document.getElementById('s-intro');
+    const mn=state.playerNation,nat=window.NATIONS&&NATIONS[mn];
+    const mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const dateStr=mo[state.month||0]+' '+(state.year||1936);
+    // Show resume banner on intro screen
+    setTimeout(()=>{
+      const intro=document.getElementById('s-intro');
       if(!intro||!intro.classList.contains('on'))return;
-      var b=document.createElement('div');
+      const b=document.createElement('div');
       b.id='resume-banner';
-      b.style.cssText='position:absolute;bottom:80px;left:50%;transform:translateX(-50%);z-index:10;background:linear-gradient(160deg,#1e1208,#0c0804);border:1px solid rgba(201,168,76,.4);padding:16px 24px;text-align:center;min-width:240px;font-family:Cinzel,serif';
-      b.innerHTML='<div style="font-size:9px;color:#8a7848;letter-spacing:2px;margin-bottom:6px">UNSAVED SESSION</div>'
-        +'<div style="font-size:13px;color:#c9a84c;margin-bottom:2px">'+(nat?nat.name:'?')+'</div>'
-        +'<div style="font-size:10px;color:#8a7848;margin-bottom:12px">'+dateStr+'</div>'
-        +'<div style="display:flex;gap:8px;justify-content:center">'
-        +'<button onclick="_spDiscard()" style="padding:6px 14px;background:rgba(0,0,0,.3);border:1px solid #2a2418;color:#8a7848;font-family:Cinzel,serif;font-size:9px;cursor:pointer;letter-spacing:1px">DISCARD</button>'
-        +'<button onclick="_spResume()" style="padding:6px 14px;background:rgba(201,168,76,.12);border:1px solid #c9a84c;color:#c9a84c;font-family:Cinzel,serif;font-size:9px;cursor:pointer;letter-spacing:1px">&#9654; RESUME</button>'
-        +'</div>';
+      b.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) translateY(60px);z-index:10;background:linear-gradient(160deg,#1e1208,#0c0804);border:1px solid rgba(201,168,76,.4);padding:16px 24px;text-align:center;min-width:260px;font-family:Cinzel,serif';
+      b.innerHTML=`<div style="font-size:11px;color:var(--dim);letter-spacing:2px;margin-bottom:6px">UNSAVED SESSION</div>
+<div style="font-size:13px;color:var(--gold);margin-bottom:2px">${nat?nat.name:'Game'}</div>
+<div style="font-size:10px;color:var(--dim);margin-bottom:14px">${dateStr}</div>
+<div style="display:flex;gap:8px;justify-content:center">
+  <button onclick="localStorage.removeItem('toc_live');document.getElementById('resume-banner').remove()" style="padding:6px 14px;background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--dim);font-family:Cinzel,serif;font-size:9px;cursor:pointer;letter-spacing:1px">DISCARD</button>
+  <button onclick="_restoreSession(JSON.parse(localStorage.getItem('toc_live')));document.getElementById('resume-banner').remove()" style="padding:6px 14px;background:rgba(201,168,76,.12);border:1px solid var(--gold);color:var(--gold);font-family:Cinzel,serif;font-size:9px;cursor:pointer;letter-spacing:1px">▶ RESUME</button>
+</div>`;
       intro.appendChild(b);
     },400);
   }catch(e){}

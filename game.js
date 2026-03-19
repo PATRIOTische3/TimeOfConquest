@@ -176,7 +176,8 @@ function startGame(){
   G.taxMood=PROVINCES.map(()=>0);
   G.battleQueue=[];
   G._enemyAttackQueue=[];
-  G.moveQueue=[]; // queued troop movements: [{from,to,amount}] // 0 = neutral, negative = angry about taxes
+  G.moveQueue=[]; // queued troop movements: [{from,to,amount}]
+  G.draftQueue=[]; // queued conscriptions: [{prov,amount,weeksLeft,nation}] // 0 = neutral, negative = angry about taxes
   G.resBase=PROVINCES.map(p=>({...((p.res)||{})}));
   G.resPool={oil:0,coal:0,grain:0,steel:0};
   G.loans=[];G.totalDebt=0;
@@ -308,16 +309,7 @@ function provColor(i){
     return '#1a4010'; // stable = dark green
   }
 
-  if(m==='buildings'){
-    if(PROVINCES[i]?.isSea) return '#0a1828';
-    const blds=G.buildings[i]||[];
-    if(blds.length===0) return '#141414';
-    if(blds.includes('fortress')) return '#3a2808';
-    if(blds.includes('factory')) return '#082838';
-    if(blds.includes('barracks')) return '#081828';
-    if(blds.includes('palace')) return '#2a2008';
-    return '#1a1a1a';
-  }
+  if(m==='terrain') return TC[PROVINCES[i].terrain]||'#2a2a2a';
 
   if(m==='resources'){
     const r=G.resBase[i]||{};
@@ -478,29 +470,14 @@ function drawMap(){
         ctx.shadowBlur=0;
       }
 
-      // Army count — not in instab/disease/buildings modes
-      if(G.army[i]>0 && vp.scale>1.0 && canSeeArmy(i) && G.mapMode!=='instab' && G.mapMode!=='disease' && G.mapMode!=='buildings'){
+      // Army count — only political/terrain/resources modes, when zoomed in
+      if(G.army[i]>0 && vp.scale>1.0 && canSeeArmy(i) && G.mapMode!=='instab' && G.mapMode!=='disease'){
         ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;
         ctx.fillStyle='rgba(232,205,145,.85)';
         ctx.textAlign='center';ctx.textBaseline='middle';
         ctx.shadowColor='rgba(0,0,0,.9)';ctx.shadowBlur=2;
         ctx.fillText(fm(G.army[i]),p.cx,p.cy+(p.isCapital?fs*.85:0));
         ctx.shadowBlur=0;
-      }
-
-      // Draft queue indicator — green number above hex showing incoming troops
-      if(G.draftQueue&&G.owner[i]===G.playerNation&&G.mapMode!=='buildings'){
-        const drafting=G.draftQueue.filter(d=>d.prov===i&&d.nation===G.playerNation);
-        if(drafting.length>0){
-          const total=drafting.reduce((s,d)=>s+d.amount,0);
-          const weeksLeft=Math.max(...drafting.map(d=>d.weeksLeft));
-          ctx.font=`bold ${Math.max(3.5,fs-1)}px Cinzel,serif`;
-          ctx.fillStyle='#40e840';
-          ctx.textAlign='center';ctx.textBaseline='middle';
-          ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=3;
-          ctx.fillText('+'+fm(total),p.cx,p.cy-(p.isCapital?fs*1.8:fs*1.2));
-          ctx.shadowBlur=0;
-        }
       }
 
       // Capital star
@@ -510,14 +487,11 @@ function drawMap(){
         ctx.fillText('★',p.cx+r*.62,p.cy-r*.55);ctx.shadowBlur=0;
       }
 
-      // Building icons — only in buildings mode or political
-      if(G.buildings[i]&&G.buildings[i].length&&(G.mapMode==='buildings'||G.mapMode==='political')){
-        const bldSymbols={'barracks':'▲','fortress':'◆','factory':'■','palace':'★','port':'⬟','railway':'═'};
-        ctx.font=`bold ${fs+2}px Cinzel,serif`;ctx.textBaseline='middle';
+      // Building icons
+      if(G.buildings[i]&&G.buildings[i].length){
+        ctx.font=`${fs+1}px serif`;ctx.textBaseline='middle';
         G.buildings[i].forEach((k,bi)=>{
-          const sym=bldSymbols[k]||(BUILDINGS[k]?.icon||'?');
-          ctx.fillStyle=G.owner[i]===G.playerNation?'#f0d080':'rgba(240,208,128,0.55)';
-          ctx.fillText(sym,p.cx-r*.55+bi*fs*1.3,p.cy+r*.82);
+          ctx.fillText(BUILDINGS[k]?.icon||'',p.cx-r*.55+bi*fs*1.2,p.cy+r*.78);
         });
       }
 
@@ -581,24 +555,21 @@ function drawMap(){
     ctx.restore();
   }
 
-  // Attack arrows — red dashed (only player's own queued attacks)
+  // Attack arrows — red dashed
   if(G.battleQueue&&G.battleQueue.length){
     G.battleQueue.forEach(({fr,to,force})=>{
       const fp=PROVINCES[fr],tp=PROVINCES[to];
       if(!fp||!tp)return;
-      // In multiplayer, only show arrows from own provinces
-      if(G.owner[fr]!==G.playerNation)return;
       const [fsx,fsy]=toScreen(fp.cx,fp.cy);
       const [tsx,tsy]=toScreen(tp.cx,tp.cy);
       drawOrderArrow(fsx,fsy,tsx,tsy,'rgba(255,80,80,.85)','#ff9090',fm(force));
     });
   }
-  // Move arrows — green dashed (only own player's moves)
+  // Move arrows — green dashed
   if(G.moveQueue&&G.moveQueue.length){
     G.moveQueue.forEach(({from,to,amount})=>{
       const fp=PROVINCES[from],tp=PROVINCES[to];
       if(!fp||!tp)return;
-      if(G.owner[from]!==G.playerNation)return;
       const [fsx,fsy]=toScreen(fp.cx,fp.cy);
       const [tsx,tsy]=toScreen(tp.cx,tp.cy);
       drawOrderArrow(fsx,fsy,tsx,tsy,'rgba(80,220,80,.85)','#a0ffb0',fm(amount));
@@ -710,18 +681,15 @@ function showProvPopup(i, screenX, screenY){
 
   const diseaseHtml = ep ? `<div class="pp-disease" style="color:${ep.color};border-color:${ep.color}">${ep.icon} ${ep.name}</div>` : '';
 
-  const mpWaiting = typeof MP!=='undefined' && MP.active && !MP.myTurn;
-  const canAct_mp = !mpWaiting;
-
   // Action buttons
   const btns = [];
-  if((isEnemy||isIndep) && canAct_mp){
+  if(isEnemy||isIndep){
     btns.push({icon:'⚔',lbl:'Attack',cls:'red',disabled:!canAtk,onclick:`hideProvPopup();G.sel=${i};chkBtns();openAttack()`});
   }
-  if(isOurs && canMove && canAct_mp){
+  if(isOurs&&canMove){
     btns.push({icon:'🚶',lbl:'Move',cls:'grn',onclick:`hideProvPopup();G.sel=${i};toggleMoveMode()`});
   }
-  if(isOurs && canAct_mp){
+  if(isOurs){
     btns.push({icon:'🏗',lbl:'Build',cls:'',onclick:`hideProvPopup();G.sel=${i};openBuild()`});
     btns.push({icon:'🪖',lbl:'Draft',cls:'',onclick:`hideProvPopup();G.sel=${i};openDraft()`});
   }
@@ -1114,7 +1082,6 @@ document.addEventListener('keydown', e=>{
 
 // ── MOVEMENT ──────────────────────────────────────────────
 function toggleMoveMode(){
-  if(typeof MP!=='undefined'&&MP.active&&!MP.myTurn){popup('⏳ Not your turn!',1500);return;}
   if(G.navalMode)cancelNaval();
   if(G.moveMode){cancelMove();return;}
   const si=G.sel;
@@ -1262,14 +1229,24 @@ function resolveNavalArrivals(){
 
 // ── CONSCRIPTION ──────────────────────────────────────────
 function openDraft(){
-  if(typeof MP!=='undefined'&&MP.active&&!MP.myTurn){popup('⏳ Not your turn!',1500);return;}
   const mr=PROVINCES.map((_,i)=>i).filter(i=>G.owner[i]===G.playerNation);
   if(!mr.length){popup('No territories!');return;}
   const io=ideol();
   // Current province (selected or capital)
   let cur=G.sel>=0&&G.owner[G.sel]===G.playerNation?G.sel:-1;
-  if(cur<0){const ci=mr.find(i=>PROVINCES[i].isCapital&&PROVINCES[i].nation===G.playerNation);cur=ci??mr[0];}
+  if(cur<0){const ci=mr.find(i=>PROVINCES[i].isCapital&&PROVINCES[i].nation===G.playerNation);cur=ci!=null?ci:mr[0];}
   window._dr=cur;
+
+  // Active draft queue entries for player
+  const activeDrafts=(G.draftQueue||[]).filter(d=>d.nation===G.playerNation);
+  const draftQueueHtml=activeDrafts.length?`
+    <div style="margin-bottom:8px;padding:7px 10px;background:rgba(100,160,80,.08);border:1px solid rgba(80,140,60,.3)">
+      <div style="font-size:8px;color:var(--dim);letter-spacing:2px;margin-bottom:4px">ACTIVE DRAFTS</div>
+      ${activeDrafts.map(d=>`<div style="display:flex;justify-content:space-between;font-size:9px;padding:2px 0;border-bottom:1px solid rgba(42,36,24,.15)">
+        <span style="color:var(--text)">${PROVINCES[d.prov]&&PROVINCES[d.prov].short} · ${fa(d.amount)}</span>
+        <span style="color:var(--gold)">⏳ ${d.weeksLeft}w left</span>
+      </div>`).join('')}
+    </div>`:'';
 
   function draftCap(r){
     const hb=(G.buildings[r]||[]).includes('barracks');
@@ -1316,6 +1293,7 @@ function openDraft(){
 
   const others=mr.filter(r=>r!==cur);
   const html=`
+    ${draftQueueHtml}
     <p class="mx" style="font-size:10px;margin-bottom:6px">Cost: <b>1,000 pop + 1 gold</b>/soldier · ${io.icon} ×${(1/io.conscriptMod).toFixed(2)} · Treasury: <b>${fa(G.gold[G.playerNation])}g</b></p>
     ${rowHtml(cur,true)}
     ${others.length?`<div style="font-size:8px;color:var(--dim);letter-spacing:2px;text-transform:uppercase;padding:4px 0 3px;border-bottom:1px solid rgba(42,36,24,.3);margin-bottom:4px">Other Territories</div>
@@ -1340,49 +1318,64 @@ window.switchDraftProv=function(r){
 function pickDR(r){ window.switchDraftProv(r); } // legacy alias
 
 function confirmDraft(){
-  const r=window._dr;if(r<0||r===undefined)return;
-  const v=+(document.getElementById('dsl')&&document.getElementById('dsl').value||0);if(!v)return;
+  const r=window._dr; if(r<0||r===undefined)return;
+  const v=+(document.getElementById('dsl')&&document.getElementById('dsl').value||0); if(!v)return;
+  const io=ideol();
   if(G.pop[r]<v+1000){popup('Not enough population!');return;}
   if(G.gold[G.playerNation]<v){popup('Not enough gold!');return;}
 
-  // ── Draft duration by ideology and size ──
-  // Dictatorships (nazism/fascism/stalinism/militarism/communism): always 1 week
-  // Others: 1 week if small (<3% pop), 2 weeks if large
-  const dictIdeologies=['nazism','fascism','stalinism','militarism','communism'];
-  const isDict=dictIdeologies.includes(G.ideology);
-  const popPct=v/Math.max(1,G.pop[r]);
-  let draftWeeks;
-  if(isDict) draftWeeks=1;
-  else draftWeeks=popPct<0.03?1:2;
+  // ── Draft queue: conscription takes time ──────────────
+  // Duration depends on amount (% of pop) and ideology speed
+  // Dictatorships (nazism/fascism/stalinism/militarism) are fastest
+  const fastIdeologies=['nazism','fascism','stalinism','militarism','communism'];
+  const isFast=fastIdeologies.includes(G.ideology);
+  const popPct=v/G.pop[r]; // fraction of pop being drafted
+  // Base weeks: 1 week per 2% of pop drafted (min 1, max 8)
+  // Fast ideologies: max 2-3 weeks; slow (democracy etc): max 6-8 weeks
+  const baseWeeks=Math.ceil(popPct/0.02);
+  const maxWeeks=isFast?3:7;
+  const draftWeeks=Math.max(1,Math.min(maxWeeks,baseWeeks));
 
-  // Commit cost immediately
+  // Immediate cost (pop + gold committed now)
   G.pop[r]=Math.max(1000,G.pop[r]-v);
   G.gold[G.playerNation]-=v;
 
-  if(!G.draftQueue)G.draftQueue=[];
-  G.draftQueue.push({prov:r,amount:v,weeksLeft:draftWeeks,nation:G.playerNation});
+  // Add to draft queue
+  if(!G.draftQueue) G.draftQueue=[];
+  G.draftQueue.push({
+    prov: r,
+    amount: v,
+    weeksLeft: draftWeeks,
+    totalWeeks: draftWeeks,
+    nation: G.playerNation
+  });
 
   closeMo();
-  scheduleDraw();updateHUD();if(G.sel>=0)updateSP(G.sel);
-  const wStr=draftWeeks===1?'next week':'in 2 weeks';
-  addLog(`🪖 ${PROVINCES[r].short}: ${fa(v)} conscripted — arrive ${wStr}.`,'info');
-  popup(`🪖 ${fa(v)} drafted — ready ${wStr}`);
+  scheduleDraw(); updateHUD(); if(G.sel>=0)updateSP(G.sel);
+  addLog(`🪖 ${PROVINCES[r].short}: ${fa(v)} being conscripted — arrive in ${draftWeeks} week${draftWeeks>1?'s':''}.`,'info');
+  popup(`🪖 ${fa(v)} conscription started — ${draftWeeks}w until ready`);
 }
 
+// Process draft queue — called every week in endTurn
 function processDraftQueue(){
-  if(!G.draftQueue||!G.draftQueue.length)return;
+  if(!G.draftQueue||!G.draftQueue.length) return;
+  const done=[];
   G.draftQueue=G.draftQueue.filter(entry=>{
     entry.weeksLeft--;
     if(entry.weeksLeft<=0){
       G.army[entry.prov]=(G.army[entry.prov]||0)+entry.amount;
-      if(entry.nation===G.playerNation){
-        addLog(`✅ ${PROVINCES[entry.prov]&&PROVINCES[entry.prov].short}: ${fa(entry.amount)} soldiers ready!`,'info');
-        popup(`✅ ${fa(entry.amount)} troops ready in ${PROVINCES[entry.prov]&&PROVINCES[entry.prov].short}!`,2500);
-      }
+      done.push(entry);
       return false;
     }
     return true;
   });
+  for(const entry of done){
+    const isPlayer=entry.nation===G.playerNation;
+    if(isPlayer){
+      addLog(`✅ ${PROVINCES[entry.prov].short}: ${fa(entry.amount)} soldiers reporting for duty!`,'info');
+      popup(`✅ ${fa(entry.amount)} troops ready in ${PROVINCES[entry.prov].short}!`,2500);
+    }
+  }
 }
 
 
@@ -1397,7 +1390,6 @@ const TAX_MAX={
 function taxMax(){ return TAX_MAX[G.ideology]||60; }
 
 function openEconomy(){
-  if(typeof MP!=='undefined'&&MP.active&&!MP.myTurn){popup('⏳ Not your turn!',1500);return;}
   const PN=G.playerNation;
   const io=ideol();
   const mr=regsOf(PN);
@@ -1545,7 +1537,6 @@ function buildTurns(r, key){
 }
 
 function openBuild(){
-  if(typeof MP!=='undefined'&&MP.active&&!MP.myTurn){popup('⏳ Not your turn!',1500);return;}
   const si=G.sel;
   if(si<0||G.owner[si]!==G.playerNation){popup('Select your territory!');return;}
   // Check if construction already queued here
@@ -1785,7 +1776,6 @@ function isAtkSrc(i){
 }
 
 function openAttack(){
-  if(typeof MP!=='undefined'&&MP.active&&!MP.myTurn){popup('⏳ Not your turn!',1500);return;}
   if(inPeacePeriod()){popup(`Peace period — ${peaceTurnsLeft()} weeks remaining`);return;}
   const si=G.sel;
   if(si<0||G.owner[si]===G.playerNation){popup('Select an enemy territory!');return;}
@@ -2466,17 +2456,16 @@ function endTurn(){
   resolveNavalArrivals();
   // Execute queued moves (instant, no animation needed)
   executeMoveQueue();
-  processDraftQueue();
+  processDraftQueue(); // advance draft timers every week
 
   if(!newMonth){
-    // Just a week tick — quick update
-    scheduleDraw();updateHUD();updateSeasonUI();
-    if(G.sel>=0)updateSP(G.sel);chkBtns();
-    // Execute queued battles
+    doAI(false); // weekly — attacks, retreats only
     executeBattleQueue(()=>{
       scheduleDraw();updateHUD();if(G.sel>=0)updateSP(G.sel);chkBtns();chkVic();
       setEB(false);
     });
+    scheduleDraw();updateHUD();updateSeasonUI();
+    if(G.sel>=0)updateSP(G.sel);chkBtns();
     return;
   }
 
@@ -2590,8 +2579,8 @@ function endTurn(){
   // Resistance
   processResistance();
 
-  // AI turns
-  doAI();
+  // AI turns — full monthly processing (income, buildings, conscript)
+  doAI(true);
 
   // Random event (monthly)
   if(Math.random()<.25)randEvent(io);
@@ -2639,7 +2628,7 @@ function autoSave(){
     const idx=saves.findIndex(s=>s.slot===0);
     if(idx>=0)saves[idx]=entry;else saves.unshift(entry);
     setSaves(saves);
-    // Live snapshot for reload recovery
+    // Live session snapshot — overwritten every autosave for reload recovery
     try{localStorage.setItem('toc_live',JSON.stringify(stateCopy));}catch(e){}
   }catch(e){console.warn('Autosave failed',e);}
 }
@@ -2722,8 +2711,8 @@ function processEpidemics(fullMonth=false){
   // ── Random new outbreaks — very rare, monthly only ────────
   if(fullMonth){
     const atWar=G.war[G.playerNation]&&G.war[G.playerNation].some(w=>w);
-    // ~30% per year in peace, ~60% in war — visible but not overwhelming
-    const baseChance=(atWar?0.05:0.025)*seasonMult;
+    // ~70% per year in peace, ~150% in war — diseases are common
+    const baseChance=(atWar?0.12:0.06)*seasonMult;
     if(Math.random()<baseChance){
       const candidates=PROVINCES.map((_,i)=>i).filter(i=>!PROVINCES[i].isSea);
       const origin=candidates[Math.floor(Math.random()*candidates.length)];
@@ -2823,12 +2812,188 @@ function processEpidemics(fullMonth=false){
 }
 
 // ── AI ────────────────────────────────────────────────────
-function doAI(){
+// fullMonth=true → income, buildings, conscript, upkeep
+// fullMonth=false (weekly) → attacks, army movements only
+function doAI(fullMonth=true){
   for(const ai of aliveNations()){
     const ar=regsOf(ai);if(!ar.length)continue;
-    const aio=IDEOLOGIES[NATIONS[ai]?.ideology||'nationalism'];
+    const aio=IDEOLOGIES[NATIONS[ai]&&NATIONS[ai].ideology||'nationalism'];
     const s=season();
-    const isAtWar=G.war[ai]?.some(w=>w);
+    const isAtWar=G.war[ai]&&G.war[ai].some(w=>w);
+
+    // Each AI nation has a persistent personality: aggressive or defensive
+    // Stored in G.aiPersonality[ai] — set once, kept forever
+    if(!G.aiPersonality)G.aiPersonality={};
+    if(G.aiPersonality[ai]===undefined)G.aiPersonality[ai]=Math.random()<0.5?'aggressive':'defensive';
+    const aggressive=G.aiPersonality[ai]==='aggressive';
+
+    if(fullMonth){
+      // ── Income ──────────────────────────────────────────
+      for(const r of ar){
+        let inc=G.income[r];
+        if((G.buildings[r]||[]).includes('factory'))inc=Math.floor(inc*1.8);
+        if((G.buildings[r]||[]).includes('palace'))inc=Math.floor(inc*1.15);
+        G.gold[ai]+=Math.floor(inc*aio.income*.78);
+      }
+
+      // ── Smart buildings ──────────────────────────────────
+      // Aggressive: builds barracks+factory first; Defensive: fortress first
+      const capIdx=ar.find(r=>PROVINCES[r]&&PROVINCES[r].isCapital);
+      const borderProvs=ar.filter(r=>(NB[r]||[]).some(nb=>{const o=G.owner[nb];return o>=0&&o!==ai&&!areAllies(ai,o);}));
+      const buildBudget=Math.floor(G.gold[ai]*(aggressive?0.25:0.2));
+      let bSpent=0;
+
+      // Priority list of (province, building, reason)
+      const buildQueue=[];
+      // Fortresses on borders
+      for(const r of borderProvs){
+        const blds=G.buildings[r]||[];
+        if(!blds.includes('fortress')&&!(G.buildQueue&&G.buildQueue.some&&G.buildQueue.some(b=>b.prov===r&&b.bld==='fortress')))
+          buildQueue.push({r,bld:'fortress',priority:aggressive?2:4});
+      }
+      // Fortress on capital
+      if(capIdx!==undefined){
+        const blds=G.buildings[capIdx]||[];
+        if(!blds.includes('fortress'))buildQueue.push({r:capIdx,bld:'fortress',priority:5});
+        if(!blds.includes('palace'))buildQueue.push({r:capIdx,bld:'palace',priority:4});
+        if(!blds.includes('barracks'))buildQueue.push({r:capIdx,bld:'barracks',priority:aggressive?5:3});
+        if(!blds.includes('factory'))buildQueue.push({r:capIdx,bld:'factory',priority:3});
+      }
+      // Barracks on high-pop border provinces
+      for(const r of borderProvs){
+        if(G.pop[r]>20000&&!(G.buildings[r]||[]).includes('barracks'))
+          buildQueue.push({r,bld:'barracks',priority:aggressive?3:2});
+      }
+      // Factories in interior high-income provinces
+      const interior=ar.filter(r=>!borderProvs.includes(r));
+      for(const r of interior.slice(0,3)){
+        if(!(G.buildings[r]||[]).includes('factory'))
+          buildQueue.push({r,bld:'factory',priority:2});
+      }
+
+      buildQueue.sort((a,b)=>b.priority-a.priority);
+      for(const {r,bld} of buildQueue){
+        if(bSpent>=buildBudget)break;
+        const cost=BUILDINGS[bld]&&BUILDINGS[bld].cost||300;
+        if(G.gold[ai]>=cost*0.9&&bSpent+cost<=buildBudget){
+          const blds=G.buildings[r]||[];
+          const maxSlots=PROVINCES[r]&&PROVINCES[r].isCapital?5:3;
+          if(!blds.includes(bld)&&blds.length<maxSlots){
+            G.gold[ai]-=cost; bSpent+=cost;
+            G.buildings[r]=[...blds,bld];
+          }
+        }
+      }
+
+      // ── Conscript ────────────────────────────────────────
+      // Aggressive: conscripts more; defensive: less but focuses borders
+      const conscriptRate=aggressive?(isAtWar?0.22:0.12):(isAtWar?0.15:0.07);
+      const conscriptBudget=Math.floor(G.gold[ai]*conscriptRate);
+      let spent=0;
+      const priorityProvs=[...new Set([
+        ...(capIdx!==undefined?[capIdx]:[]),
+        ...borderProvs
+      ])];
+      for(const r of priorityProvs){
+        if(spent>=conscriptBudget)break;
+        const popCap=Math.floor(G.pop[r]/10);
+        const canRecruit=Math.max(0,Math.min(
+          Math.floor(popCap*(aggressive?0.04:0.025)),
+          conscriptBudget-spent, 100
+        ));
+        if(canRecruit>0&&G.army[r]<popCap){
+          const actual=Math.min(canRecruit,popCap-G.army[r]);
+          G.army[r]+=actual;
+          G.pop[r]=Math.max(500,G.pop[r]-actual);
+          G.gold[ai]-=actual; spent+=actual;
+        }
+      }
+
+      // ── Upkeep ───────────────────────────────────────────
+      for(const r of ar){
+        G.pop[r]+=Math.floor(G.pop[r]*.004);
+        G.instab[r]=Math.max(0,G.instab[r]-ri(1,4));
+        if(G.assim[r]<100)G.assim[r]=Math.min(100,G.assim[r]+ri(1,3));
+      }
+
+      // ── Puppet tribute ────────────────────────────────────
+      if(G.puppet.includes(ai)){
+        G.gold[G.playerNation]+=Math.floor(ar.reduce((sum,r)=>{
+          let inc=G.income[r];
+          if((G.buildings[r]||[]).includes('factory'))inc=Math.floor(inc*1.8);
+          return sum+inc;
+        },0)*.3);
+      }
+    } // end fullMonth
+
+    // ── Attack (runs EVERY week) ─────────────────────────
+    // Aggressive: 30% weekly chance; Defensive: 10% (both higher when at war)
+    const atkChance=isAtWar?(aggressive?0.55:0.35):(aggressive?0.14:0.05);
+    if(!inPeacePeriod()&&Math.random()<atkChance){
+      const tgts=[];
+      for(const r of ar){
+        if(G.army[r]<200)continue;
+        for(const nb of (NB[r]||[])){
+          const nbo=G.owner[nb];
+          if(nbo===ai||areAllies(ai,nbo)||(nbo>=0&&G.pact[ai][nbo]))continue;
+          // Prefer capitals and provinces with buildings
+          const hasCap=PROVINCES[nb]&&PROVINCES[nb].isCapital;
+          const hasBld=(G.buildings[nb]||[]).length>0;
+          const ratio=G.army[r]/Math.max(1,G.army[nb]);
+          const minRatio=aggressive?1.2:1.8;
+          if(ratio>=minRatio){
+            const score=ratio*(hasCap?2.5:1)*(hasBld?1.5:1);
+            tgts.push([r,nb,score]);
+          }
+        }
+      }
+      if(tgts.length){
+        tgts.sort((a,b)=>b[2]-a[2]);
+        const [fr2,to2]=tgts[0];
+        const def=G.owner[to2];
+        const sendFrac=aggressive?0.55:0.4;
+        const send=Math.max(1,Math.floor(G.army[fr2]*sendFrac));
+        if(def>=0&&def!==ai){G.war[ai][def]=true;G.war[def][ai]=true;}
+        const terrain2=TERRAIN[PROVINCES[to2]&&PROVINCES[to2].terrain||'plains'];
+        const frt=(G.buildings[to2]||[]).includes('fortress')?1.6:1;
+        const terrMod=s.winterTerrain&&s.winterTerrain.includes(PROVINCES[to2]&&PROVINCES[to2].terrain)?s.moveMod:1.0;
+        const win=send*aio.atk*terrMod*rf(.75,1.25)>G.army[to2]*terrain2.defB*frt*rf(.75,1.25);
+        if(win){
+          const al=Math.floor(send*rf(.15,.3));
+          G.army[fr2]-=send;G.army[to2]=Math.max(50,send-al);G.owner[to2]=ai;
+          G.instab[to2]=ri(30,60);G.assim[to2]=ri(5,20);
+          if((G.buildings[to2]||[]).includes('fortress'))
+            G.buildings[to2]=(G.buildings[to2]||[]).filter(b=>b!=='fortress');
+          if(def===G.playerNation){
+            addLog(`⚔ ${ownerName(ai)} seized ${PROVINCES[to2].name}!`,'war');
+            if(!G._enemyAttackQueue)G._enemyAttackQueue=[];
+            G._enemyAttackQueue.push({fr:fr2,to:to2,atker:ai,send,win:true,al});
+          }
+          if(def>=0&&regsOf(def).length===0)G.war[ai][def]=G.war[def][ai]=false;
+          if(PROVINCES[to2]&&PROVINCES[to2].isCapital&&def>=0)G.capitalPenalty[ai]=3;
+        }else{
+          G.army[fr2]=Math.max(0,G.army[fr2]-Math.floor(send*rf(.1,.28)));
+          G.army[to2]=Math.max(50,G.army[to2]-Math.floor(G.army[to2]*rf(.08,.25)));
+          if(def===G.playerNation&&Math.random()<0.35){
+            if(!G._enemyAttackQueue)G._enemyAttackQueue=[];
+            G._enemyAttackQueue.push({fr:fr2,to:to2,atker:ai,send,win:false,al:0});
+          }
+        }
+      }
+    }
+
+    // ── Retreat from interior (weekly, 10% chance) ────────
+    if(Math.random()<.1){
+      for(const r of ar){
+        const isBorder=(NB[r]||[]).some(nb=>G.owner[nb]!==ai);
+        if(!isBorder&&G.army[r]>600){
+          const dest=ar.find(d=>d!==r&&(NB[d]||[]).some(nb=>G.owner[nb]!==ai));
+          if(dest){const mv=Math.floor(G.army[r]*.4);G.army[r]-=mv;G.army[dest]+=mv;}
+        }
+      }
+    }
+  }
+}
 
     // ── Income (AI gets 78% efficiency) ──────────────────
     for(const r of ar){
@@ -2867,86 +3032,6 @@ function doAI(){
       }
     }
 
-    // ── Attack: only when prepared and peace period over ─
-    if(!inPeacePeriod()&&Math.random()<(isAtWar?.25:.06)){
-      const tgts=[];
-      for(const r of ar){
-        if(G.army[r]<300)continue; // need minimum force
-        if(!NB[r])continue;
-        for(const nb of NB[r]){
-          const nbo=G.owner[nb];
-          if(nbo===ai||G.pact[ai][nbo]||areAllies(ai,nbo))continue;
-          // Prefer weaker targets
-          const ratio=G.army[r]/(Math.max(1,G.army[nb]));
-          if(ratio>1.5)tgts.push([r,nb,ratio]); // only attack if 1.5× stronger
-        }
-      }
-      if(tgts.length){
-        // Pick best odds
-        tgts.sort((a,b)=>b[2]-a[2]);
-        const [fr2,to2]=tgts[0];
-        const def3=G.owner[to2];
-        const send=Math.max(1,Math.floor(G.army[fr2]*.45));
-        if(def3>=0&&def3!==ai)G.war[ai][def3]=G.war[def3][ai]=true;
-        const terrain2=TERRAIN[PROVINCES[to2].terrain||'plains'];
-        const frt=(G.buildings[to2]||[]).includes('fortress')?1.6:1;
-        const terrMod=s.winterTerrain?.includes(PROVINCES[to2].terrain)?s.moveMod:1.0;
-        const win=send*aio.atk*terrMod*rf(.75,1.25)>G.army[to2]*terrain2.defB*frt*rf(.75,1.25);
-        if(win){
-          const al=Math.floor(send*rf(.15,.3));
-          G.army[fr2]-=send;G.army[to2]=Math.max(50,send-al);G.owner[to2]=ai;
-          G.instab[to2]=ri(30,60);G.assim[to2]=ri(5,20);
-          if((G.buildings[to2]||[]).includes('fortress'))G.buildings[to2]=G.buildings[to2].filter(b=>b!=='fortress');
-          if(def3===G.playerNation){
-            addLog(`⚔ ${ownerName(ai)} seized ${PROVINCES[to2].name}!`,'war');
-            // Queue enemy attack notification for overlay
-            if(!G._enemyAttackQueue)G._enemyAttackQueue=[];
-            G._enemyAttackQueue.push({fr:fr2,to:to2,atker:ai,send,win:true,al});
-          }
-          if(def3>=0&&regsOf(def3).length===0)G.war[ai][def3]=G.war[def3][ai]=false;
-          if(PROVINCES[to2].isCapital&&def3>=0)G.capitalPenalty[ai]=3;
-        }else{
-          G.army[fr2]=Math.max(0,G.army[fr2]-Math.floor(send*rf(.1,.28)));
-          G.army[to2]=Math.max(50,G.army[to2]-Math.floor(G.army[to2]*rf(.08,.25)));
-          if(def3===G.playerNation&&Math.random()<0.4){ // only show 40% of failed attacks
-            if(!G._enemyAttackQueue)G._enemyAttackQueue=[];
-            G._enemyAttackQueue.push({fr:fr2,to:to2,atker:ai,send,win:false,al:0});
-          }
-        }
-      }
-    }
-
-    // ── Retreat excess armies from interior ──────────────
-    // Prevents interior provinces from having absurd armies
-    if(Math.random()<.15){
-      for(const r of ar){
-        const isBorder=(NB[r]||[]).some(nb=>G.owner[nb]!==ai);
-        if(!isBorder&&G.army[r]>500){
-          // Move half to a border
-          const dest=ar.find(d=>d!==r&&(NB[d]||[]).some(nb=>G.owner[nb]!==ai));
-          if(dest){const mv=Math.floor(G.army[r]*.4);G.army[r]-=mv;G.army[dest]+=mv;}
-        }
-      }
-    }
-
-    // ── Puppet tribute ────────────────────────────────────
-    if(G.puppet.includes(ai)){
-      G.gold[G.playerNation]+=Math.floor(ar.reduce((s,r)=>{
-        let inc=G.income[r];
-        if((G.buildings[r]||[]).includes('factory'))inc=Math.floor(inc*1.8);
-        return s+inc;
-      },0)*.3);
-    }
-
-    // ── Basic upkeep ──────────────────────────────────────
-    for(const r of ar){
-      G.pop[r]+=Math.floor(G.pop[r]*.004);
-      G.instab[r]=Math.max(0,G.instab[r]-ri(1,4));
-      if(G.assim[r]<100)G.assim[r]=Math.min(100,G.assim[r]+ri(1,3));
-    }
-  }
-}
-
 // ── RANDOM EVENTS ─────────────────────────────────────────
 function randEvent(io){
   const mr=regsOf(G.playerNation);if(!mr.length)return;
@@ -2954,7 +3039,7 @@ function randEvent(io){
   const evs=[
     ()=>{const b=ri(80,500);G.gold[G.playerNation]+=b;return[`💰 War bonds in ${PROVINCES[r].short}: +${b}g.`,'event'];},
     ()=>{const l=Math.floor(G.pop[r]*.06);G.pop[r]=Math.max(500,G.pop[r]-l);G.instab[r]=Math.min(100,G.instab[r]+ri(10,20));return[`☠ Epidemic in ${PROVINCES[r].name}. -${fm(l)} pop.`,'revolt'];},
-    // Volunteers removed — army should only come from conscription
+    ()=>{const b=ri(300,1500);G.army[r]+=b;return[`🪖 Volunteers: +${fa(b)} in ${PROVINCES[r].short}.`,'event'];},
     ()=>{G.income[r]+=ri(15,35);return[`🏭 Industrial boom in ${PROVINCES[r].short}.`,'event'];},
     ()=>{const l=Math.min(G.army[r]-150,ri(100,800));if(l<=0)return null;G.army[r]-=l;return[`😤 Desertion: -${fa(l)} in ${PROVINCES[r].short}.`,'revolt'];},
     ()=>{G.instab[r]=Math.max(0,G.instab[r]-ri(15,30));return[`🎖 Morale boost in ${PROVINCES[r].short}.`,'event'];},
