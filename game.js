@@ -483,25 +483,17 @@ function drawMap(){
         ctx.shadowBlur=0;
       }
 
-      // Draft queue indicator — green overlay on province with active conscription
+      // Draft queue indicator — show drafting amount in bright green, same style as army count
       const _draftEntry=(G.draftQueue||[]).find(d=>d.prov===i&&d.nation===G.playerNation);
-      if(_draftEntry && G.mapMode==='political' && G.mapMode!=='buildings'){
-        hexPath(ctx,p.cx,p.cy,r*0.88);
-        ctx.fillStyle='rgba(60,220,60,0.18)';
-        ctx.fill();
-        // Animated green border
-        ctx.strokeStyle='rgba(60,220,60,0.85)';
-        ctx.lineWidth=2.2/vp.scale;
-        ctx.setLineDash([3/vp.scale,2/vp.scale]);
-        hexPath(ctx,p.cx,p.cy,r);ctx.stroke();
-        ctx.setLineDash([]);
-        // Show count being drafted
-        if(vp.scale>0.9){
-          ctx.font=`bold ${Math.max(4,fs-1)}px Cinzel,serif`;
-          ctx.fillStyle='rgba(120,255,120,0.95)';
+      if(_draftEntry && G.mapMode==='political'){
+        if(vp.scale>1.0){
+          const armyYOff=p.isCapital?fs*.85:0;
+          const draftYOff=armyYOff+(G.army[i]>0?fs*1.3:0);
+          ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;
+          ctx.fillStyle='rgba(80,255,100,0.95)';
           ctx.textAlign='center';ctx.textBaseline='middle';
-          ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=3;
-          ctx.fillText('🪖'+fm(_draftEntry.amount)+'·'+_draftEntry.weeksLeft+'w',p.cx,p.cy+(p.isCapital?fs:fs*0.5));
+          ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=2;
+          ctx.fillText(fm(_draftEntry.amount),p.cx,p.cy+draftYOff);
           ctx.shadowBlur=0;
         }
       }
