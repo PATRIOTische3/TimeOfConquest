@@ -136,6 +136,22 @@ const MP = (() => {
       });
       break;
 
+    case 'REJOIN_REQUEST':{
+      if(role!=='host')break;
+      const rjNation=msg._nation>=0?msg._nation:(msg.nation||0);
+      const existingPlayer=players.find(p=>p.nation===rjNation);
+      if(existingPlayer){
+        log('🔄 Approving rejoin for '+nname(rjNation),'ok');
+        banner(nname(rjNation)+' rejoined the game!');
+        pushState().then(()=>{
+          send('REJOIN_APPROVED',{nation:rjNation,playerOrder,turnIdx,players});
+        });
+      } else {
+        log('⚠ Rejoin rejected — '+nname(rjNation)+' not in game','warn');
+      }
+      break;
+    }
+
     case 'LOBBY_STATE':
       if(role!=='player')break;
       log('🗺 Pick your nation','ok');
@@ -174,7 +190,23 @@ const MP = (() => {
       }
       break;
 
-    case 'GAME_START':
+    case 'REJOIN_APPROVED':{
+      if(role!=='player')break;
+      playerOrder=msg.playerOrder||[];
+      turnIdx=msg.turnIdx||0;
+      players=msg.players||[];
+      // Fetch current game state
+      fbGet('rooms/'+roomId+'/state').then(st=>{
+        if(st&&st.snap){
+          applyState(st);
+          connected=true;
+          log('✅ Rejoined successfully!','ok');
+          popup('✅ Rejoined game!',2500);
+          addLog('🔄 Reconnected to session.','diplo');
+        }
+      });
+      break;
+    }
       if(role!=='player')break;
       playerOrder=msg.playerOrder||[];
       turnIdx=msg.turnIdx||0;
@@ -298,10 +330,29 @@ const MP = (() => {
   }
   function setWait(waiting){
     myTurn=!waiting;
+    // Always disable Advance Week button when waiting
     document.querySelectorAll('#end-btn,#end-btn-mob').forEach(e=>e&&(e.disabled=waiting));
-    document.querySelectorAll('#side-panel,#bottom').forEach(e=>{
-      if(e){e.style.opacity=waiting?'.4':'1';e.style.pointerEvents=waiting?'none':'';}
+
+    // Block all action buttons, side panel actions, bottom panel
+    // But map-mode-bar and map canvas pan/zoom remain usable
+    const blockIds=['#sp-actions','#bottom','#prov-popup'];
+    blockIds.forEach(sel=>{
+      document.querySelectorAll(sel).forEach(e=>{
+        if(e){
+          e.style.opacity=waiting?'.38':'1';
+          e.style.pointerEvents=waiting?'none':'';
+        }
+      });
     });
+    // Dim side panel header too but keep map modes alive
+    const sp=document.getElementById('side-panel');
+    if(sp){sp.style.opacity=waiting?'.5':'1';}
+    // map-mode-bar must stay interactive
+    const mmb=document.getElementById('map-mode-bar');
+    if(mmb){mmb.style.opacity='1';mmb.style.pointerEvents='';}
+    // Close any open modal/popup when it becomes our turn
+    if(!waiting){try{closeMo();}catch(e){}}
+
     const ind=document.getElementById('mp-turn-indicator');
     const iw=document.getElementById('mp-turn-indicator-wrap');
     if(iw)iw.style.display=connected?'block':'none';
@@ -414,9 +465,21 @@ const MP = (() => {
         if(!info){log('❌ Room not found','err');status('Room not found','err');role=null;roomId=null;return;}
         log('✅ Found! Waiting for nation list…','ok');status('Joining lobby…','connecting');
         connected=true;
-        _joinTs=Date.now()-200; // slight buffer so LOBBY_STATE reply is captured
+        _joinTs=Date.now()-200;
+        // Save reconnect info in localStorage
+        try{localStorage.setItem('toc_mp_reconnect',JSON.stringify({roomId:id,nation:myNation,pid:myPid}));}catch(e){}
         startPoll();patchET();patchActions();
-        send('PLAYER_JOINED',{});
+        // Check if game already started (rejoin mid-game)
+        fbGet('rooms/'+id+'/state').then(st=>{
+          if(st&&st.snap&&st.snap.playerNation!=null){
+            // Game in progress — need host to approve rejoin
+            send('REJOIN_REQUEST',{nation:myNation});
+            log('🔄 Game in progress — requesting rejoin…','info');
+            status('Rejoining…','connecting');
+          } else {
+            send('PLAYER_JOINED',{});
+          }
+        });
       });
     },
 
@@ -467,6 +530,7 @@ const MP = (() => {
       if(roomId)fbDel('rooms/'+roomId);
       role=null;roomId=null;connected=false;myTurn=false;myNation=-1;
       if(_origET){window.endTurn=_origET;_origET=null;}
+      try{localStorage.removeItem('toc_mp_reconnect');}catch(e){}
       status('Disconnected','idle');log('Disconnected','warn');
       const sp=document.getElementById('side-panel');if(sp){sp.style.opacity='1';sp.style.pointerEvents='';}
     },
@@ -474,12 +538,46 @@ const MP = (() => {
     checkDeepLink(){
       try{
         const code=new URLSearchParams(location.search).get('room');
-        if(!code)return;
-        const inp=document.getElementById('mp-join-code')||document.getElementById('mp-join-id');
-        if(inp)inp.value=code;
-        show('mp');log('🔗 Code from link: '+code,'ok');
+        if(code){
+          const inp=document.getElementById('mp-join-code')||document.getElementById('mp-join-id');
+          if(inp)inp.value=code;
+          show('mp');log('🔗 Code from link: '+code,'ok');
+          // Check if we have saved reconnect info for this room
+          try{
+            const saved=JSON.parse(localStorage.getItem('toc_mp_reconnect')||'{}');
+            if(saved.roomId===code&&saved.nation>=0){
+              myNation=saved.nation;
+              log('🔄 Auto-rejoining room '+code+' as '+nname(saved.nation)+'…','ok');
+              setTimeout(()=>this.joinRoom(code),600);
+            }
+          }catch(e){}
+          return;
+        }
+        // No URL param — check if we have a saved room to rejoin
+        try{
+          const saved=JSON.parse(localStorage.getItem('toc_mp_reconnect')||'{}');
+          if(saved.roomId&&saved.nation>=0){
+            // Show rejoin banner on intro
+            setTimeout(()=>{
+              const intro=document.getElementById('s-intro');
+              if(!intro||!intro.classList.contains('on'))return;
+              const b=document.createElement('div');
+              b.id='mp-rejoin-banner';
+              b.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) translateY(80px);z-index:11;background:linear-gradient(160deg,#0a1a2e,#06080e);border:1px solid rgba(80,120,200,.5);padding:16px 24px;text-align:center;min-width:260px;font-family:Cinzel,serif';
+              b.innerHTML=`<div style="font-size:11px;color:#6090c0;letter-spacing:2px;margin-bottom:6px">MULTIPLAYER SESSION</div>
+<div style="font-size:13px;color:#80c0ff;margin-bottom:2px">Room: ${saved.roomId}</div>
+<div style="font-size:10px;color:var(--dim);margin-bottom:14px">${nname(saved.nation)}</div>
+<div style="display:flex;gap:8px;justify-content:center">
+  <button onclick="localStorage.removeItem('toc_mp_reconnect');document.getElementById('mp-rejoin-banner').remove()" style="padding:6px 14px;background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--dim);font-family:Cinzel,serif;font-size:9px;cursor:pointer;letter-spacing:1px">DISCARD</button>
+  <button onclick="(()=>{const s=JSON.parse(localStorage.getItem('toc_mp_reconnect')||'{}');MP._setNation(s.nation);show('mp');MP.joinRoom(s.roomId);document.getElementById('mp-rejoin-banner').remove();})()" style="padding:6px 14px;background:rgba(80,120,200,.15);border:1px solid rgba(80,120,200,.6);color:#80c0ff;font-family:Cinzel,serif;font-size:9px;cursor:pointer;letter-spacing:1px">▶ REJOIN</button>
+</div>`;
+              intro.appendChild(b);
+            },500);
+          }
+        }catch(e){}
       }catch(e){}
-    }
+    },
+    _setNation(n){myNation=n;},
   };
 })();
 

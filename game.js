@@ -309,6 +309,19 @@ function provColor(i){
     return '#1a4010'; // stable = dark green
   }
 
+  if(m==='buildings'){
+    if(PROVINCES[i]?.isSea) return '#0a1828';
+    if(o<0) return '#1a1a1a';
+    const hasBld=(G.buildings[i]||[]).length>0;
+    const hasConst=!!G.construction[i];
+    if(o===G.playerNation){
+      if(hasBld) return '#2a4020'; // own with buildings = dark green
+      if(hasConst) return '#302010'; // under construction = dark amber
+      return '#161c10'; // own without = very dark
+    }
+    return hasBld?'#1e1e28':'#0e0e12'; // others
+  }
+
   if(m==='terrain') return TC[PROVINCES[i].terrain]||'#2a2a2a';
 
   if(m==='resources'){
@@ -470,8 +483,31 @@ function drawMap(){
         ctx.shadowBlur=0;
       }
 
+      // Draft queue indicator — green overlay on province with active conscription
+      const _draftEntry=(G.draftQueue||[]).find(d=>d.prov===i&&d.nation===G.playerNation);
+      if(_draftEntry && G.mapMode==='political' && G.mapMode!=='buildings'){
+        hexPath(ctx,p.cx,p.cy,r*0.88);
+        ctx.fillStyle='rgba(60,220,60,0.18)';
+        ctx.fill();
+        // Animated green border
+        ctx.strokeStyle='rgba(60,220,60,0.85)';
+        ctx.lineWidth=2.2/vp.scale;
+        ctx.setLineDash([3/vp.scale,2/vp.scale]);
+        hexPath(ctx,p.cx,p.cy,r);ctx.stroke();
+        ctx.setLineDash([]);
+        // Show count being drafted
+        if(vp.scale>0.9){
+          ctx.font=`bold ${Math.max(4,fs-1)}px Cinzel,serif`;
+          ctx.fillStyle='rgba(120,255,120,0.95)';
+          ctx.textAlign='center';ctx.textBaseline='middle';
+          ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=3;
+          ctx.fillText('🪖'+fm(_draftEntry.amount)+'·'+_draftEntry.weeksLeft+'w',p.cx,p.cy+(p.isCapital?fs:fs*0.5));
+          ctx.shadowBlur=0;
+        }
+      }
+
       // Army count — only political/terrain/resources modes, when zoomed in
-      if(G.army[i]>0 && vp.scale>1.0 && canSeeArmy(i) && G.mapMode!=='instab' && G.mapMode!=='disease'){
+      if(G.army[i]>0 && vp.scale>1.0 && canSeeArmy(i) && G.mapMode!=='instab' && G.mapMode!=='disease' && G.mapMode!=='buildings'){
         ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;
         ctx.fillStyle='rgba(232,205,145,.85)';
         ctx.textAlign='center';ctx.textBaseline='middle';
@@ -487,17 +523,45 @@ function drawMap(){
         ctx.fillText('★',p.cx+r*.62,p.cy-r*.55);ctx.shadowBlur=0;
       }
 
-      // Building icons
-      if(G.buildings[i]&&G.buildings[i].length){
-        ctx.font=`${fs+1}px serif`;ctx.textBaseline='middle';
-        G.buildings[i].forEach((k,bi)=>{
-          ctx.fillText(BUILDINGS[k]?.icon||'',p.cx-r*.55+bi*fs*1.2,p.cy+r*.78);
+      // Building icons — ONLY in buildings map mode
+      if(G.mapMode==='buildings' && G.buildings[i]&&G.buildings[i].length){
+        const bldList=G.buildings[i];
+        const bldR=r*0.82;
+        const total=bldList.length;
+        bldList.forEach((k,bi)=>{
+          const bDef=BUILDINGS[k];
+          if(!bDef)return;
+          // Place icons in a row at bottom of hex
+          const startX=p.cx-(total-1)*fs*0.65;
+          const bx=startX+bi*fs*1.3;
+          const by=p.cy+bldR*0.55;
+          // Background circle for readability
+          ctx.fillStyle='rgba(0,0,0,0.7)';
+          ctx.beginPath();ctx.arc(bx,by,fs*0.72,0,Math.PI*2);ctx.fill();
+          ctx.strokeStyle='rgba(201,168,76,0.5)';ctx.lineWidth=0.8/vp.scale;
+          ctx.stroke();
+          // Draw icon as text — use larger size for better rendering
+          ctx.font=`${Math.max(fs*1.1,5)}px serif`;
+          ctx.textAlign='center';ctx.textBaseline='middle';
+          ctx.fillText(bDef.icon||'?',bx,by);
         });
       }
+      // Construction indicator — also only in buildings mode
+      if(G.mapMode==='buildings' && G.construction[i]){
+        const c=G.construction[i];
+        const prog=Math.round((c.totalTurns-c.turnsLeft)/c.totalTurns*100);
+        ctx.font=`${Math.max(4,fs-1)}px Cinzel,serif`;
+        ctx.fillStyle='rgba(201,168,76,0.9)';
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=2;
+        ctx.fillText('🏗'+prog+'%',p.cx,p.cy);
+        ctx.shadowBlur=0;
+      }
 
-      // Resistance indicator
-      if(G.resistance[i]>30){
+      // Resistance indicator — only in political mode
+      if(G.mapMode==='political' && G.resistance[i]>30){
         ctx.font=`${fs+1}px serif`;
+        ctx.textAlign='center';ctx.textBaseline='middle';
         ctx.fillText('🔥',p.cx+r*.55,p.cy+r*.55);
       }
 
@@ -555,9 +619,9 @@ function drawMap(){
     ctx.restore();
   }
 
-  // Attack arrows — red dashed
+  // Attack arrows — red dashed (only player's queued attacks)
   if(G.battleQueue&&G.battleQueue.length){
-    G.battleQueue.forEach(({fr,to,force})=>{
+    G.battleQueue.filter(b=>b.isPlayer!==false).forEach(({fr,to,force})=>{
       const fp=PROVINCES[fr],tp=PROVINCES[to];
       if(!fp||!tp)return;
       const [fsx,fsy]=toScreen(fp.cx,fp.cy);
@@ -565,7 +629,7 @@ function drawMap(){
       drawOrderArrow(fsx,fsy,tsx,tsy,'rgba(255,80,80,.85)','#ff9090',fm(force));
     });
   }
-  // Move arrows — green dashed
+  // Move arrows — green dashed (only player's queued moves)
   if(G.moveQueue&&G.moveQueue.length){
     G.moveQueue.forEach(({from,to,amount})=>{
       const fp=PROVINCES[from],tp=PROVINCES[to];
@@ -605,6 +669,50 @@ function drawMap(){
       ctx.font='9px Cinzel,serif';ctx.fillStyle='#8a7848';
       ctx.textAlign='left';ctx.textBaseline='middle';
       ctx.fillText('No active epidemics',CW-150,22);
+    }
+  }
+  if(G.mapMode==='buildings'){
+    // Count player buildings
+    const PN=G.playerNation;
+    const bldCounts={};
+    PROVINCES.forEach((_,i)=>{
+      if(G.owner[i]!==PN)return;
+      (G.buildings[i]||[]).forEach(k=>{bldCounts[k]=(bldCounts[k]||0)+1;});
+      if(G.construction[i])bldCounts['_const']=(bldCounts['_const']||0)+1;
+    });
+    const entries=Object.entries(bldCounts).filter(([k])=>k!=='_const');
+    const constCount=bldCounts['_const']||0;
+    if(entries.length||constCount){
+      const pad=9,lh=16,sw=165,sh=pad*2+20+(entries.length+(constCount?1:0))*lh;
+      const lx=CW-sw-8,ly=8;
+      ctx.fillStyle='rgba(6,8,14,.9)';ctx.strokeStyle='rgba(40,60,30,.9)';ctx.lineWidth=1;
+      ctx.beginPath();ctx.rect(lx,ly,sw,sh);ctx.fill();ctx.stroke();
+      ctx.font='bold 9px Cinzel,serif';ctx.fillStyle='#c9a84c';ctx.textAlign='left';ctx.textBaseline='top';
+      ctx.fillText('YOUR BUILDINGS',lx+pad,ly+pad);
+      let row=0;
+      entries.sort((a,b)=>b[1]-a[1]).forEach(([k,cnt])=>{
+        const b=BUILDINGS[k];if(!b)return;
+        const ey=ly+pad+16+row*lh;
+        ctx.font=`${lh-4}px serif`;ctx.fillText(b.icon||'?',lx+pad,ey);
+        ctx.font='8px Cinzel,serif';ctx.fillStyle='#e8d5a3';
+        ctx.fillText(b.name,lx+pad+18,ey+1);
+        ctx.fillStyle='#c9a84c';ctx.font='bold 9px Cinzel,serif';
+        ctx.textAlign='right';ctx.fillText('×'+cnt,lx+sw-pad,ey+1);
+        ctx.textAlign='left';ctx.fillStyle='#e8d5a3';
+        row++;
+      });
+      if(constCount){
+        const ey=ly+pad+16+row*lh;
+        ctx.font='8px Cinzel,serif';ctx.fillStyle='#c9a84c';
+        ctx.fillText('🏗 Under construction',lx+pad,ey+1);
+        ctx.textAlign='right';ctx.fillText('×'+constCount,lx+sw-pad,ey+1);
+        ctx.textAlign='left';
+      }
+    } else {
+      ctx.fillStyle='rgba(6,8,14,.8)';ctx.strokeStyle='rgba(40,60,30,.7)';ctx.lineWidth=1;
+      ctx.beginPath();ctx.rect(CW-180,8,172,26);ctx.fill();ctx.stroke();
+      ctx.font='9px Cinzel,serif';ctx.fillStyle='#8a7848';ctx.textAlign='left';ctx.textBaseline='middle';
+      ctx.fillText('No buildings constructed yet',CW-172,21);
     }
   }
 }
@@ -1169,7 +1277,7 @@ function launchAtkFromMove(from,to){
   const force=availableArmy(from);
   if(force<=0){popup('No available troops!');return;}
   if(!G.battleQueue)G.battleQueue=[];
-  G.battleQueue.push({fr:from,to,force});
+  G.battleQueue.push({fr:from,to,force,isPlayer:true});
   addLog(`⚔ Attack ordered: ${PROVINCES[from].short} → ${PROVINCES[to].name}`, 'war');
   popup(`⚔ Attack queued — executes next turn`);
   scheduleDraw();updateHUD();if(G.sel>=0)updateSP(G.sel);chkBtns();
@@ -1325,16 +1433,17 @@ function confirmDraft(){
   if(G.gold[G.playerNation]<v){popup('Not enough gold!');return;}
 
   // ── Draft queue: conscription takes time ──────────────
-  // Duration depends on amount (% of pop) and ideology speed
-  // Dictatorships (nazism/fascism/stalinism/militarism) are fastest
-  const fastIdeologies=['nazism','fascism','stalinism','militarism','communism'];
-  const isFast=fastIdeologies.includes(G.ideology);
-  const popPct=v/G.pop[r]; // fraction of pop being drafted
-  // Base weeks: 1 week per 2% of pop drafted (min 1, max 8)
-  // Fast ideologies: max 2-3 weeks; slow (democracy etc): max 6-8 weeks
-  const baseWeeks=Math.ceil(popPct/0.02);
-  const maxWeeks=isFast?3:7;
-  const draftWeeks=Math.max(1,Math.min(maxWeeks,baseWeeks));
+  // Dictators (nazism/fascism/stalinism/militarism/communism): always 1 week
+  // Others: 1 week for small draft (<5% pop), up to 2 weeks for large
+  const dictatorIdeologies=['nazism','fascism','stalinism','militarism','communism'];
+  const isDictator=dictatorIdeologies.includes(G.ideology);
+  const popPct=v/G.pop[r];
+  let draftWeeks;
+  if(isDictator){
+    draftWeeks=1;
+  } else {
+    draftWeeks=popPct<0.05?1:2;
+  }
 
   // Immediate cost (pop + gold committed now)
   G.pop[r]=Math.max(1000,G.pop[r]-v);
@@ -3039,7 +3148,7 @@ function randEvent(io){
   const evs=[
     ()=>{const b=ri(80,500);G.gold[G.playerNation]+=b;return[`💰 War bonds in ${PROVINCES[r].short}: +${b}g.`,'event'];},
     ()=>{const l=Math.floor(G.pop[r]*.06);G.pop[r]=Math.max(500,G.pop[r]-l);G.instab[r]=Math.min(100,G.instab[r]+ri(10,20));return[`☠ Epidemic in ${PROVINCES[r].name}. -${fm(l)} pop.`,'revolt'];},
-    ()=>{const b=ri(300,1500);G.army[r]+=b;return[`🪖 Volunteers: +${fa(b)} in ${PROVINCES[r].short}.`,'event'];},
+    ()=>{const b=ri(100,300);G.gold[G.playerNation]+=b;return[`🏛 Tax windfall in ${PROVINCES[r].short}: +${b}g.`,'event'];},
     ()=>{G.income[r]+=ri(15,35);return[`🏭 Industrial boom in ${PROVINCES[r].short}.`,'event'];},
     ()=>{const l=Math.min(G.army[r]-150,ri(100,800));if(l<=0)return null;G.army[r]-=l;return[`😤 Desertion: -${fa(l)} in ${PROVINCES[r].short}.`,'revolt'];},
     ()=>{G.instab[r]=Math.max(0,G.instab[r]-ri(15,30));return[`🎖 Morale boost in ${PROVINCES[r].short}.`,'event'];},
