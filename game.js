@@ -483,17 +483,15 @@ function drawMap(){
         ctx.shadowBlur=0;
       }
 
-      // Draft queue indicator — show drafting amount in bright green, same style as army count
+      // Draft queue indicator — same style/position as army count but in green #72F372
       const _draftEntry=(G.draftQueue||[]).find(d=>d.prov===i&&d.nation===G.playerNation);
       if(_draftEntry && G.mapMode==='political'){
         if(vp.scale>1.0){
-          const armyYOff=p.isCapital?fs*.85:0;
-          const draftYOff=armyYOff+(G.army[i]>0?fs*1.3:0);
           ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;
-          ctx.fillStyle='rgba(80,255,100,0.95)';
+          ctx.fillStyle='#72F372';
           ctx.textAlign='center';ctx.textBaseline='middle';
           ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=2;
-          ctx.fillText(fm(_draftEntry.amount),p.cx,p.cy+draftYOff);
+          ctx.fillText(fm(_draftEntry.amount),p.cx,p.cy+(p.isCapital?fs*.85:0));
           ctx.shadowBlur=0;
         }
       }
@@ -791,7 +789,8 @@ function showProvPopup(i, screenX, screenY){
   }
   if(isOurs){
     btns.push({icon:'🏗',lbl:'Build',cls:'',onclick:`hideProvPopup();G.sel=${i};openBuild()`});
-    btns.push({icon:'🪖',lbl:'Draft',cls:'',onclick:`hideProvPopup();G.sel=${i};openDraft()`});
+    const _hasDraft=(G.draftQueue||[]).some(d=>d.prov===i&&d.nation===G.playerNation);
+    btns.push({icon:'🪖',lbl:_hasDraft?'Drafting…':'Draft',cls:'',disabled:_hasDraft,onclick:_hasDraft?'':(`hideProvPopup();G.sel=${i};openDraft()`)});
   }
   btns.push({icon:'📋',lbl:'Details',cls:'',onclick:`hideProvPopup();G.sel=${i};updateSP(${i});scheduleDraw()`});
 
@@ -1337,23 +1336,13 @@ function openDraft(){
   if(cur<0){const ci=mr.find(i=>PROVINCES[i].isCapital&&PROVINCES[i].nation===G.playerNation);cur=ci!=null?ci:mr[0];}
   window._dr=cur;
 
-  // Active draft queue entries for player
-  const activeDrafts=(G.draftQueue||[]).filter(d=>d.nation===G.playerNation);
-  const draftQueueHtml=activeDrafts.length?`
-    <div style="margin-bottom:8px;padding:7px 10px;background:rgba(100,160,80,.08);border:1px solid rgba(80,140,60,.3)">
-      <div style="font-size:8px;color:var(--dim);letter-spacing:2px;margin-bottom:4px">ACTIVE DRAFTS</div>
-      ${activeDrafts.map(d=>`<div style="display:flex;justify-content:space-between;font-size:9px;padding:2px 0;border-bottom:1px solid rgba(42,36,24,.15)">
-        <span style="color:var(--text)">${PROVINCES[d.prov]&&PROVINCES[d.prov].short} · ${fa(d.amount)}</span>
-        <span style="color:var(--gold)">⏳ ${d.weeksLeft}w left</span>
-      </div>`).join('')}
-    </div>`:'';
+  function isDrafting(r){return (G.draftQueue||[]).some(d=>d.prov===r&&d.nation===G.playerNation);}
 
   function draftCap(r){
     const hb=(G.buildings[r]||[]).includes('barracks');
     const sat=G.satisfaction[r]??70;
     const satMod=sat<40?0.5:sat<60?0.75:1.0;
     const refMod=G.reforming?0.8:1.0;
-    // Max 20% of pop can be drafted (pop is now 10k-50k)
     return Math.max(0,Math.min(
       Math.floor(G.pop[r]*0.20*(hb?1.5:1)/io.conscriptMod*satMod*refMod),
       G.gold[G.playerNation]
@@ -1364,7 +1353,22 @@ function openDraft(){
     const isOrig=PROVINCES[r].nation===G.playerNation;
     const name=PROVINCES[r].name+(PROVINCES[r].isCapital&&isOrig?'★':isOrig?'':' ⚑');
     const hb=(G.buildings[r]||[]).includes('barracks');
+    const drafting=isDrafting(r);
+    const draftEntry=drafting?(G.draftQueue||[]).find(d=>d.prov===r&&d.nation===G.playerNation):null;
     if(isPrimary){
+      // Province already being drafted — show frozen state
+      if(drafting){
+        return`<div id="draft-primary" style="background:rgba(80,140,60,.08);border:1px solid rgba(114,243,114,.35);padding:10px 12px;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-family:Cinzel,serif;font-size:12px;color:#72F372">${name}</span>
+            <span style="font-size:9px;color:var(--dim)">⚔ ${fm(G.army[r])} · pop ${fm(G.pop[r])}${hb?' · 🏕barracks':''}</span>
+          </div>
+          <div style="font-size:10px;color:#72F372;font-style:italic;text-align:center;padding:8px 0">
+            🪖 Conscripting ${fa(draftEntry.amount)} soldiers — ${draftEntry.weeksLeft}w remaining
+          </div>
+          <button class="btn dim" style="width:100%;padding:7px;margin-top:4px" onclick="closeMo()">Close</button>
+        </div>`;
+      }
       const initVal=Math.min(2000,Math.floor(cap/2));
       return`<div id="draft-primary" style="background:rgba(201,168,76,.06);border:1px solid var(--gold);padding:10px 12px;margin-bottom:8px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -1384,7 +1388,13 @@ function openDraft(){
         <button class="btn dim" style="width:100%;padding:7px;margin-top:4px" onclick="closeMo()">Cancel</button>`}
       </div>`;
     }
-    // Other province row — compact, click to switch
+    // Other province row — frozen if already drafting
+    if(drafting){
+      return`<div class="ti" id="dr${r}" onclick="switchDraftProv(${r})" style="padding:5px 9px;opacity:.65;cursor:pointer">
+        <span class="tn" style="font-size:10px;color:#72F372">${name} <span style="font-size:8px">🪖</span></span>
+        <span class="ta" style="font-size:8px;color:#72F372">Drafting ${fm(draftEntry.amount)} · ${draftEntry.weeksLeft}w</span>
+      </div>`;
+    }
     return`<div class="ti" id="dr${r}" onclick="switchDraftProv(${r})" style="padding:5px 9px">
       <span class="tn" style="font-size:10px">${name}</span>
       <span class="ta" style="font-size:8px">⚔${fm(G.army[r])} · Max ${fm(cap)}</span>
@@ -1393,7 +1403,6 @@ function openDraft(){
 
   const others=mr.filter(r=>r!==cur);
   const html=`
-    ${draftQueueHtml}
     <p class="mx" style="font-size:10px;margin-bottom:6px">Cost: <b>1,000 pop + 1 gold</b>/soldier · ${io.icon} ×${(1/io.conscriptMod).toFixed(2)} · Treasury: <b>${fa(G.gold[G.playerNation])}g</b></p>
     ${rowHtml(cur,true)}
     ${others.length?`<div style="font-size:8px;color:var(--dim);letter-spacing:2px;text-transform:uppercase;padding:4px 0 3px;border-bottom:1px solid rgba(42,36,24,.3);margin-bottom:4px">Other Territories</div>
@@ -1421,6 +1430,8 @@ function confirmDraft(){
   const r=window._dr; if(r<0||r===undefined)return;
   const v=+(document.getElementById('dsl')&&document.getElementById('dsl').value||0); if(!v)return;
   const io=ideol();
+  // Guard: cannot draft in province already in queue
+  if((G.draftQueue||[]).some(d=>d.prov===r&&d.nation===G.playerNation)){popup('Already conscripting here!');return;}
   if(G.pop[r]<v+1000){popup('Not enough population!');return;}
   if(G.gold[G.playerNation]<v){popup('Not enough gold!');return;}
 

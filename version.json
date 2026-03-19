@@ -6,6 +6,6 @@
     "PATCH — bugfixes, UI tweaks, balance changes",
     "YYMMDD — build date"
   ],
-  "version": "0.8.1-260319",
-  "changelog": "draft indicator as plain green number; no volunteers event; draft timers shortened (dictators 1t, others 1-2t); buildings map mode; buildings/resistance hidden outside own modes; MP: block UI on opponent turn (map modes stay live); MP rejoin on disconnect/reload; enemy move arrows hidden"
+  "version": "0.8.2-260319",
+  "changelog": "draft number on map = plain #72F372 text matching army style; draft button frozen while province drafting; ACTIVE DRAFTS panel removed; double-draft guard in confirmDraft"
 }
