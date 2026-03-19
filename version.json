@@ -6,6 +6,6 @@
     "PATCH — bugfixes, UI tweaks, balance changes",
     "YYMMDD — build date"
   ],
-  "version": "0.8.4-260319",
-  "changelog": "assimilation UI: single shared duration slider (1-48w) + 3 type cards with live price update; click card to confirm"
+  "version": "0.8.6-260319",
+  "changelog": "assimilation cost scales with province pop/2 for 48w base; cost curve normalized per province; pop passed through slider oninput and startAssim"
 }

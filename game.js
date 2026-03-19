@@ -484,17 +484,19 @@ function drawMap(){
         ctx.shadowBlur=0;
       }
 
-      // Draft queue indicator — same style/position as army count but in green #72F372
+      // Draft queue indicator — #72F372, below army number if army present
       const _draftEntry=(G.draftQueue||[]).find(d=>d.prov===i&&d.nation===G.playerNation);
-      if(_draftEntry && G.mapMode==='political'){
-        if(vp.scale>1.0){
-          ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;
-          ctx.fillStyle='#72F372';
-          ctx.textAlign='center';ctx.textBaseline='middle';
-          ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=2;
-          ctx.fillText(fm(_draftEntry.amount),p.cx,p.cy+(p.isCapital?fs*.85:0));
-          ctx.shadowBlur=0;
-        }
+      if(_draftEntry && G.mapMode==='political' && vp.scale>1.0){
+        const _armyYBase = p.isCapital ? fs*.85 : 0;
+        const _hasArmy = G.army[i]>0 && canSeeArmy(i);
+        // If army exists, shift draft number down by one line; otherwise use same position
+        const _draftY = p.cy + _armyYBase + (_hasArmy ? fs*1.4 : 0);
+        ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;
+        ctx.fillStyle='#72F372';
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=2;
+        ctx.fillText(fm(_draftEntry.amount),p.cx,_draftY);
+        ctx.shadowBlur=0;
       }
 
       // Army count — only political/terrain/resources modes, when zoomed in
@@ -1514,26 +1516,23 @@ function processDraftQueue(){
 const ASSIM_DEFS = {
   gentle:   {
     label:'🕊 Gentle', icon:'🕊',
-    instabRate: 2,          // −2% instab/week
-    popLossMin: 0.0,        // total pop loss % range (per 48 weeks)
+    instabRate: 2,
+    popLossMin: 0.0,
     popLossMax: 0.015,
-    baseRate: 6,            // gold/week base (first week ~16g, last ~6g)
     desc:'Slow & humane. Minimal population impact.'
   },
   standard: {
     label:'⚖ Standard', icon:'⚖',
-    instabRate: 2.5,        // −2.5%/week
+    instabRate: 2.5,
     popLossMin: 0.01,
     popLossMax: 0.05,
-    baseRate: 14,           // most expensive total
     desc:'Balanced. Noticeable but manageable pop decline.'
   },
   harsh: {
     label:'☠ Harsh', icon:'☠',
-    instabRate: null,       // variable: n1=10, n2=9.5, n3=8, n4=6.5, n5+=5
+    instabRate: null,
     popLossMin: 0.05,
     popLossMax: 0.30,
-    baseRate: 12,           // ≈ standard total, front-loaded
     desc:'Rapid but brutal. Heavy initial pop losses.'
   },
 };
@@ -1548,15 +1547,44 @@ function harshRate(weekIdx){ // weekIdx 0-based
 }
 
 // Upfront cost for N weeks of type
-function assimTotalCost(type, weeks){
-  const def=ASSIM_DEFS[type]; if(!def) return 0;
-  let total=0;
-  for(let w=0;w<weeks;w++){
-    // Cost decreases: first week = base*(1+1.8), last = base*1.0
-    const factor = 1 + (1 - w/Math.max(1,weeks-1)) * 1.8;
-    total += Math.round(def.baseRate * factor);
+// Weekly cost curve: starts at 5g, divides by 1.05 each week, floors at 2g then slides to 1.75g
+// Type multipliers: gentle=1.0 (cheapest), standard=1.7 (most expensive), harsh=1.65
+const ASSIM_COST_MULT={gentle:1.0,standard:1.7,harsh:1.65};
+
+// Base curve: week 0 = 5, each week / 1.05, floors at 2.0 then slides to 1.75
+// Sum of this curve over 48 weeks ≈ 86 (used as normalizer)
+const _ASSIM_BASE_48=(()=>{
+  let s=0;
+  const startVal=5.0,divRate=1.05,floor=2.0,endVal=1.75,floorReached=Math.ceil(Math.log(startVal/floor)/Math.log(divRate));
+  for(let w=0;w<48;w++){
+    let v=startVal/Math.pow(divRate,w);
+    if(v<=floor){const extra=w-floorReached;v=floor-(floor-endVal)*Math.min(1,extra/Math.max(1,48-floorReached));}
+    s+=v;
   }
-  return total;
+  return s; // ≈86
+})();
+
+function assimWeekCost(weekIdx){ // returns normalised 0..1 weight for this week
+  const startVal=5.0,divRate=1.05,floor=2.0,endVal=1.75,floorWeeks=48;
+  let val=startVal/Math.pow(divRate,weekIdx);
+  if(val<=floor){
+    const floorReached=Math.ceil(Math.log(startVal/floor)/Math.log(divRate));
+    const extra=weekIdx-floorReached;
+    const totalExtra=floorWeeks-floorReached;
+    val=floor-(floor-endVal)*Math.min(1,extra/Math.max(1,totalExtra));
+  }
+  return val/_ASSIM_BASE_48; // normalised weight
+}
+
+// pop = province population; type multiplier for gentle/standard/harsh
+function assimTotalCost(type, weeks, pop){
+  const mult=ASSIM_COST_MULT[type]||1.0;
+  const popBase=(pop||10000)/2; // base cost for 48 weeks = pop/2
+  // Scale: 48 weeks costs popBase*mult; fewer weeks cost proportionally less (front-loaded)
+  let weightSum=0;
+  for(let w=0;w<weeks;w++) weightSum+=assimWeekCost(w);
+  // Full 48-week weight sum = 1.0 by construction
+  return Math.max(1, Math.round(popBase * mult * weightSum));
 }
 
 function openAssim(i){
@@ -1579,13 +1607,14 @@ function openAssim(i){
   const p=PROVINCES[i];
   const isConquered=p.nation!==G.playerNation;
   const gold=G.gold[G.playerNation];
+  const provPop=G.pop[i]||10000;
   const initWeeks=24;
   window._assimProv=i;
 
   // Three type cards — prices update via slider
   function typeCards(weeks){
     return Object.entries(ASSIM_DEFS).map(([key,def])=>{
-      const cost=assimTotalCost(key,weeks);
+      const cost=assimTotalCost(key,weeks,provPop);
       const canAfford=gold>=cost;
       const col=key==='harsh'?'#ff7060':key==='standard'?'#c9a84c':'#80c080';
       const estDrop=key==='harsh'
@@ -1595,7 +1624,7 @@ function openAssim(i){
       const popMin=Math.round(def.popLossMin*100);
       const popMax=Math.round(def.popLossMax*100);
       return`<div id="assim_card_${key}" style="flex:1;background:rgba(0,0,0,.3);border:1px solid ${canAfford?col:'#333'};padding:9px 8px;text-align:center;${canAfford?'cursor:pointer':'opacity:.45;cursor:not-allowed'}"
-        ${canAfford?`onclick="startAssim(${i},'${key}',document.getElementById('assim-weeks-sl').value|0)"`:''}>
+        ${canAfford?`onclick="startAssim(${i},'${key}',document.getElementById('assim-weeks-sl').value|0,${provPop})"`:''}>
         <div style="font-family:Cinzel,serif;font-size:11px;color:${col};margin-bottom:4px">${def.label}</div>
         <div style="font-size:8px;color:var(--dim);margin-bottom:6px;line-height:1.4">${def.desc}</div>
         <div style="font-size:8px;color:#c0c040;margin-bottom:2px">→ ${instabAfter}% instab</div>
@@ -1607,7 +1636,7 @@ function openAssim(i){
 
   openMo('🏛 ASSIMILATION',
     `<p class="mx"><b>${p.name}${p.isCapital?' ★':''}</b>${isConquered?' · <span style="color:#ff8844">Foreign province</span>':''}</p>
-     <p class="mx">Instability: <b style="color:${instabVal>60?'#ff6040':instabVal>40?'#e08030':'#c0c040'}">${instabVal}%</b> · Pop: <b>${fm(G.pop[i])}</b> · Treasury: <b>${fa(gold)}g</b></p>
+     <p class="mx">Instability: <b style="color:${instabVal>60?'#ff6040':instabVal>40?'#e08030':'#c0c040'}">${instabVal}%</b> · Pop: <b>${fm(provPop)}</b> · Treasury: <b>${fa(gold)}g</b></p>
      <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:rgba(0,0,0,.25);border:1px solid var(--border2);margin-bottom:10px">
        <span style="font-size:9px;color:var(--dim);flex-shrink:0">Duration</span>
        <input type="range" id="assim-weeks-sl" min="1" max="48" value="${initWeeks}" style="flex:1"
@@ -1615,7 +1644,7 @@ function openAssim(i){
            document.getElementById('assim-weeks-val').textContent=w+'w';
            Object.keys(ASSIM_DEFS).forEach(function(k){
              var el=document.getElementById('ac_'+k);
-             if(el)el.textContent=fa(assimTotalCost(k,w))+'g';
+             if(el)el.textContent=fa(assimTotalCost(k,w,${provPop}))+'g';
            });
          })(+this.value)">
        <span style="font-family:Cinzel,serif;font-size:14px;color:var(--gold);min-width:34px;text-align:right" id="assim-weeks-val">${initWeeks}w</span>
@@ -1626,12 +1655,13 @@ function openAssim(i){
   );
 }
 
-window.startAssim=function(i,type,weeks){
+window.startAssim=function(i,type,weeks,pop){
   closeMo();
   if(!G.assimQueue)G.assimQueue=PROVINCES.map(()=>null);
   const def=ASSIM_DEFS[type];if(!def)return;
   weeks=Math.max(1,Math.min(48,weeks||24));
-  const cost=assimTotalCost(type,weeks);
+  const provPop=pop||G.pop[i]||10000;
+  const cost=assimTotalCost(type,weeks,provPop);
   if(G.gold[G.playerNation]<cost){popup('Insufficient gold!');return;}
   G.gold[G.playerNation]-=cost;
   const popFloor=Math.floor(G.pop[i]*0.28);
@@ -2001,20 +2031,21 @@ function processResistance(){
   // Player-owned territories with resistance
   regsOf(G.playerNation).forEach(i=>{
     if(G.resistance[i]<=0)return;
-    G.instab[i]=Math.min(100,G.instab[i]+Math.floor(G.resistance[i]/10));
-    G.resistance[i]=Math.max(0,G.resistance[i]-ri(2,6)); // decay
-    if(G.resistance[i]>70&&Math.random()<.15){
-      G.army[i]=Math.max(0,G.army[i]-ri(200,800));
+    // Milder instab from resistance: /20 instead of /10
+    G.instab[i]=Math.min(100,G.instab[i]+Math.floor(G.resistance[i]/20));
+    G.resistance[i]=Math.max(0,G.resistance[i]-ri(3,7)); // slightly faster decay
+    if(G.resistance[i]>80&&Math.random()<.10){ // higher threshold, lower chance
+      G.army[i]=Math.max(0,G.army[i]-ri(100,400));
       addLog(`🔥 Partisan attack in ${PROVINCES[i].name}!`,'resist');
     }
   });
-  // AI sponsors resistance in player-occupied formerly-their territories
+  // AI sponsors resistance — reduced frequency
   aliveNations().forEach(ai=>{
     const lost=PROVINCES.map((_,i)=>i).filter(i=>G.owner[i]===G.playerNation&&PROVINCES[i].nation===ai);
     lost.forEach(i=>{
-      if(Math.random()<.08&&G.gold[ai]>=80){
+      if(Math.random()<.04&&G.gold[ai]>=80){ // was 0.08
         G.gold[ai]-=80;
-        G.resistance[i]=Math.min(100,G.resistance[i]+ri(5,20));
+        G.resistance[i]=Math.min(100,G.resistance[i]+ri(3,12)); // was 5-20
       }
     });
   });
@@ -2849,39 +2880,38 @@ function endTurn(){
       }
     }
 
-    // Supply penalty
-    if(G.pop[r]/10<G.army[r])G.instab[r]=Math.min(100,G.instab[r]+ri(2,5));
+    // Supply penalty — only if army is VERY oversized (3x pop/10), and milder
+    if(G.army[r]>G.pop[r]/10*3) G.instab[r]=Math.min(100,G.instab[r]+1);
 
     // Disease effects now in processEpidemics
 
     // ── Satisfaction update ──────────────────────────────
-    // natSat: ideological baseline — but now also tax-adjusted
-    // Low tax → higher baseline; high tax → lower baseline
     const taxBaseline = taxRate<=10?80:taxRate<=25?70:taxRate<=40?60:taxRate<=60?50:taxRate<=80?38:28;
     const natSat = Math.round((io.popGrowth>1?72:io.atk>1.2?55:65)*0.4 + taxBaseline*0.6);
     let satDelta=0;
     if(sat<natSat) satDelta+=ri(1,3);
-    if(sat>natSat) satDelta-=ri(0,2);
-    if(G.instab[r]>60) satDelta-=ri(1,3);
-    if(G.instab[r]>80) satDelta-=ri(2,4);
+    if(sat>natSat) satDelta-=ri(0,1); // reduced: was 0-2
+    // instab affects sat only at very high levels, and more mildly
+    if(G.instab[r]>70) satDelta-=1;
+    if(G.instab[r]>90) satDelta-=1;
     const atWarWithAnyone=G.war[PN]?.some(w=>w);
-    if(atWarWithAnyone) satDelta-=ri(0,2);
-    if(G.reforming) satDelta-=ri(1,3);
+    if(atWarWithAnyone) satDelta-=ri(0,1); // reduced: was 0-2
+    if(G.reforming) satDelta-=ri(0,1);    // reduced: was 1-3
     if(G.provDisease?.[r]){
       const ep=G.epidemics?.find(e=>e.id===G.provDisease[r]&&e.active);
-      if(ep) satDelta-=ri(1,Math.ceil(ep.type.satHit/4));
+      if(ep) satDelta-=ri(1,Math.ceil(ep.type.satHit/6)); // milder: was /4
     }
     if((G.buildings[r]||[]).includes('palace')) satDelta+=ri(1,2);
     if((G.buildings[r]||[]).includes('hospital')) satDelta+=1;
-    // taxMood: short-term shock from tax changes, decays over time
     if(G.taxMood&&G.taxMood[r]){
       satDelta+=Math.sign(G.taxMood[r])*Math.min(4,Math.ceil(Math.abs(G.taxMood[r])/3));
-      G.taxMood[r]=Math.abs(G.taxMood[r])<0.5?0:G.taxMood[r]*0.88; // exponential decay
+      G.taxMood[r]=Math.abs(G.taxMood[r])<0.5?0:G.taxMood[r]*0.88;
     }
+    // Hard floor: satisfaction cannot drop below 5 naturally (revolt is separate)
     G.satisfaction[r]=Math.max(5,Math.min(100,sat+satDelta));
 
     // Revolt check — only at near-zero satisfaction (extremely rare)
-    const revoltChance=G.satisfaction[r]<2?0.08:0;
+    const revoltChance=G.satisfaction[r]<5?0.04:0; // reduced threshold and chance
     if(Math.random()<revoltChance)triggerRevolt(r,io);
   });
 
@@ -3026,7 +3056,7 @@ function processEpidemics(fullMonth=false){
   if(fullMonth){
     const atWar=G.war[G.playerNation]&&G.war[G.playerNation].some(w=>w);
     // ~70% per year in peace, ~150% in war — diseases are common
-    const baseChance=(atWar?0.12:0.06)*seasonMult;
+    const baseChance=(atWar?0.50:0.28)*seasonMult;
     if(Math.random()<baseChance){
       const candidates=PROVINCES.map((_,i)=>i).filter(i=>!PROVINCES[i].isSea);
       const origin=candidates[Math.floor(Math.random()*candidates.length)];
