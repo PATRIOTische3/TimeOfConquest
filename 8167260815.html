@@ -518,17 +518,39 @@ function draw(){
     });
   }
 
-  // 6. Active sea zone highlight — yellow outline on all zone hexes
+  // 6. Active sea zone highlight — outer edge only (yellow solid line)
   if(activeZone!=null&&P.seaZones){
     const z=P.seaZones.find(x=>x.id===activeZone);
     if(z){
+      const zSet=new Set(z.hexIds);
+      ctx.strokeStyle='rgba(255,200,0,.9)';
+      ctx.lineWidth=2.2/vp.s;
+      ctx.setLineDash([]);
       z.hexIds.forEach(i=>{
         const h=P.hexes[i];if(!h)return;
         const cx=hCX(h.c,h.r),cy=hCY(h.r);
-        hPath(cx,cy,R);
-        ctx.strokeStyle='rgba(255,200,0,.85)';ctx.lineWidth=1.8/vp.s;
-        ctx.setLineDash([3/vp.s,2/vp.s]);
-        ctx.stroke();ctx.setLineDash([]);
+        // For each of 6 edges, check if neighbour is outside the zone
+        const even=h.r%2===0;
+        const dirs=even
+          ?[[-1,-1],[-1,0],[0,1],[1,0],[1,-1],[0,-1]]
+          :[[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]];
+        for(let e=0;e<6;e++){
+          const [dr,dc]=dirs[e];
+          const nr=h.r+dr, nc=h.c+dc;
+          let nbInZone=false;
+          if(nr>=0&&nr<P.rows&&nc>=0&&nc<P.cols){
+            nbInZone=zSet.has(nr*P.cols+nc);
+          }
+          if(!nbInZone){
+            // Draw this edge
+            const a1=Math.PI/6+Math.PI/3*e;
+            const a2=Math.PI/6+Math.PI/3*(e+1);
+            ctx.beginPath();
+            ctx.moveTo(cx+Math.cos(a1)*R, cy+Math.sin(a1)*R);
+            ctx.lineTo(cx+Math.cos(a2)*R, cy+Math.sin(a2)*R);
+            ctx.stroke();
+          }
+        }
       });
     }
   }
