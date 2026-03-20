@@ -145,9 +145,15 @@ html,body{height:100%;overflow:hidden;background:var(--dark);color:var(--text);f
     <!-- GRID TAB -->
     <div class="lpane on" id="p-grid">
       <div class="sl">View Options</div>
-      <div style="display:flex;gap:5px;margin-bottom:10px">
+      <div style="display:flex;gap:5px;margin-bottom:8px">
         <button class="mb on" id="btn-grid" style="flex:1;padding:6px" onclick="tog('grid')">Grid</button>
         <button class="mb on" id="btn-names" style="flex:1;padding:6px" onclick="tog('names')">Names</button>
+      </div>
+      <label class="fl">Hex Opacity</label>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <input type="range" id="hex-opacity" min="0" max="100" value="75" style="flex:1;accent-color:var(--gold)"
+          oninput="hexOpacity=+this.value/100;document.getElementById('hex-op-v').textContent=this.value+'%';scheduleDraw()">
+        <span id="hex-op-v" style="font-family:Cinzel,serif;font-size:11px;color:var(--gold);min-width:34px;text-align:right">75%</span>
       </div>
       <div class="sl">Grid Size</div>
       <div class="gr">
@@ -464,6 +470,7 @@ function draw(){
   const wx1=(CW-vp.x)/vp.s+R*2,wy1=(CH-vp.y)/vp.s+R*2;
 
   // 3. Land hexes only — sea hexes get NO fill (transparent = ocean bg shows through)
+  ctx.globalAlpha=hexOpacity;
   P.hexes.forEach(h=>{
     if(h.sea)return; // skip — transparent
     const cx=hCX(h.c,h.r),cy=hCY(h.r);
@@ -473,6 +480,7 @@ function draw(){
     ctx.fillStyle=pCol(prov);ctx.fill();
     if(prov){hPath(cx,cy,R+0.5/vp.s);ctx.fillStyle=(TC[h.t]||TC.plains)+'44';ctx.fill();}
   });
+  ctx.globalAlpha=1;
 
   // 4. Borders — land only, no borders on sea hexes
   if(opts.grid){
@@ -567,6 +575,7 @@ function zoomBy(f,cx,cy){
 // ── Tools ────────────────────────────────────────────
 let activeTool='land',activeTerrain='plains',activeProv=null,activeNat=null,brushSize=1;
 let opts={grid:true,names:true};
+let hexOpacity=0.75;
 let _pan={a:false,lx:0,ly:0},_pinch={a:false,d:0},_painting=false,_moved=false,_ts={x:0,y:0,t:0};
 
 function setTool(t){
