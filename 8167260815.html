@@ -178,15 +178,15 @@ html,body{height:100%;overflow:hidden;background:var(--dark);color:var(--text);f
       <div class="tool" id="tool-sea" onclick="setTool('sea')"><span class="ti2">🌊</span><div><div class="tn2">Sea</div><div class="td">Mark hex as sea</div></div></div>
       <div class="sl" style="margin-top:4px">Terrain</div>
       <div class="tg">
-        <div class="tc on" data-t="plains" onclick="setTerrain('plains')"><span class="i">🌾</span>Plains</div>
-        <div class="tc" data-t="forest" onclick="setTerrain('forest')"><span class="i">🌲</span>Forest</div>
-        <div class="tc" data-t="mountain" onclick="setTerrain('mountain')"><span class="i">⛰</span>Mount.</div>
-        <div class="tc" data-t="swamp" onclick="setTerrain('swamp')"><span class="i">🌿</span>Swamp</div>
-        <div class="tc" data-t="desert" onclick="setTerrain('desert')"><span class="i">🏜</span>Desert</div>
-        <div class="tc" data-t="urban" onclick="setTerrain('urban')"><span class="i">🏙</span>Urban</div>
-        <div class="tc" data-t="tundra" onclick="setTerrain('tundra')"><span class="i">❄</span>Tundra</div>
-        <div class="tc" data-t="steppe" onclick="setTerrain('steppe')"><span class="i">🍂</span>Steppe</div>
-        <div class="tc" data-t="jungle" onclick="setTerrain('jungle')"><span class="i">🌴</span>Jungle</div>
+        <div class="tc on" data-t="plains" onclick="setTerrain('plains')"><span class="i" style="color:#4a5e2c;font-size:16px">■</span>Plains</div>
+        <div class="tc" data-t="forest" onclick="setTerrain('forest')"><span class="i" style="color:#2a4a1c;font-size:16px">■</span>Forest</div>
+        <div class="tc" data-t="mountain" onclick="setTerrain('mountain')"><span class="i" style="color:#5a4e3c;font-size:16px">■</span>Mount.</div>
+        <div class="tc" data-t="swamp" onclick="setTerrain('swamp')"><span class="i" style="color:#3a5040;font-size:16px">■</span>Swamp</div>
+        <div class="tc" data-t="desert" onclick="setTerrain('desert')"><span class="i" style="color:#6a5a30;font-size:16px">■</span>Desert</div>
+        <div class="tc" data-t="urban" onclick="setTerrain('urban')"><span class="i" style="color:#3a3028;font-size:16px">■</span>Urban</div>
+        <div class="tc" data-t="tundra" onclick="setTerrain('tundra')"><span class="i" style="color:#445050;font-size:16px">■</span>Tundra</div>
+        <div class="tc" data-t="steppe" onclick="setTerrain('steppe')"><span class="i" style="color:#6a6030;font-size:16px">■</span>Steppe</div>
+        <div class="tc" data-t="jungle" onclick="setTerrain('jungle')"><span class="i" style="color:#1e4c2c;font-size:16px">■</span>Jungle</div>
       </div>
       <div class="sl">Brush Size</div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -392,26 +392,10 @@ function getZone(hexIdx){
   if(!P.seaZones)return null;
   return P.seaZones.find(z=>z.hexIds.includes(hexIdx))||null;
 }
-function floodFillSeaZone(startIdx){
-  // BFS from startIdx across connected sea hexes not yet in a zone
-  const visited=new Set([startIdx]);
-  const queue=[startIdx];
-  while(queue.length){
-    const cur=queue.shift();
-    const h=P.hexes[cur];if(!h)continue;
-    hNbs(h.r,h.c).forEach(nb=>{
-      const ni=nb.r*P.cols+nb.c;
-      if(!visited.has(ni)&&nb.sea){visited.add(ni);queue.push(ni);}
-    });
-  }
-  return[...visited];
-}
-
 function newSeaZone(fromHexIdx){
   if(!P.seaZones)P.seaZones=[];
   const id=Date.now();
-  const hexIds=floodFillSeaZone(fromHexIdx);
-  P.seaZones.push({id,name:'Sea Zone',hexIds});
+  P.seaZones.push({id,name:'Sea Zone',hexIds:[fromHexIdx]});
   activeZone=id;
   renderZoneList();editZone(id);
   scheduleDraw();
@@ -469,16 +453,24 @@ function draw(){
   const wx0=(0-vp.x)/vp.s-R*2,wy0=(0-vp.y)/vp.s-R*2;
   const wx1=(CW-vp.x)/vp.s+R*2,wy1=(CH-vp.y)/vp.s+R*2;
 
-  // 3. Land hexes only — sea hexes get NO fill (transparent = ocean bg shows through)
+  // 3. Land hexes — in land-tab mode show terrain colors, otherwise nation colors
+  const showTerrain=activeTool==='land'||activeTool==='sea';
   ctx.globalAlpha=hexOpacity;
   P.hexes.forEach(h=>{
-    if(h.sea)return; // skip — transparent
+    if(h.sea)return;
     const cx=hCX(h.c,h.r),cy=hCY(h.r);
     if(cx<wx0||cx>wx1||cy<wy0||cy>wy1)return;
     const prov=h.p!=null?P.provinces.find(x=>x.id===h.p):null;
     hPath(cx,cy,R+0.5/vp.s);
-    ctx.fillStyle=pCol(prov);ctx.fill();
-    if(prov){hPath(cx,cy,R+0.5/vp.s);ctx.fillStyle=(TC[h.t]||TC.plains)+'44';ctx.fill();}
+    if(showTerrain){
+      // Full terrain color — vivid, no overlay needed
+      ctx.fillStyle=TC[h.t]||TC.plains;
+    } else {
+      ctx.fillStyle=pCol(prov);
+    }
+    ctx.fill();
+    // Terrain tint overlay in province mode
+    if(!showTerrain&&prov){hPath(cx,cy,R+0.5/vp.s);ctx.fillStyle=(TC[h.t]||TC.plains)+'44';ctx.fill();}
   });
   ctx.globalAlpha=1;
 
@@ -582,9 +574,38 @@ function setTool(t){
   activeTool=t;
   ['land','sea','prov','erase','pick','zone','zone-erase'].forEach(k=>{const el=document.getElementById('tool-'+k);if(el)el.classList.toggle('on',k===t);});
   canvas.style.cursor=t==='pick'||t==='zone'?'pointer':'crosshair';
+  scheduleDraw();
 }
 function setTerrain(t){activeTerrain=t;document.querySelectorAll('.tc').forEach(c=>c.classList.toggle('on',c.dataset.t===t));}
 function tog(k){opts[k]=!opts[k];document.getElementById('btn-'+k).classList.toggle('on',opts[k]);scheduleDraw();}
+
+// ── Undo history ─────────────────────────────────────
+const _history=[];
+const MAX_HISTORY=60;
+
+function pushHistory(){
+  // Save lightweight snapshot of hex state + province hexIds + seaZone hexIds
+  const snap={
+    hexes:P.hexes.map(h=>({p:h.p,sea:h.sea,t:h.t})),
+    provHexIds:P.provinces.map(p=>({id:p.id,hexIds:[...p.hexIds]})),
+    zoneHexIds:(P.seaZones||[]).map(z=>({id:z.id,hexIds:[...z.hexIds]}))
+  };
+  _history.push(snap);
+  if(_history.length>MAX_HISTORY)_history.shift();
+}
+
+function undo(){
+  if(!_history.length||!P)return;
+  const snap=_history.pop();
+  snap.hexes.forEach((s,i)=>{ if(P.hexes[i]){P.hexes[i].p=s.p;P.hexes[i].sea=s.sea;P.hexes[i].t=s.t;} });
+  snap.provHexIds.forEach(s=>{ const p=P.provinces.find(x=>x.id===s.id); if(p)p.hexIds=s.hexIds; });
+  snap.zoneHexIds.forEach(s=>{ const z=(P.seaZones||[]).find(x=>x.id===s.id); if(z)z.hexIds=s.hexIds; });
+  renderProvList();renderZoneList();updateSt();scheduleDraw();
+}
+
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undo();}
+});
 
 function applyToHex(idx){
   if(!P||idx<0)return;
@@ -610,9 +631,26 @@ function applyToHex(idx){
       if(!P.seaZones)P.seaZones=[];
       // Check if hex already in a zone
       const existing=P.seaZones.find(z=>z.hexIds.includes(i));
-      if(existing){activeZone=existing.id;renderZoneList();scheduleDraw();}
-      else{newSeaZone(i);}
-      return; // don't fall through to renderProvList
+      if(existing&&activeZone==null){
+        // Select existing zone
+        activeZone=existing.id;renderZoneList();scheduleDraw();return;
+      } else if(activeZone!=null){
+        // Paint into active zone
+        const az=P.seaZones.find(z=>z.id===activeZone);
+        if(az&&!az.hexIds.includes(i)){
+          // Remove from other zone first
+          P.seaZones.forEach(z=>{if(z.id!==activeZone)z.hexIds=z.hexIds.filter(x=>x!==i);});
+          az.hexIds.push(i);
+        } else if(!az){
+          // Active zone was deleted, create new
+          activeZone=null;newSeaZone(i);
+        }
+      } else {
+        // No active zone — if clicking existing select it, else create new
+        if(existing){activeZone=existing.id;renderZoneList();}
+        else newSeaZone(i);
+      }
+      renderZoneList();scheduleDraw();return;
     }
     else if(activeTool==='zone-erase'){
       if(!P.seaZones)return;
@@ -627,7 +665,7 @@ function applyToHex(idx){
 function unassign(i){const h=P.hexes[i];if(!h||h.p==null)return;const prov=P.provinces.find(x=>x.id===h.p);if(prov)prov.hexIds=prov.hexIds.filter(x=>x!==i);h.p=null;}
 
 // Mouse
-canvas.addEventListener('mousedown',e=>{_pan.a=true;_pan.lx=e.clientX;_pan.ly=e.clientY;_moved=false;_ts={x:e.clientX,y:e.clientY,t:Date.now()};_painting=true;});
+canvas.addEventListener('mousedown',e=>{_pan.a=true;_pan.lx=e.clientX;_pan.ly=e.clientY;_moved=false;_ts={x:e.clientX,y:e.clientY,t:Date.now()};_painting=true;if(P)pushHistory();});
 window.addEventListener('mousemove',e=>{
   if(!_pan.a)return;
   const dx=e.clientX-_pan.lx,dy=e.clientY-_pan.ly;
@@ -649,7 +687,7 @@ canvas.addEventListener('wheel',e=>{e.preventDefault();const r=canvas.getBoundin
 // Touch
 canvas.addEventListener('touchstart',e=>{
   e.preventDefault();
-  if(e.touches.length===1){const t=e.touches[0],r=canvas.getBoundingClientRect();_pan.a=true;_pan.lx=t.clientX-r.left;_pan.ly=t.clientY-r.top;_moved=false;_ts={x:_pan.lx,y:_pan.ly,t:Date.now()};_painting=true;}
+  if(e.touches.length===1){const t=e.touches[0],r=canvas.getBoundingClientRect();_pan.a=true;_pan.lx=t.clientX-r.left;_pan.ly=t.clientY-r.top;_moved=false;_ts={x:_pan.lx,y:_pan.ly,t:Date.now()};_painting=true;if(P)pushHistory();}
   else if(e.touches.length===2){_pan.a=false;_painting=false;_pinch={a:true,d:Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY)};}
 },{passive:false});
 canvas.addEventListener('touchmove',e=>{
