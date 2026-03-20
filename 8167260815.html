@@ -518,31 +518,32 @@ function draw(){
     });
   }
 
-  // 6. Active sea zone highlight — outer edge only (yellow solid line)
+  // 6. Active sea zone highlight — outer edge only
   if(activeZone!=null&&P.seaZones){
     const z=P.seaZones.find(x=>x.id===activeZone);
     if(z){
       const zSet=new Set(z.hexIds);
       ctx.strokeStyle='rgba(255,200,0,.9)';
       ctx.lineWidth=2.2/vp.s;
-      ctx.setLineDash([]);
+      ctx.lineJoin='round';ctx.lineCap='round';
+
+      // For pointy-top hex, vertices at angles PI/6 + k*PI/3 (k=0..5)
+      // Edge k = segment from vertex k to vertex k+1
+      // Neighbor sharing edge k:
+      // even rows: edge0=NE[-1,0], edge1=E[0,1], edge2=SE[1,0], edge3=SW[1,-1], edge4=W[0,-1], edge5=NW[-1,-1]
+      // odd rows:  edge0=NE[-1,1], edge1=E[0,1], edge2=SE[1,1], edge3=SW[1,0],  edge4=W[0,-1], edge5=NW[-1,0]
+      const edgeDirsEven=[[-1,0],[0,1],[1,0],[1,-1],[0,-1],[-1,-1]];
+      const edgeDirsOdd= [[-1,1],[0,1],[1,1],[1,0], [0,-1],[-1,0]];
+
       z.hexIds.forEach(i=>{
         const h=P.hexes[i];if(!h)return;
         const cx=hCX(h.c,h.r),cy=hCY(h.r);
-        // For each of 6 edges, check if neighbour is outside the zone
-        const even=h.r%2===0;
-        const dirs=even
-          ?[[-1,-1],[-1,0],[0,1],[1,0],[1,-1],[0,-1]]
-          :[[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]];
+        const dirs=h.r%2===0?edgeDirsEven:edgeDirsOdd;
         for(let e=0;e<6;e++){
           const [dr,dc]=dirs[e];
           const nr=h.r+dr, nc=h.c+dc;
-          let nbInZone=false;
-          if(nr>=0&&nr<P.rows&&nc>=0&&nc<P.cols){
-            nbInZone=zSet.has(nr*P.cols+nc);
-          }
+          const nbInZone=(nr>=0&&nr<P.rows&&nc>=0&&nc<P.cols)&&zSet.has(nr*P.cols+nc);
           if(!nbInZone){
-            // Draw this edge
             const a1=Math.PI/6+Math.PI/3*e;
             const a2=Math.PI/6+Math.PI/3*(e+1);
             ctx.beginPath();
