@@ -130,9 +130,9 @@ html,body{height:100%;overflow:hidden;background:var(--dark);color:var(--text);f
       <div style="font-family:'Cinzel Decorative',serif;font-size:11px;color:var(--gold);letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px" id="tpn">Untitled</div>
       <div style="display:flex;gap:4px">
         <button class="mb g" style="flex:1;padding:5px;font-size:8px" onclick="saveProject()">Save</button>
+        <button class="mb" style="flex:1;padding:5px;font-size:8px" onclick="undo()">↩ Undo</button>
         <button class="mb" style="flex:1;padding:5px;font-size:8px" onclick="show('proj')">Projects</button>
         <button class="mb" style="flex:1;padding:5px;font-size:8px" onclick="exportJS()">Export</button>
-        <button class="mb" style="flex:1;padding:5px;font-size:8px;border-color:rgba(122,24,24,.6);color:#e07070" onclick="confirmClear()">Clear</button>
       </div>
     </div>
     <div class="ltabs">
@@ -318,7 +318,7 @@ function loadEditor(proj){
   },50);
 }
 
-function mkHexes(c,r){const a=[];for(let i=0;i<r;i++)for(let j=0;j<c;j++)a.push({r:i,c:j,t:'plains',sea:false,p:null});return a;}
+function mkHexes(c,r){const a=[];for(let i=0;i<r;i++)for(let j=0;j<c;j++)a.push({r:i,c:j,t:'plains',sea:true,p:null});return a;}
 
 function saveProject(){
   if(!P)return;P.saved=today();
@@ -472,80 +472,156 @@ function draw(){
   const wx0=(0-vp.x)/vp.s-R*2,wy0=(0-vp.y)/vp.s-R*2;
   const wx1=(CW-vp.x)/vp.s+R*2,wy1=(CH-vp.y)/vp.s+R*2;
 
-  // 3. Land hexes — in land-tab mode show terrain colors, otherwise nation colors
+  // Build fast province lookup map once per frame
+  const provMap=new Map();
+  P.provinces.forEach(p=>provMap.set(p.id,p));
+  const natMap=new Map();
+  P.nations.forEach(n=>natMap.set(n.id,n));
+
+  // 3. Land hexes — batch by fill color for performance
   const showTerrain=activeTool==='land'||activeTool==='sea';
   ctx.globalAlpha=hexOpacity;
+
+  // Group hexes by color then draw each group in one path batch
+  const colorBuckets=new Map();
   P.hexes.forEach(h=>{
     if(h.sea)return;
     const cx=hCX(h.c,h.r),cy=hCY(h.r);
     if(cx<wx0||cx>wx1||cy<wy0||cy>wy1)return;
-    const prov=h.p!=null?P.provinces.find(x=>x.id===h.p):null;
-    hPath(cx,cy,R+0.5/vp.s);
+    let col;
     if(showTerrain){
-      // Full terrain color — vivid, no overlay needed
-      ctx.fillStyle=TC[h.t]||TC.plains;
+      col=TC[h.t]||TC.plains;
     } else {
-      ctx.fillStyle=pCol(prov);
+      const prov=h.p!=null?provMap.get(h.p):null;
+      const nat=prov?.natId!=null?natMap.get(prov.natId):null;
+      col=nat?nat.color:(prov?'#3a4a5a':UNASSIGNED);
     }
-    ctx.fill();
-    // Terrain tint overlay in province mode
-    if(!showTerrain&&prov){hPath(cx,cy,R+0.5/vp.s);ctx.fillStyle=(TC[h.t]||TC.plains)+'44';ctx.fill();}
+    if(!colorBuckets.has(col))colorBuckets.set(col,[]);
+    colorBuckets.get(col).push(h);
   });
-  ctx.globalAlpha=1;
-
-  // 4. Borders — land only, no borders on sea hexes
-  if(opts.grid){
+  const rFill=R+0.5/vp.s;
+  colorBuckets.forEach((hexList,col)=>{
+    ctx.fillStyle=col;
+    ctx.beginPath();
+    hexList.forEach(h=>{
+      const cx=hCX(h.c,h.r),cy=hCY(h.r);
+      for(let i=0;i<6;i++){
+        const a=Math.PI/6+Math.PI/3*i;
+        i===0?ctx.moveTo(cx+Math.cos(a)*rFill,cy+Math.sin(a)*rFill):ctx.lineTo(cx+Math.cos(a)*rFill,cy+Math.sin(a)*rFill);
+      }
+      ctx.closePath();
+    });
+    ctx.fill();
+  });
+  // Terrain tint overlay (province mode only) — batch
+  if(!showTerrain){
+    const terrBuckets=new Map();
     P.hexes.forEach(h=>{
-      if(h.sea)return;
+      if(h.sea||h.p==null)return;
       const cx=hCX(h.c,h.r),cy=hCY(h.r);
       if(cx<wx0||cx>wx1||cy<wy0||cy>wy1)return;
-      const prov=h.p!=null?P.provinces.find(x=>x.id===h.p):null;
-      const nbs=hNbs(h.r,h.c);
-      const border=nbs.some(nb=>nb&&(nb.p!==h.p||nb.sea!==h.sea));
-      if(!border)return;
-      hPath(cx,cy,R);
-      if(prov){ctx.strokeStyle='rgba(201,168,76,.5)';ctx.lineWidth=1.1/vp.s;}
-      else{ctx.strokeStyle='rgba(60,80,120,.25)';ctx.lineWidth=0.5/vp.s;}
-      ctx.stroke();
+      const col=(TC[h.t]||TC.plains)+'44';
+      if(!terrBuckets.has(col))terrBuckets.set(col,[]);
+      terrBuckets.get(col).push(h);
     });
+    terrBuckets.forEach((hexList,col)=>{
+      ctx.fillStyle=col;
+      ctx.beginPath();
+      hexList.forEach(h=>{
+        const cx=hCX(h.c,h.r),cy=hCY(h.r);
+        for(let i=0;i<6;i++){const a=Math.PI/6+Math.PI/3*i;i===0?ctx.moveTo(cx+Math.cos(a)*rFill,cy+Math.sin(a)*rFill):ctx.lineTo(cx+Math.cos(a)*rFill,cy+Math.sin(a)*rFill);}
+        ctx.closePath();
+      });
+      ctx.fill();
+    });
+  }
+  ctx.globalAlpha=1;
+
+  // 4. Borders — only when zoomed enough to see them
+  if(opts.grid&&vp.s>0.25){
+    // Batch province borders and unassigned borders separately
+    ctx.lineWidth=1.1/vp.s;
+    ctx.strokeStyle='rgba(201,168,76,.5)';
+    ctx.beginPath();
+    P.hexes.forEach(h=>{
+      if(h.sea||h.p==null)return;
+      const cx=hCX(h.c,h.r),cy=hCY(h.r);
+      if(cx<wx0||cx>wx1||cy<wy0||cy>wy1)return;
+      const nbs=hNbs(h.r,h.c);
+      if(!nbs.some(nb=>nb.p!==h.p||nb.sea))return;
+      for(let i=0;i<6;i++){const a=Math.PI/6+Math.PI/3*i;i===0?ctx.moveTo(cx+Math.cos(a)*R,cy+Math.sin(a)*R):ctx.lineTo(cx+Math.cos(a)*R,cy+Math.sin(a)*R);}
+      ctx.closePath();
+    });
+    ctx.stroke();
+
+    ctx.lineWidth=0.5/vp.s;
+    ctx.strokeStyle='rgba(60,80,120,.25)';
+    ctx.beginPath();
+    P.hexes.forEach(h=>{
+      if(h.sea||h.p!=null)return;
+      const cx=hCX(h.c,h.r),cy=hCY(h.r);
+      if(cx<wx0||cx>wx1||cy<wy0||cy>wy1)return;
+      const nbs=hNbs(h.r,h.c);
+      if(!nbs.some(nb=>nb.p!==h.p||nb.sea!==h.sea))return;
+      for(let i=0;i<6;i++){const a=Math.PI/6+Math.PI/3*i;i===0?ctx.moveTo(cx+Math.cos(a)*R,cy+Math.sin(a)*R):ctx.lineTo(cx+Math.cos(a)*R,cy+Math.sin(a)*R);}
+      ctx.closePath();
+    });
+    ctx.stroke();
   }
 
   // 5. Active province highlight
   if(activeProv!=null){
+    ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=2/vp.s;
+    ctx.beginPath();
     P.hexes.filter(h=>h.p===activeProv).forEach(h=>{
       const cx=hCX(h.c,h.r),cy=hCY(h.r);
-      hPath(cx,cy,R);ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=2/vp.s;ctx.stroke();
+      for(let i=0;i<6;i++){const a=Math.PI/6+Math.PI/3*i;i===0?ctx.moveTo(cx+Math.cos(a)*R,cy+Math.sin(a)*R):ctx.lineTo(cx+Math.cos(a)*R,cy+Math.sin(a)*R);}
+      ctx.closePath();
     });
+    ctx.stroke();
   }
 
-  // 6. Active sea zone highlight — outer edge only
+  // 6. Active sea zone highlight — outer edges only
   if(activeZone!=null&&P.seaZones){
     const z=P.seaZones.find(x=>x.id===activeZone);
-    if(z){
+    if(z&&z.hexIds.length){
       const zSet=new Set(z.hexIds);
-      ctx.strokeStyle='rgba(255,200,0,.9)';
-      ctx.lineWidth=2.2/vp.s;
+      // Build reverse lookup: "r,c" -> hexIdx
+      const rcMap={};
+      P.hexes.forEach((h,i)=>{rcMap[h.r+','+h.c]=i;});
+
+      ctx.strokeStyle='rgba(255,200,0,.92)';
+      ctx.lineWidth=2.4/vp.s;
       ctx.lineJoin='round';ctx.lineCap='round';
 
-      // For pointy-top hex, vertices at angles PI/6 + k*PI/3 (k=0..5)
-      // Edge k = segment from vertex k to vertex k+1
-      // Neighbor sharing edge k:
-      // even rows: edge0=NE[-1,0], edge1=E[0,1], edge2=SE[1,0], edge3=SW[1,-1], edge4=W[0,-1], edge5=NW[-1,-1]
-      // odd rows:  edge0=NE[-1,1], edge1=E[0,1], edge2=SE[1,1], edge3=SW[1,0],  edge4=W[0,-1], edge5=NW[-1,0]
-      const edgeDirsEven=[[-1,0],[0,1],[1,0],[1,-1],[0,-1],[-1,-1]];
-      const edgeDirsOdd= [[-1,1],[0,1],[1,1],[1,0], [0,-1],[-1,0]];
+      // hNbs direction order matches hPath vertex order for pointy-top:
+      // Vertex k at angle PI/6 + k*PI/3
+      // Edge k = vertex[k] -> vertex[k+1]
+      // The neighbor across edge k is found by checking midpoint direction
+      // Simpler: use the shared-neighbor lookup via row/col offset
+      // For flat-offset hex grid (pointy-top, offset rows):
+      // even row neighbors (same order as edges 0-5, NE/E/SE/SW/W/NW):
+      const nbEven=[[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]]; // wrong for our grid
+      // Let's use proven hNbs dirs and find which edge each neighbor corresponds to
+      // hNbs even: [[-1,-1],[-1,0],[0,-1],[0,1],[1,-1],[1,0]]
+      // Instead: for each hex, for each of 6 edges, midpoint of edge points toward neighbor
+      // midpoint of edge k = center + R*cos(PI/6+PI/3*k + PI/6) * direction
+      // = center + R*(cos(a1)+cos(a2))/2, R*(sin(a1)+sin(a2))/2
+      // Then find which hex contains that midpoint
 
       z.hexIds.forEach(i=>{
         const h=P.hexes[i];if(!h)return;
         const cx=hCX(h.c,h.r),cy=hCY(h.r);
-        const dirs=h.r%2===0?edgeDirsEven:edgeDirsOdd;
         for(let e=0;e<6;e++){
-          const [dr,dc]=dirs[e];
-          const nr=h.r+dr, nc=h.c+dc;
-          const nbInZone=(nr>=0&&nr<P.rows&&nc>=0&&nc<P.cols)&&zSet.has(nr*P.cols+nc);
+          const a1=Math.PI/6+Math.PI/3*e;
+          const a2=Math.PI/6+Math.PI/3*(e+1);
+          // Midpoint of this edge, pushed slightly outward
+          const mx=cx+(Math.cos(a1)+Math.cos(a2))*R*0.6;
+          const my=cy+(Math.sin(a1)+Math.sin(a2))*R*0.6;
+          // Find which hex that midpoint belongs to
+          const nbIdx=hitHex(mx,my);
+          const nbInZone=nbIdx>=0&&zSet.has(nbIdx);
           if(!nbInZone){
-            const a1=Math.PI/6+Math.PI/3*e;
-            const a2=Math.PI/6+Math.PI/3*(e+1);
             ctx.beginPath();
             ctx.moveTo(cx+Math.cos(a1)*R, cy+Math.sin(a1)*R);
             ctx.lineTo(cx+Math.cos(a2)*R, cy+Math.sin(a2)*R);
