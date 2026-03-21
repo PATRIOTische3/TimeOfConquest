@@ -178,15 +178,24 @@ html,body{height:100%;overflow:hidden;background:var(--dark);color:var(--text);f
       <div class="tool" id="tool-sea" onclick="setTool('sea')"><span class="ti2">🌊</span><div><div class="tn2">Sea</div><div class="td">Mark hex as sea</div></div></div>
       <div class="sl" style="margin-top:4px">Terrain</div>
       <div class="tg">
-        <div class="tc on" data-t="plains" onclick="setTerrain('plains')"><span class="i" style="color:#4a5e2c;font-size:16px">■</span>Plains</div>
-        <div class="tc" data-t="forest" onclick="setTerrain('forest')"><span class="i" style="color:#2a4a1c;font-size:16px">■</span>Forest</div>
-        <div class="tc" data-t="mountain" onclick="setTerrain('mountain')"><span class="i" style="color:#5a4e3c;font-size:16px">■</span>Mount.</div>
-        <div class="tc" data-t="swamp" onclick="setTerrain('swamp')"><span class="i" style="color:#3a5040;font-size:16px">■</span>Swamp</div>
-        <div class="tc" data-t="desert" onclick="setTerrain('desert')"><span class="i" style="color:#6a5a30;font-size:16px">■</span>Desert</div>
-        <div class="tc" data-t="urban" onclick="setTerrain('urban')"><span class="i" style="color:#3a3028;font-size:16px">■</span>Urban</div>
-        <div class="tc" data-t="tundra" onclick="setTerrain('tundra')"><span class="i" style="color:#445050;font-size:16px">■</span>Tundra</div>
-        <div class="tc" data-t="steppe" onclick="setTerrain('steppe')"><span class="i" style="color:#6a6030;font-size:16px">■</span>Steppe</div>
-        <div class="tc" data-t="jungle" onclick="setTerrain('jungle')"><span class="i" style="color:#1e4c2c;font-size:16px">■</span>Jungle</div>
+        <div class="tc on" data-t="plains"   onclick="setTerrain('plains')"  ><span class="i" style="color:#4a5e2c;font-size:16px">■</span>Plains</div>
+        <div class="tc"    data-t="forest"   onclick="setTerrain('forest')"  ><span class="i" style="color:#2a4a1c;font-size:16px">■</span>Forest</div>
+        <div class="tc"    data-t="mountain" onclick="setTerrain('mountain')" ><span class="i" style="color:#5a4e3c;font-size:16px">■</span>Mountain</div>
+        <div class="tc"    data-t="hills"    onclick="setTerrain('hills')"   ><span class="i" style="color:#5a5a38;font-size:16px">■</span>Hills</div>
+        <div class="tc"    data-t="highland" onclick="setTerrain('highland')" ><span class="i" style="color:#6a5848;font-size:16px">■</span>Highland</div>
+        <div class="tc"    data-t="steppe"   onclick="setTerrain('steppe')"  ><span class="i" style="color:#6a6030;font-size:16px">■</span>Steppe</div>
+        <div class="tc"    data-t="desert"   onclick="setTerrain('desert')"  ><span class="i" style="color:#6a5a30;font-size:16px">■</span>Desert</div>
+        <div class="tc"    data-t="savanna"  onclick="setTerrain('savanna')" ><span class="i" style="color:#7a6a28;font-size:16px">■</span>Savanna</div>
+        <div class="tc"    data-t="scrub"    onclick="setTerrain('scrub')"   ><span class="i" style="color:#5a5a28;font-size:16px">■</span>Scrub</div>
+        <div class="tc"    data-t="jungle"   onclick="setTerrain('jungle')"  ><span class="i" style="color:#1e4c2c;font-size:16px">■</span>Jungle</div>
+        <div class="tc"    data-t="taiga"    onclick="setTerrain('taiga')"   ><span class="i" style="color:#2a4a38;font-size:16px">■</span>Taiga</div>
+        <div class="tc"    data-t="tundra"   onclick="setTerrain('tundra')"  ><span class="i" style="color:#445050;font-size:16px">■</span>Tundra</div>
+        <div class="tc"    data-t="ice"      onclick="setTerrain('ice')"     ><span class="i" style="color:#7a8888;font-size:16px">■</span>Ice</div>
+        <div class="tc"    data-t="swamp"    onclick="setTerrain('swamp')"   ><span class="i" style="color:#3a5040;font-size:16px">■</span>Swamp</div>
+        <div class="tc"    data-t="marsh"    onclick="setTerrain('marsh')"   ><span class="i" style="color:#384838;font-size:16px">■</span>Marsh</div>
+        <div class="tc"    data-t="farmland" onclick="setTerrain('farmland')" ><span class="i" style="color:#607040;font-size:16px">■</span>Farmland</div>
+        <div class="tc"    data-t="urban"    onclick="setTerrain('urban')"   ><span class="i" style="color:#3a3028;font-size:16px">■</span>Urban</div>
+        <div class="tc"    data-t="volcanic" onclick="setTerrain('volcanic')" ><span class="i" style="color:#4a2820;font-size:16px">■</span>Volcanic</div>
       </div>
       <div class="sl">Brush Size</div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -363,7 +372,26 @@ function brush(ci){
 
 function scheduleDraw(){if(_dp)return;_dp=true;requestAnimationFrame(()=>{_dp=false;draw();});}
 
-const TC={plains:'#4a5e2c',forest:'#2a4a1c',mountain:'#5a4e3c',swamp:'#3a5040',desert:'#6a5a30',urban:'#3a3028',tundra:'#445050',steppe:'#6a6030',jungle:'#1e4c2c'};
+const TC={
+  plains:  '#4a5e2c',
+  forest:  '#2a4a1c',
+  mountain:'#5a4e3c',
+  swamp:   '#3a5040',
+  desert:  '#6a5a30',
+  urban:   '#3a3028',
+  tundra:  '#445050',
+  steppe:  '#6a6030',
+  jungle:  '#1e4c2c',
+  hills:   '#5a5a38',
+  highland:'#6a5848',
+  savanna: '#7a6a28',
+  taiga:   '#2a4a38',
+  marsh:   '#384838',
+  volcanic:'#4a2820',
+  ice:     '#7a8888',
+  scrub:   '#5a5a28',
+  farmland:'#607040',
+};
 const SEA='#0a1828', UNASSIGNED='#0e1624';
 
 function pCol(prov){if(!prov)return UNASSIGNED;const n=P.nations.find(x=>x.id===prov.natId);return n?n.color:'#3a4a5a';}
