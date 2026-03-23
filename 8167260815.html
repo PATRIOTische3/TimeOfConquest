@@ -1081,7 +1081,15 @@ function applyToHex(idx){
       if(prov&&!prov.hexIds.includes(i)){prov.hexIds.push(i);h.p=activeProv;}
     }
     else if(activeTool==='erase'){if(h.p!=null)unassign(i);}
-    else if(activeTool==='pick'){if(h.p!=null){activeProv=h.p;swTab('prov');renderProvList();editProv(h.p);}}
+    else if(activeTool==='pick'){
+      if(h.p!=null){
+        if(activeProv===h.p){activeProv=null;}
+        else{activeProv=h.p;swTab('prov');renderProvList();}
+      } else {
+        activeProv=null;
+      }
+      renderProvList();scheduleDraw();return;
+    }
     else if(activeTool==='zone'){
       if(!h.sea)return;
       if(!P.seaZones)P.seaZones=[];
@@ -1210,7 +1218,6 @@ function applyGrid(){
 
 // ── Provinces ────────────────────────────────────────
 const IDEOS=['fascism','nazism','communism','stalinism','democracy','liberalism','socialdem','monarchy','nationalism','militarism'];
-const RESS=['oil','coal','grain','steel'];
 const NCOLS=['#882020','#204880','#206820','#806020','#502080','#207060','#804020','#185040','#602828','#283060'];
 
 function newProv(){
@@ -1223,51 +1230,84 @@ function newProv(){
 function renderProvList(){
   if(!P){document.getElementById('prov-list').innerHTML='';return;}
   const el=document.getElementById('prov-list');
-  if(!P.provinces.length){el.innerHTML='<div style="font-size:9px;color:var(--dim);font-style:italic;padding:10px 0;text-align:center">No provinces yet</div>';return;}
-  el.innerHTML=P.provinces.map(p=>{
+  if(!P.provinces.length){
+    el.innerHTML='<div style="font-size:9px;color:var(--dim);font-style:italic;padding:10px 0;text-align:center">No provinces yet</div>';
+    return;
+  }
+  // Deselect button when province active
+  const desel=activeProv!=null?`<div style="display:flex;justify-content:flex-end;margin-bottom:4px">
+    <button class="mb" style="padding:3px 8px;font-size:8px" onclick="activeProv=null;renderProvList();scheduleDraw()">✕ Deselect</button></div>`:'';
+  el.innerHTML=desel+P.provinces.map(p=>{
     const n=p.natId!=null?P.nations.find(x=>x.id===p.natId):null;
     return`<div class="li${p.id===activeProv?' on':''}" onclick="selProv(${p.id})">
       <div class="sw" style="background:${n?n.color:'#3a4a5a'}"></div>
       <span class="ln">${p.name}${p.cap?' ★':''}</span>
       <span class="lm">${p.hexIds.length}h</span>
+      <span class="ld" onclick="event.stopPropagation();editProv(${p.id})" style="font-size:11px" title="Edit">✏</span>
       <span class="ld" onclick="event.stopPropagation();delProv(${p.id})">✕</span>
     </div>`;
   }).join('');
 }
 
-function selProv(id){activeProv=id;renderProvList();scheduleDraw();}
-function delProv(id){if(!P)return;P.provinces=P.provinces.filter(p=>p.id!==id);P.hexes.forEach(h=>{if(h.p===id)h.p=null;});if(activeProv===id)activeProv=null;renderProvList();updateSt();scheduleDraw();}
+// Click active province again = deselect
+function selProv(id){
+  if(activeProv===id){activeProv=null;}
+  else{activeProv=id;}
+  renderProvList();scheduleDraw();
+}
+function delProv(id){
+  if(!P)return;
+  P.provinces=P.provinces.filter(p=>p.id!==id);
+  P.hexes.forEach(h=>{if(h.p===id)h.p=null;});
+  if(activeProv===id)activeProv=null;
+  renderProvList();updateSt();scheduleDraw();
+}
 
 function editProv(id){
   if(!P)return;
   const prov=P.provinces.find(p=>p.id===id);if(!prov)return;
   const no='<option value="">— None —</option>'+P.nations.map(n=>`<option value="${n.id}"${prov.natId===n.id?' selected':''}>${n.name}</option>`).join('');
-  const rr=RESS.map(r=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-    <span style="font-size:10px;min-width:36px;text-transform:capitalize">${r}</span>
-    <input type="range" id="er_${r}" min="0" max="10" value="${prov.res&&prov.res[r]||0}" style="flex:1;accent-color:var(--gold)" oninput="document.getElementById('ev_${r}').textContent=this.value">
-    <span id="ev_${r}" style="font-family:Cinzel,serif;font-size:11px;color:var(--gold);min-width:14px">${prov.res&&prov.res[r]||0}</span></div>`).join('');
+  const res=prov.res||{};
+
   openModal('Edit Province',`
-    <label class="fl">Name</label><input class="fi" id="ep-n" value="${prov.name}" style="margin-bottom:8px">
-    <label class="fl">Short label (map)</label><input class="fi" id="ep-s" value="${prov.short}" maxlength="12" style="margin-bottom:8px">
-    <label class="fl">Nation</label><select class="fse" id="ep-na">${no}</select>
+    <label class="fl">Name</label>
+    <input class="fi" id="ep-n" value="${prov.name}" style="margin-bottom:8px">
+    <label class="fl">Short label (map)</label>
+    <input class="fi" id="ep-s" value="${prov.short}" maxlength="12" style="margin-bottom:8px">
+    <label class="fl">Nation</label>
+    <select class="fse" id="ep-na">${no}</select>
     <label class="fl">Population</label>
     <div style="margin-bottom:10px">
-      <input type="range" id="ep-p" min="1000" max="100000" step="1000" value="${prov.pop||20000}" style="width:100%;accent-color:var(--gold)" oninput="document.getElementById('ep-pv').textContent=Math.round(+this.value/1000)+'k'">
-      <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--dim);margin-top:2px"><span>1k</span><span id="ep-pv">${Math.round((prov.pop||20000)/1000)}k</span><span>100k</span></div>
+      <input type="range" id="ep-p" min="1000" max="100000" step="1000" value="${prov.pop||20000}"
+        style="width:100%;accent-color:var(--gold)"
+        oninput="document.getElementById('ep-pv').textContent=Math.round(+this.value/1000)+'k'">
+      <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--dim);margin-top:2px">
+        <span>1k</span><span id="ep-pv">${Math.round((prov.pop||20000)/1000)}k</span><span>100k</span>
+      </div>
     </div>
-    <div style="display:flex;gap:16px;margin-bottom:8px">
+    <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:10px">
       <label class="cbr"><input type="checkbox" id="ep-cp"${prov.cap?' checked':''}><span>Capital ★</span></label>
       <label class="cbr"><input type="checkbox" id="ep-co"${prov.coastal?' checked':''}><span>Coastal ⚓</span></label>
     </div>
-    <div class="sl">Resources</div>${rr}`,
+    <div class="sl">Resources</div>
+    <div style="display:flex;gap:20px;margin-bottom:4px">
+      <label class="cbr"><input type="checkbox" id="er_oil"${res.oil?' checked':''}><span>🛢 Oil</span></label>
+      <label class="cbr"><input type="checkbox" id="er_coal"${res.coal?' checked':''}><span>⛏ Coal</span></label>
+      <label class="cbr"><input type="checkbox" id="er_iron"${res.iron?' checked':''}><span>⚙ Iron</span></label>
+    </div>`,
   [{lbl:'Cancel'},{lbl:'Save',cls:'ok',cb:()=>{
     prov.name=document.getElementById('ep-n').value.trim()||prov.name;
     prov.short=document.getElementById('ep-s').value.trim()||prov.short;
-    const nv=document.getElementById('ep-na').value;prov.natId=nv?+nv:null;
+    const nv=document.getElementById('ep-na').value;
+    prov.natId=nv?+nv:null;
     prov.pop=+document.getElementById('ep-p').value||20000;
-    prov.cap=document.getElementById('ep-cp').checked;prov.coastal=document.getElementById('ep-co').checked;
-    RESS.forEach(r=>{prov.res=prov.res||{};prov.res[r]=+document.getElementById('er_'+r).value||0;});
-    renderProvList();updateSt();scheduleDraw();
+    prov.cap=document.getElementById('ep-cp').checked;
+    prov.coastal=document.getElementById('ep-co').checked;
+    prov.res={};
+    if(document.getElementById('er_oil').checked)prov.res.oil=1;
+    if(document.getElementById('er_coal').checked)prov.res.coal=1;
+    if(document.getElementById('er_iron').checked)prov.res.iron=1;
+    renderProvList();renderNatList();updateSt();scheduleDraw();
   }}]);
 }
 
