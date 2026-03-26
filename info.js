@@ -1,15 +1,9 @@
 // ═══════════════════════════════════════════════════════
-// TIME OF CONQUEST 1936 — MAP DATA
-// Edit this file to change provinces, nations, terrain
+// info.js — Time of Conquest 1936
+// Game rules: ideologies, buildings, terrain, seasons, naval zones
+// Load order: europe_1__1936__map.js → info.js → game.js
 // ═══════════════════════════════════════════════════════
 
-// ══════════════════════════════════════════════════════════
-//  TIME OF CONQUEST 1936 — v5
-//  Canvas renderer, new mechanics: resources, loans,
-//  resistance, alliances, seasons, puppets
-// ══════════════════════════════════════════════════════════
-
-// ── IDEOLOGIES ────────────────────────────────────────────
 const IDEOLOGIES={
   fascism:{icon:'⚡',name:'Fascism',color:'#e87020',border:'#a05010',atk:1.35,def:1.0,income:1.20,popGrowth:1.0,assimSpeed:.70,instabDecay:1.25,conscriptMod:1.0,pactChance:.60,buildCostMod:1.0,revoltScale:1.6,buffs:['+35% atk','+20% income'],debuffs:['-40% pact','×1.6 revolt']},
   nazism:{icon:'🦅',name:'Natl.Socialism',color:'#a81418',border:'#700c0c',atk:1.45,def:.85,income:1.10,popGrowth:1.0,assimSpeed:.60,instabDecay:1.10,conscriptMod:.70,pactChance:.50,buildCostMod:1.0,revoltScale:1.8,extraConqInstab:30,buffs:['+45% atk','+30% conscript'],debuffs:['×1.8 revolt','-50% pact']},
@@ -39,10 +33,9 @@ const BUILDINGS={
 };
 const MAX_BLD_NORM=3,MAX_BLD_CAP=5;
 
+
 // ── TERRAIN ───────────────────────────────────────────────
-// defB = defence bonus multiplier
-// incM = income multiplier
-// movM = movement cost multiplier
+// defB = defence bonus | incM = income mod | movM = movement mod
 const TERRAIN={
   plains:   {name:'Plains',   defB:1.00, incM:1.10, movM:1.0, col:'#3a4828'},
   forest:   {name:'Forest',   defB:1.25, incM:0.90, movM:0.8, col:'#2a3a1c'},
@@ -81,24 +74,23 @@ const SEASONS=[
 ];
 function getSeason(month){return SEASONS[month]||SEASONS[0];}
 
-// ── PROVINCE HELPERS (depend on PROVINCES from map file) ─
+// ── NATIONS ───────────────────────────────────────────────
+const NATIONS=[
+  {id:0, name:'Third Reich',      short:'Reich',   color:'#5c3c1a',ideology:'nazism',      capital:30},
+  {id:1, name:'Soviet Union',     short:'USSR',    color:'#4a1a1a',ideology:'stalinism',   capital:54},
+  {id:2, name:'French Republic',  short:'France',  color:'#1e2e52',ideology:'democracy',   capital:12},
+  {id:3, name:'United Kingdom',   short:'Britain', color:'#1c3a2a',ideology:'monarchy',    capital:22},
+  {id:4, name:'Kingdom of Italy', short:'Italy',   color:'#3e2c0a',ideology:'fascism',     capital:42},
+  {id:5, name:'Kingdom of Spain', short:'Spain',   color:'#3c1c1c',ideology:'fascism',     capital:6},
+  {id:6, name:'Polish Republic',  short:'Poland',  color:'#3a1a1a',ideology:'nationalism', capital:64},
+  {id:7, name:'Romania',          short:'Romania', color:'#2e2212',ideology:'monarchy',    capital:75},
+  {id:8, name:'Hungary',          short:'Hungary', color:'#2e1e0e',ideology:'fascism',     capital:61},
+  {id:9, name:'Turkey',           short:'Turkey',  color:'#1e2a1a',ideology:'nationalism', capital:90},
+  {id:10,name:'Yugoslavia',       short:'Yugosl.', color:'#222a1a',ideology:'monarchy',    capital:79},
+  {id:11,name:'Sweden',           short:'Sweden',  color:'#1a2c3a',ideology:'democracy',   capital:34},
+  {id:12,name:'Finland',          short:'Finland', color:'#2a322e',ideology:'democracy',   capital:37},
 
-const TOTAL=PROVINCES.length;
-const LAND=PROVINCES.filter(p=>!p.isSea);
-const P=0;
-
-// Province index by id
-const PIDX={};
-PROVINCES.forEach((p,i)=>PIDX[p.id]=i);
-const pidx=id=>PIDX[id]??-1;
-
-
-// ── ADJACENCY (auto-computed from coordinates) ────────────
-const NB=Array.from({length:100},()=>[]);
-function ae(a,b){const ai=pidx(a),bi=pidx(b);if(ai<0||bi<0)return;if(!NB[ai].includes(bi))NB[ai].push(bi);if(!NB[bi].includes(ai))NB[bi].push(ai);}
-[[0,1],[0,18],[1,2],[2,3],[3,4],[4,7],[5,6],[5,8],[6,7],[8,9],[9,10],[10,11],[11,12],[12,14],[13,15],[14,17],[15,16],[16,17],[18,23],[19,22],[19,30],[20,21],[20,23],[21,22],[24,25],[24,44],[25,26],[25,44],[26,27],[27,28],[27,45],[28,29],[29,30],[31,35],[31,36],[32,33],[32,51],[33,34],[34,35],[36,37],[37,38],[37,39],[37,40],[38,40],[39,40],[39,41],[41,42],[42,45],[43,44],[43,45],[46,47],[46,50],[47,49],[48,49],[48,53],[50,51],[52,54],[52,56],[53,54],[55,56],[55,57],[57,58],[58,74],[58,75],[60,61],[60,68],[60,77],[61,62],[61,67],[61,68],[62,63],[62,67],[63,64],[63,66],[63,67],[65,66],[65,67],[65,68],[65,73],[66,67],[67,68],[68,73],[68,77],[69,73],[69,74],[69,78],[70,71],[70,72],[71,72],[73,77],[73,78],[74,75],[74,78],[75,76],[75,78],[76,77],[76,78],[77,78]].forEach(([a,b])=>ae(a,b));
-
-// ── NAVAL ZONES ───────────────────────────────────────────
+// ── NAVAL ZONES ─────────────────────────────────────────
 const NAVAL_ZONES={
   atlantic:[0,1,2,3,4,5,8,13,18,21,22,23,24,25,129],
   north_sea:[15,16,17,22,23,24,25,26,28,35,36],
@@ -124,6 +116,3 @@ function getNavalReach(fromIdx){
 function hasPort(i){const p=PROVINCES[i];return(G.buildings[i]||[]).includes('port')||(p.isCapital&&p.isCoastal);}
 function canLaunchNaval(i){const p=PROVINCES[i];return G.owner[i]===G.playerNation&&p.isCoastal&&hasPort(i)&&G.army[i]>100;}
 function navalDests(fromIdx){return getNavalReach(fromIdx).filter(di=>{const p=PROVINCES[di];if(!p.isCoastal)return false;const o=G.owner[di];return o===G.playerNation||o<0||G.war[G.playerNation]?.[o];});}
-
-
-// ── GAME STATE ────────────────────────────────────────────

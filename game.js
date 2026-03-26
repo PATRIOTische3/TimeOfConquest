@@ -2,6 +2,44 @@ const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov',
 const MONTH_DAYS=[31,28,31,30,31,30,31,31,30,31,30,31]; // non-leap
 const WEEK_NAMES=['I','II','III','IV'];
 
+// ── MAP DATA HELPERS ─────────────────────────────────────
+// These depend on PROVINCES/NATIONS from the map file.
+// Declared here (after map file loads) so game.js is self-contained.
+
+// Province adjacency — rebuilt by computeHexRadius() from coordinates.
+// Pre-sized to 100 as a safe minimum; resized to PROVINCES.length on start.
+const NB = Array.from({length:100}, ()=>[]);
+
+// Province id → index lookup
+const PIDX = {};
+// Populated after PROVINCES is defined (deferred to first use via lazy init)
+function _ensurePIDX(){
+  if(Object.keys(PIDX).length===0)
+    PROVINCES.forEach((p,i)=>{ PIDX[p.id]=i; });
+}
+const pidx = id => { _ensurePIDX(); return PIDX[id]??-1; };
+
+// Naval zone helpers (NAVAL_ZONES defined in info.js)
+function getNavalZones(provId){
+  if(typeof NAVAL_ZONES==='undefined') return [];
+  return Object.entries(NAVAL_ZONES).filter(([,ids])=>ids.includes(provId)).map(([z])=>z);
+}
+function getNavalReach(fromIdx){
+  const fId=PROVINCES[fromIdx].id, zones=getNavalZones(fId);
+  if(!zones.length) return [];
+  const reach=new Set();
+  zones.forEach(z=>NAVAL_ZONES[z].forEach(id=>{
+    if(id!==fId){const i=pidx(id);if(i>=0)reach.add(i);}
+  }));
+  return [...reach];
+}
+function hasPort(i){const p=PROVINCES[i];return(G.buildings[i]||[]).includes('port')||(p.isCapital&&p.isCoastal);}
+function canLaunchNaval(i){const p=PROVINCES[i];return G.owner[i]===G.playerNation&&p.isCoastal&&hasPort(i)&&G.army[i]>100;}
+function navalDests(fromIdx){return getNavalReach(fromIdx).filter(di=>{const p=PROVINCES[di];if(!p.isCoastal)return false;const o=G.owner[di];return o===G.playerNation||o<0||G.war[G.playerNation]?.[o];});}
+
+const ae=(a,b)=>{const ai=pidx(a),bi=pidx(b);if(ai<0||bi<0)return;if(!NB[ai].includes(bi))NB[ai].push(bi);if(!NB[bi].includes(ai))NB[bi].push(ai);};
+
+
 function isLeapYear(y){ return (y%4===0&&y%100!==0)||(y%400===0); }
 function daysInMonth(m,y){ return m===1&&isLeapYear(y)?29:MONTH_DAYS[m]; }
 function weeksInMonth(m,y){
