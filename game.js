@@ -154,10 +154,42 @@ function startGame(){
   G.ideology=SI||'fascism';G.playerNation=SC;
   G.month=0;G.week=0;G.year=1936;
   initDiplo();
+
+  // ── Tag capitals from NATIONS.capital list ─────────────
+  // Clears old flags first so restarting a game is clean
+  PROVINCES.forEach(p=>{ p.isCapital=false; });
+  NATIONS.forEach(n=>{ const p=PROVINCES[n.capital]; if(p) p.isCapital=true; });
+
   G.owner=PROVINCES.map(p=>p.nation??-1);
-  G.pop=PROVINCES.map(p=>p.isCapital?ri(30000,50000):ri(10000,40000));
+
+  // ── Pop: use editor value if present, otherwise scale by hexCount ──
+  G.pop=PROVINCES.map(p=>{
+    if(p.pop) return p.pop;                          // editor-authored value
+    const hc=p.hexCount||1;
+    const base=p.isCapital?ri(28000,50000):ri(8000,30000);
+    return Math.round(base * Math.sqrt(hc));          // bigger province = more people
+  });
+
   G.army=PROVINCES.map(()=>0);
-  G.income=PROVINCES.map(p=>p.isCapital?ri(120,280):ri(40,130));
+
+  // ── Income: base × terrainMap weights × hexCount scale ──
+  G.income=PROVINCES.map(p=>{
+    const hc=p.hexCount||1;
+    const base=p.isCapital?ri(110,260):ri(35,110);
+    // hexCount scale: each extra hex adds ~30% of base value (diminishing)
+    const hexScale=1 + (hc-1)*0.30;
+    // Weighted incM from terrainMap if available, else single terrain
+    let incM;
+    if(p.terrainMap && Object.keys(p.terrainMap).length>0){
+      const total=Object.values(p.terrainMap).reduce((s,v)=>s+v,0);
+      incM=Object.entries(p.terrainMap).reduce((s,[t,v])=>{
+        return s+(TERRAIN[t]||TERRAIN.plains).incM*(v/total);
+      },0);
+    } else {
+      incM=(TERRAIN[p.terrain||'plains']||TERRAIN.plains).incM;
+    }
+    return Math.round(base * hexScale * incM);
+  });
   G.instab=PROVINCES.map(()=>0);
   G.assim=PROVINCES.map(()=>100);
   G.disease=PROVINCES.map(()=>0);
@@ -181,8 +213,10 @@ function startGame(){
   G.assimQueue=PROVINCES.map(()=>null); // per-province assimilation: {type,weeksLeft,popFloor} or null
   G.resBase=PROVINCES.map(p=>({...((p.res)||{})}));
   G.resPool={oil:0,coal:0,grain:0,steel:0};
+  seedTerrainResources(); // fill provinces that have no editor-authored res data
   G.loans=[];G.totalDebt=0;
   G.fleet=[];
+  G._steelBonus=1.0;
   G.moveFrom=-1;G.moveMode=false;G.navalMode=false;G.navalFrom=-1;G.sel=-1;
   G.gold[SC]=1200;
   NATIONS.forEach((_,i)=>{if(i!==SC)G.gold[i]=ri(300,700);});
@@ -280,13 +314,131 @@ function canSeeArmy(i){
   if((G.buildings[i]||[]).includes('fortress')&&o===G.playerNation)return true;
   return false;
 }
-const TC={plains:'#3a4828',forest:'#2a3a1c',mountain:'#4a3e30',swamp:'#405838',desert:'#4a3e28',urban:'#2a2420',tundra:'#354040'};
+const TC={
+  plains:'#3a4828',  forest:'#2a3a1c',  mountain:'#4a3e30', swamp:'#405838',
+  desert:'#4a3e28',  urban:'#2a2420',   tundra:'#354040',
+  // New terrain types
+  hills:'#4a4830',   highland:'#524838', steppe:'#5a5428',  savanna:'#5e5420',
+  scrub:'#4e4820',   jungle:'#1e3e22',   taiga:'#2a3e30',   ice:'#606870',
+  marsh:'#384030',   farmland:'#4e5828', volcanic:'#3c2418',
+};
+const TERRAIN_ICON={
+  plains:'🌿', forest:'🌲', mountain:'⛰',  swamp:'🟫',  desert:'🏜',
+  urban:'🏙',  tundra:'🧊', hills:'⛺',    highland:'🗻', steppe:'🌾',
+  savanna:'🌅',scrub:'🌵',  jungle:'🌴',   taiga:'🌨',   ice:'❄️',
+  marsh:'🌿',  farmland:'🌾',volcanic:'🌋',
+};
+function terrainIcon(t){return TERRAIN_ICON[t]||'🗺';}
+
+// ── Province terrain effect helpers ───────────────────────
+// Use terrainMap weights if available, else fall back to single terrain.
+// These are the canonical getters used by ALL game mechanics.
+function _terrainWeighted(p, field){
+  if(p.terrainMap && Object.keys(p.terrainMap).length>0){
+    const total=Object.values(p.terrainMap).reduce((s,v)=>s+v,0);
+    if(total<=0) return (TERRAIN[p.terrain||'plains']||TERRAIN.plains)[field];
+    return Object.entries(p.terrainMap).reduce((s,[t,v])=>{
+      return s+(TERRAIN[t]||TERRAIN.plains)[field]*(v/total);
+    },0);
+  }
+  return (TERRAIN[p.terrain||'plains']||TERRAIN.plains)[field];
+}
+// Effective defence bonus for province i (weighted terrain + hexCount fortification)
+function provEffDefB(i){
+  const p=PROVINCES[i];
+  const base=_terrainWeighted(p,'defB');
+  // Larger provinces are slightly harder to hold (attacker can find weak spots)
+  const hc=p.hexCount||1;
+  const sizeMod=hc>1 ? 1-Math.min(0.10,(hc-1)*0.02) : 1.0;
+  return base*sizeMod;
+}
+// Effective income modifier for province i (weighted terrain)
+function provEffIncM(i){
+  return _terrainWeighted(PROVINCES[i],'incM');
+}
+// Effective conscript cap modifier: hexCount scales available manpower
+function provConscriptScale(i){
+  const hc=PROVINCES[i].hexCount||1;
+  return Math.min(2.0, 0.7 + hc*0.30); // 1hex=1.0, 2hex=1.3, 3hex=1.6, capped at 2.0
+}
+
+// Permanent terrain movement penalty (independent of season)
+// Returns fraction of troops that survive the march (1.0 = no loss)
+const TERRAIN_MOVE_PENALTY={
+  jungle:0.85, swamp:0.88, marsh:0.90, ice:0.75,
+  mountain:0.92, highland:0.93,
+};
+function provTerrainMoveMod(i){
+  const p=PROVINCES[i];
+  if(p.terrainMap && Object.keys(p.terrainMap).length>0){
+    const total=Object.values(p.terrainMap).reduce((s,v)=>s+v,0);
+    return Object.entries(p.terrainMap).reduce((acc,[t,v])=>{
+      const pen=TERRAIN_MOVE_PENALTY[t]||1.0;
+      return acc*Math.pow(pen, v/total); // geometric mean
+    },1.0);
+  }
+  return TERRAIN_MOVE_PENALTY[p.terrain||'plains']||1.0;
+}
+
+// Dominant terrain type considering terrainMap (for winter check etc.)
+function provDominantTerrain(i){
+  const p=PROVINCES[i];
+  if(p.terrainMap && Object.keys(p.terrainMap).length>0){
+    return Object.entries(p.terrainMap).sort((a,b)=>b[1]-a[1])[0][0];
+  }
+  return p.terrain||'plains';
+}
+
+// Seed province resources from terrain when no editor data exists
+// Called once at game init — only fills provinces with no res field
+function seedTerrainResources(){
+  const TERRAIN_RES={
+    // [resource, probability, max amount]
+    plains:   [['grain',0.35,2]],
+    farmland: [['grain',0.70,3]],
+    steppe:   [['grain',0.25,1]],
+    savanna:  [['grain',0.20,1]],
+    forest:   [['coal', 0.15,1]],
+    taiga:    [['coal', 0.20,1]],
+    mountain: [['coal', 0.25,2],['steel',0.20,2]],
+    highland: [['coal', 0.20,1],['steel',0.15,1]],
+    hills:    [['coal', 0.18,1],['steel',0.12,1]],
+    desert:   [['oil',  0.20,2]],
+    scrub:    [['oil',  0.12,1]],
+    volcanic: [['steel',0.15,1]],
+  };
+  PROVINCES.forEach((p,i)=>{
+    if(p.res && Object.keys(p.res).length>0) return; // editor-authored, skip
+    const rules=TERRAIN_RES[p.terrain||'plains']||[];
+    const res={};
+    rules.forEach(([k,prob,max])=>{
+      if(Math.random()<prob) res[k]=ri(1,max);
+    });
+    if(Object.keys(res).length>0){
+      p.res=res;
+      G.resBase[i]={...res};
+    }
+  });
+}
+
 const RES_COLORS={oil:'#8a6020',coal:'#303030',grain:'#5a7020',steel:'#405070'};
 
 const REBEL_COLOR='#c86820'; // orange-amber for rebels
 
 function provColor(i){
   const o=G.owner[i],m=G.mapMode;
+
+  if(m==='naval'){
+    if(PROVINCES[i]?.isSea) return '#0a1828';
+    // Coastal provinces: desaturated political color
+    if(PROVINCES[i]?.isCoastal){
+      if(o<0) return '#2a1e0e';
+      if(o===G.playerNation) return '#1a3a1a';
+      return '#141820';
+    }
+    // Inland: very dark, de-emphasised
+    return '#0e1014';
+  }
 
   if(m==='disease'){
     const epId=G.provDisease?.[i];
@@ -346,15 +498,8 @@ function provColor(i){
   return natColor(o);
 }
 
-// ── SEA LABELS ────────────────────────────────────────────
-const SEA_LABELS=[
-  {t:'ATLANTIC',x:40,y:300},{t:'NORTH SEA',x:182,y:224},
-  {t:'NORW. SEA',x:185,y:160},{t:'BALTIC',x:303,y:226},
-  {t:'MED.',x:155,y:462},{t:'MED.',x:253,y:460},{t:'MED. E',x:372,y:458},
-  {t:'ADRIATIC',x:304,y:394},{t:'AEGEAN',x:394,y:430},
-  {t:'BLACK SEA',x:440,y:376},{t:'CASPIAN',x:568,y:364},
-  {t:'ARCTIC',x:360,y:72},{t:'BARENTS',x:508,y:96},
-];
+// ── SEA LABELS — driven by SEA_ZONES from map.js ──────────
+// (no hardcoded list needed — SEA_ZONES[].cx/cy/name used directly)
 
 // ── MAIN DRAW ─────────────────────────────────────────────
 function drawMap(){
@@ -379,15 +524,47 @@ function drawMap(){
   ctx.save();
   ctx.translate(vp.tx,vp.ty);ctx.scale(vp.scale,vp.scale);
 
-  // Sea labels
-  ctx.font='italic 7px Cinzel,serif';
-  ctx.fillStyle='rgba(65,135,200,.26)';ctx.textAlign='center';ctx.textBaseline='middle';
-  SEA_LABELS.forEach(sl=>{
-    if(sl.x<wx0-20||sl.x>wx1+20||sl.y<wy0-10||sl.y>wy1+10)return;
-    ctx.fillText(sl.t,sl.x,sl.y);
-  });
+  // Sea zone labels — from SEA_ZONES, with naval mode highlight
+  if(G.mapMode==='naval'){
+    // Naval mode: tint coastal provinces by their zone membership
+    PROVINCES.forEach((p,i)=>{
+      if(p.isSea||!p.isCoastal)return;
+      if(p.cx<wx0-30||p.cx>wx1+30||p.cy<wy0-30||p.cy>wy1+30)return;
+      const zones=getNavalZones(p.id);
+      if(!zones.length)return;
+      const r=scaledR(i);
+      hexPath(ctx,p.cx,p.cy,r+0.6/vp.scale);
+      ctx.fillStyle='rgba(60,160,220,.18)';
+      ctx.fill();
+    });
+    // Highlight active naval destinations
+    if(G.navalMode&&G.navalFrom>=0){
+      navalDests(G.navalFrom).forEach(di=>{
+        const p=PROVINCES[di];if(!p)return;
+        if(p.cx<wx0-30||p.cx>wx1+30||p.cy<wy0-30||p.cy>wy1+30)return;
+        const r=scaledR(di);
+        hexPath(ctx,p.cx,p.cy,r+0.6/vp.scale);
+        ctx.fillStyle='rgba(60,230,255,.22)';ctx.fill();
+        hexPath(ctx,p.cx,p.cy,r);
+        ctx.strokeStyle='rgba(60,230,255,.7)';ctx.lineWidth=1.4/vp.scale;ctx.stroke();
+      });
+    }
+  }
 
-  
+  // Sea zone name labels (always visible, brighter in naval mode)
+  {
+    const alpha=G.mapMode==='naval'?0.55:0.22;
+    const fs=G.mapMode==='naval'?'italic bold 8px Cinzel,serif':'italic 7px Cinzel,serif';
+    ctx.font=fs;
+    ctx.fillStyle=`rgba(65,155,210,${alpha})`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    SEA_ZONES.forEach(z=>{
+      if(z.cx<wx0-40||z.cx>wx1+40||z.cy<wy0-20||z.cy>wy1+20)return;
+      ctx.fillText(z.name.toUpperCase(),z.cx,z.cy);
+    });
+  }
+
+
   // Draw hexes — two passes: fill (slightly enlarged to kill AA gaps) then borders
   PROVINCES.forEach((p,i)=>{
     if(p.cx<wx0-30||p.cx>wx1+30||p.cy<wy0-30||p.cy>wy1+30)return;
@@ -774,8 +951,24 @@ function showProvPopup(i, screenX, screenY){
   stats.push({l:'Income', v: inc+'/mo'});
   if(isOurs){
     stats.push({l:'Satisfaction', v: Math.round(G.satisfaction[i]||0)+'%'});
-  } else {
-    stats.push({l:'Terrain', v: TERRAIN[p.terrain||'plains']&&TERRAIN[p.terrain||'plains'].name||'Plains'});
+  }
+  {
+    const td=TERRAIN[p.terrain||'plains']||TERRAIN.plains;
+    const eDefB=provEffDefB(i);
+    const mixed=p.terrainMap&&Object.keys(p.terrainMap).length>1;
+    const terrLabel=mixed?`${terrainIcon(p.terrain)} ${td.name}+`:`${terrainIcon(p.terrain)} ${td.name}`;
+    stats.push({l:'Terrain', v:`${terrLabel} (def ×${eDefB.toFixed(2)})`});
+    if(mixed){
+      const total=Object.values(p.terrainMap).reduce((s,v)=>s+v,0);
+      const breakStr=Object.entries(p.terrainMap)
+        .sort((a,b)=>b[1]-a[1])
+        .map(([t,v])=>`${terrainIcon(t)}${Math.round(v/total*100)}%`)
+        .join(' ');
+      stats.push({l:'Mix', v:breakStr});
+    }
+    const movMod=provTerrainMoveMod(i);
+    if(movMod<0.99) stats.push({l:'March', v:`×${movMod.toFixed(2)} speed`});
+    if(p.hexCount&&p.hexCount>1) stats.push({l:'Size', v:`${p.hexCount} hexes`});
   }
 
   const gridHtml = stats.map(s=>`<div class="pp-cell"><div class="pp-label">${s.l}</div><div class="pp-val">${s.v}</div></div>`).join('');
@@ -1076,7 +1269,8 @@ function updateSP(i){
 
   sEl('sp-nm',p.name);
   sHTML('sp-bdg',bdg);
-  sEl('sp-ow',(o>=0?ownerName(o):'Rebels')+' · '+(TERRAIN[p.terrain||'plains']?.name||'')+' · '+dateStr());
+  const tData=TERRAIN[p.terrain||'plains']||TERRAIN.plains;
+  sEl('sp-ow',(o>=0?ownerName(o):'Rebels')+' · '+terrainIcon(p.terrain)+' '+tData.name+' · '+dateStr());
   const avArmy=G.owner[i]===G.playerNation?availableArmy(i):G.army[i];
   const armyDisp=G.owner[i]===G.playerNation&&avArmy<G.army[i]
     ?`${fa(avArmy)} <span style="color:var(--dim);font-size:9px">(${fa(G.army[i])})</span>`
@@ -1113,7 +1307,8 @@ function updateSP(i){
   sEl('sp-move-sub',canMove?`From ${p.short}`:'Select your territory');
   const canNaval=canLaunchNaval(i);
   ['sp-btn-naval','mob-btn-naval'].forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=!canNaval;});
-  sEl('sp-naval-sub',canNaval?`${navalRch} ports in range`:'Need port + coastal');
+  const zoneLabel=PROVINCES[i]?.isCoastal?navalZoneNames(PROVINCES[i].id):'';
+  sEl('sp-naval-sub',canNaval?`${navalRch} ports · ${zoneLabel||'open sea'}`:zoneLabel?`🌊 ${zoneLabel}`:'Need port + coastal');
   // Mobile
   sEl('ri-nm',p.name);sHTML('ri-bdg',bdg);sEl('ri-ow',o>=0?ownerName(o):'Rebels');
   sEl('ri-ar',fa(G.army[i]));sEl('ri-pp',fm(G.pop[i]));sEl('ri-in',inc+'/mo');sEl('ri-as',o===G.playerNation?Math.round(G.assim[i])+'%':'—');
@@ -1249,8 +1444,11 @@ function openMoveDialog(from,to){
   if(avail<=0){popup('No available troops (all committed to orders)!');return;}
 
   const s=season();
-  const terrMod=s.winterTerrain&&s.winterTerrain.includes(PROVINCES[to].terrain)?s.moveMod:1.0;
-  const movNote=terrMod<1?`<p class="mx" style="color:#80c8ff">${s.icon} ${s.name}: movement ×${terrMod}</p>`:'';
+  const domTerr=provDominantTerrain(to);
+  const winterMod=s.winterTerrain&&s.winterTerrain.includes(domTerr)?s.moveMod:1.0;
+  const terrMoveMod=provTerrainMoveMod(to);
+  const totalMoveMod=Math.round(winterMod*terrMoveMod*100)/100;
+  const movNote=totalMoveMod<1?`<p class="mx" style="color:#80c8ff">${s.icon} ${s.name} + ${terrainIcon(domTerr)} ${TERRAIN[domTerr]?.name||domTerr}: movement ×${totalMoveMod.toFixed(2)}</p>`:'';
   openMo('TROOP MOVEMENT',
     `<p class="mx"><b>${PROVINCES[from].short}</b> → <b style="color:var(--gold)">${PROVINCES[to].name}</b></p>
      ${movNote}
@@ -1316,8 +1514,8 @@ function openNavalDialog(from,to){
   cancelNaval();
   if(G.owner[to]>=0&&G.owner[to]!==G.playerNation&&!atWar(G.playerNation,G.owner[to])){popup('Cannot land without war!');return;}
   const max=G.army[from]-100;
-  const zones=getNavalZones(PROVINCES[from].id).map(z=>z.replace(/_/g,' ')).join(', ');
-  openMo('NAVAL TRANSPORT',`<p class="mx">⚓ <b>${PROVINCES[from].name}</b> → <b style="color:#60e8ff">${PROVINCES[to].name}</b></p><p class="mx" style="color:#5090c0">Via: <b>${zones}</b> · Arrives next month</p><p class="mx">Available: <b>${fa(max)}</b> soldiers</p><div class="slider-w"><div class="slider-l"><span>Soldiers</span><span class="slider-v" id="nsv">${fa(max)}</span></div><input type="range" id="nsl" min="100" max="${max}" value="${max}" oninput="updSl('nsl','nsv')"></div>`,
+  const zones=navalZoneNames(PROVINCES[from].id);
+  openMo('NAVAL TRANSPORT',`<p class="mx">⚓ <b>${PROVINCES[from].name}</b> → <b style="color:#60e8ff">${PROVINCES[to].name}</b></p><p class="mx" style="color:#5090c0">🌊 Via: <b>${zones||'Unknown waters'}</b> · Arrives next month</p><p class="mx">Available: <b>${fa(max)}</b> soldiers</p><div class="slider-w"><div class="slider-l"><span>Soldiers</span><span class="slider-v" id="nsv">${fa(max)}</span></div><input type="range" id="nsl" min="100" max="${max}" value="${max}" oninput="updSl('nsl','nsv')"></div>`,
     [{lbl:'Cancel',cls:'dim'},{lbl:'⚓ Embark!',cls:'grn',cb:()=>confirmNaval(from,to)}]);
   setTimeout(()=>document.getElementById('nsl')?.style.setProperty('--pct','100%'),40);
 }
@@ -1359,7 +1557,7 @@ function openDraft(){
     const satMod=sat<40?0.5:sat<60?0.75:1.0;
     const refMod=G.reforming?0.8:1.0;
     return Math.max(0,Math.min(
-      Math.floor(G.pop[r]*0.20*(hb?1.5:1)/io.conscriptMod*satMod*refMod),
+      Math.floor(G.pop[r]*0.20*(hb?1.5:1)/io.conscriptMod*satMod*refMod*provConscriptScale(r)),
       G.gold[G.playerNation]
     ));
   }
@@ -1959,28 +2157,35 @@ function processLoans(){
 
 // ── RESOURCES ─────────────────────────────────────────────
 function gatherResources(){
-  // Reset pool
   G.resPool={oil:0,coal:0,grain:0,steel:0};
   regsOf(G.playerNation).forEach(i=>{
-    const base=G.resBase[i]||{};
+    const base={...(G.resBase[i]||{})};  // copy — never mutate resBase directly
     const blds=G.buildings[i]||[];
-    let mult=1;
-    if(blds.includes('oilwell'))base.oil=(base.oil||0)+2;
-    if(blds.includes('mine')){base.coal=(base.coal||0)+2;base.steel=(base.steel||0)+1;}
-    if(blds.includes('granary')){base.grain=(base.grain||0)+2;}
-    Object.keys(base).forEach(k=>{if(G.resPool[k]!==undefined)G.resPool[k]+=base[k]*mult;});
+    if(blds.includes('oilwell'))  base.oil  =(base.oil  ||0)+2;
+    if(blds.includes('mine'))    {base.coal =(base.coal ||0)+2; base.steel=(base.steel||0)+1;}
+    if(blds.includes('granary')) base.grain =(base.grain||0)+2;
+    Object.keys(base).forEach(k=>{if(G.resPool[k]!==undefined)G.resPool[k]+=base[k];});
   });
-  // Resource effects — silent (no log spam)
   const PN=G.playerNation;
+  // Coal shortage → gold penalty
   if(G.resPool.coal<5){
     G.gold[PN]=Math.max(0,G.gold[PN]-ri(20,50));
   }
+  // Grain shortage → instability
   if(G.resPool.grain<8){
     regsOf(PN).forEach(r=>G.instab[r]=Math.min(100,G.instab[r]+ri(0,2)));
   }
+  // Grain surplus → pop bonus
   if(G.resPool.grain>20){
     regsOf(PN).forEach(r=>G.pop[r]+=Math.floor(G.pop[r]*.002));
   }
+  // Oil surplus → income bonus (industrialisation)
+  if(G.resPool.oil>=5){
+    const bonus=Math.floor(G.resPool.oil*ri(3,6));
+    G.gold[PN]+=bonus;
+  }
+  // Steel surplus → attack bonus flag for battles this month
+  G._steelBonus=G.resPool.steel>=5?1.05:1.0;
 }
 
 // ── RESISTANCE SYSTEM ─────────────────────────────────────
@@ -2101,8 +2306,9 @@ function showAttackDialog(fr,to){
   const en=G.owner[to],PN=G.playerNation;
   const hasPact=en>=0&&G.pact[PN][en],hasAlly=en>=0&&areAllies(PN,en);
   const hasFort=(G.buildings[to]||[]).includes('fortress');
-  const io=ideol(),terrain=TERRAIN[PROVINCES[to].terrain||'plains'];
-  const defBonus=terrain.defB*(hasFort?1.6:1),effDef=Math.round(G.army[to]*defBonus);
+  const io=ideol(),terrain=TERRAIN[PROVINCES[to].terrain||'plains']||TERRAIN.plains;
+  const effDefB=provEffDefB(to);
+  const defBonus=effDefB*(hasFort?1.6:1),effDef=Math.round(G.army[to]*defBonus);
   const resist=G.resistance[to];
   const avail=availableArmy(fr);
   let html='';
@@ -2110,7 +2316,11 @@ function showAttackDialog(fr,to){
   if(hasAlly)html+=`<p class="mx" style="color:#ff6040">⚠ ${NATIONS[en]&&NATIONS[en].short} is your ALLY!</p>`;
   if(hasFort)html+=`<p class="mx" style="color:#c09040">🏰 Fortress: defense ×1.6</p>`;
   if(resist>20)html+=`<p class="mx" style="color:#ff9040">🔥 Resistance bonus</p>`;
-  html+=`<p class="mx">${io.icon} ${io.name}: atk ×${io.atk.toFixed(2)} · ${terrain.name} def ×${terrain.defB.toFixed(1)}</p>`;
+  if((G._steelBonus||1)>1)html+=`<p class="mx" style="color:#90b8e0">⚙️ Steel surplus: atk ×${G._steelBonus.toFixed(2)}</p>`;
+  const movMod=provTerrainMoveMod(to);
+  if(movMod<0.99)html+=`<p class="mx" style="color:#a0c8a0">${terrainIcon(PROVINCES[to].terrain)} Difficult terrain: march ×${movMod.toFixed(2)}</p>`;
+  const effIncM=provEffIncM(to);
+  html+=`<p class="mx">${io.icon} ${io.name}: atk ×${io.atk.toFixed(2)} · ${terrainIcon(PROVINCES[to].terrain)} ${terrain.name} def ×${effDefB.toFixed(2)} · inc ×${effIncM.toFixed(2)}</p>`;
   html+=`<p class="mx"><b>${PROVINCES[fr].short}</b> → <b style="color:#ff7070">${PROVINCES[to].name}</b></p>`;
   html+=`<p class="mx">Available: <b>${fa(avail)}</b> · Enemy effective: <b style="color:#ff7070">${fa(effDef)}</b></p>`;
   if(avail>0){
@@ -2208,12 +2418,21 @@ function executeMoveQueue(){
     if(G.owner[from]!==G.playerNation) continue; // lost province
     const actual=Math.min(amount, G.army[from]);
     if(actual<=0) continue;
-    const terrMod=s.winterTerrain&&s.winterTerrain.includes(PROVINCES[to]&&PROVINCES[to].terrain)?s.moveMod:1.0;
-    const moved=Math.round(actual*terrMod);
+    const domTerr=provDominantTerrain(to);
+    const winterMod=s.winterTerrain&&s.winterTerrain.includes(domTerr)?s.moveMod:1.0;
+    const terrMoveMod=provTerrainMoveMod(to);
+    const totalMod=winterMod*terrMoveMod;
+    const moved=Math.round(actual*totalMod);
     G.army[from]=Math.max(0,G.army[from]-actual);
     G.army[to]=(G.army[to]||0)+moved;
-    if(moved<actual) addLog(`${s.icon} Winter: ${fa(actual-moved)} lost to cold!`,'season');
-    if(G.owner[to]<0) G.owner[to]=G.playerNation; // claim independent
+    if(moved<actual){
+      const lost=actual-moved;
+      const reason=winterMod<1&&terrMoveMod<1?`${s.icon} winter + ${terrainIcon(domTerr)} terrain`
+        :winterMod<1?`${s.icon} ${s.name}`
+        :`${terrainIcon(domTerr)} ${TERRAIN[domTerr]?.name||domTerr}`;
+      addLog(`${reason}: ${fa(lost)} lost in march!`,'season');
+    }
+    if(G.owner[to]<0) G.owner[to]=G.playerNation;
     addLog(`🚶 ${fa(moved)} moved: ${PROVINCES[from].short} → ${PROVINCES[to]&&PROVINCES[to].short||'?'}.`,'move');
   }
 }
@@ -2304,14 +2523,14 @@ window.skipBattleAnim=function(){
 function runBattle(fr,to,atkF,atker,done){
   const df=G.army[to],isP=atker===G.playerNation;
   const io2=isP?ideol():IDEOLOGIES[NATIONS[atker]?.ideology||'nationalism'];
-  const terrain=TERRAIN[PROVINCES[to].terrain||'plains'];
   const hasFort=(G.buildings[to]||[]).includes('fortress');
-  const defM=terrain.defB*(hasFort?1.6:1);
+  const defM=provEffDefB(to)*(hasFort?1.6:1);
   const instPen=isP?Math.max(.7,1-G.instab[fr]/150):1.0;
   const capPen=G.capitalPenalty[atker]>0?.85:1.0;
   const hasArsenal=(G.buildings[fr]||[]).includes('arsenal');
   const resistBonus=isP?1+(G.resistance[to]/200):1.0;
-  const effAtk=atkF*io2.atk*instPen*capPen*(hasArsenal?1.2:1)*resistBonus;
+  const steelB=isP?(G._steelBonus||1.0):1.0; // steel resource bonus only for player
+  const effAtk=atkF*io2.atk*instPen*capPen*(hasArsenal?1.2:1)*resistBonus*steelB;
   const effDef=Math.round(df*defM);
   const ap=effAtk/(effAtk+effDef)*100;
 
@@ -2812,7 +3031,9 @@ function endTurn(){
     if((G.buildings[r]||[]).includes('palace'))inc=Math.floor(inc*1.15);
     // Tax rate scales income: 25% base = full income, lower = less, higher = more
     const taxIncomeFactor=0.4+taxMod*2.4; // 0% tax→0.4x income, 25%→1.0x, 50%→1.6x, 100%→2.8x
-    inc=Math.floor(inc*io.income*satIncomeMod*reformMod*(1-Math.min(.5,G.instab[r]/100))*s.incomeMod*taxIncomeFactor);
+    // provEffIncM re-applied here covers any runtime terrain change (conquest of mixed province)
+    const liveIncM=provEffIncM(r);
+    inc=Math.floor(inc*io.income*satIncomeMod*reformMod*(1-Math.min(.5,G.instab[r]/100))*s.incomeMod*taxIncomeFactor*liveIncM);
     G.gold[PN]+=inc;
 
     // Puppet tribute
@@ -2820,8 +3041,9 @@ function endTurn(){
       regsOf(pp).forEach(pr=>{let pi=G.income[pr];if((G.buildings[pr]||[]).includes('factory'))pi=Math.floor(pi*1.8);G.gold[PN]+=Math.floor(pi*.3);});
     });
 
-    // Population growth
-    let pgr=G.pop[r]*.005*io.popGrowth*(sat<40?0.5:sat<60?0.8:1.0);
+    // Population growth — hexCount scales carrying capacity
+    const hcScale=Math.min(1.5, 1.0+(PROVINCES[r].hexCount||1)*0.08);
+    let pgr=G.pop[r]*.005*io.popGrowth*(sat<40?0.5:sat<60?0.8:1.0)*hcScale;
     if((G.buildings[r]||[]).includes('hospital'))pgr*=1.1;
     if((G.buildings[r]||[]).includes('granary'))pgr*=1.15;
     G.pop[r]+=Math.floor(pgr);
@@ -3177,7 +3399,7 @@ function doAI(fullMonth=true){
         let inc=G.income[r];
         if((G.buildings[r]||[]).includes('factory'))inc=Math.floor(inc*1.8);
         if((G.buildings[r]||[]).includes('palace'))inc=Math.floor(inc*1.15);
-        G.gold[ai]+=Math.floor(inc*aio.income*.78);
+        G.gold[ai]+=Math.floor(inc*aio.income*.78*provEffIncM(r));
       }
 
       // ── Smart buildings ──────────────────────────────────
@@ -3298,10 +3520,10 @@ function doAI(fullMonth=true){
         const sendFrac=aggressive?0.55:0.4;
         const send=Math.max(1,Math.floor(G.army[fr2]*sendFrac));
         if(def>=0&&def!==ai){G.war[ai][def]=true;G.war[def][ai]=true;}
-        const terrain2=TERRAIN[PROVINCES[to2]&&PROVINCES[to2].terrain||'plains'];
         const frt=(G.buildings[to2]||[]).includes('fortress')?1.6:1;
-        const terrMod=s.winterTerrain&&s.winterTerrain.includes(PROVINCES[to2]&&PROVINCES[to2].terrain)?s.moveMod:1.0;
-        const win=send*aio.atk*terrMod*rf(.75,1.25)>G.army[to2]*terrain2.defB*frt*rf(.75,1.25);
+        const domT2=provDominantTerrain(to2);
+        const terrMod=(s.winterTerrain&&s.winterTerrain.includes(domT2)?s.moveMod:1.0)*provTerrainMoveMod(to2);
+        const win=send*aio.atk*terrMod*rf(.75,1.25)>G.army[to2]*provEffDefB(to2)*frt*rf(.75,1.25);
         if(win){
           const al=Math.floor(send*rf(.15,.3));
           G.army[fr2]-=send;G.army[to2]=Math.max(50,send-al);G.owner[to2]=ai;

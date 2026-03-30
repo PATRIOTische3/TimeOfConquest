@@ -41,18 +41,42 @@ const MAX_BLD_NORM=3,MAX_BLD_CAP=5;
 
 // ── TERRAIN ───────────────────────────────────────────────
 const TERRAIN={
-  plains: {name:'Plains',  defB:1.0, incM:1.10,col:'#3a4828'},
-  forest: {name:'Forest',  defB:1.20,incM:.90, col:'#2a3a1c'},
-  mountain:{name:'Mountain',defB:1.50,incM:.70,col:'#4a3e30'},
-  swamp:  {name:'Swamp',   defB:1.15,incM:.80, col:'#405838'},
-  desert: {name:'Desert',  defB:.90, incM:.75, col:'#4a3e28'},
-  urban:  {name:'Urban',   defB:1.30,incM:1.40,col:'#2a2420'},
-  tundra: {name:'Tundra',  defB:1.10,incM:.60, col:'#354040'},
+  // ── Original types ────────────────────────────────────────
+  plains:   {name:'Plains',   defB:1.0,  incM:1.10, col:'#3a4828'},
+  forest:   {name:'Forest',   defB:1.20, incM:0.90, col:'#2a3a1c'},
+  mountain: {name:'Mountain', defB:1.50, incM:0.70, col:'#4a3e30'},
+  swamp:    {name:'Swamp',    defB:1.15, incM:0.80, col:'#405838'},
+  desert:   {name:'Desert',   defB:0.90, incM:0.75, col:'#4a3e28'},
+  urban:    {name:'Urban',    defB:1.30, incM:1.40, col:'#2a2420'},
+  tundra:   {name:'Tundra',   defB:1.10, incM:0.60, col:'#354040'},
+  // ── New types ─────────────────────────────────────────────
+  // Hills: gentle terrain, slight defence bonus, decent farmland
+  hills:    {name:'Hills',    defB:1.25, incM:0.95, col:'#4a4830'},
+  // Highland: rugged uplands, hard to cross, poor soil
+  highland: {name:'Highland', defB:1.35, incM:0.75, col:'#524838'},
+  // Steppe: flat open grassland, easy movement but exposed
+  steppe:   {name:'Steppe',   defB:0.85, incM:0.90, col:'#5a5428'},
+  // Savanna: warm dry grassland, moderate everything
+  savanna:  {name:'Savanna',  defB:0.95, incM:0.85, col:'#5e5420'},
+  // Scrub: dry shrubland, poor cover, poor yield
+  scrub:    {name:'Scrub',    defB:1.00, incM:0.70, col:'#4e4820'},
+  // Jungle: dense tropical, hard to fight in, very poor supply
+  jungle:   {name:'Jungle',   defB:1.40, incM:0.65, col:'#1e3e22'},
+  // Taiga: boreal forest, defensive like forest, cold penalties
+  taiga:    {name:'Taiga',    defB:1.25, incM:0.70, col:'#2a3e30'},
+  // Ice: frozen wastes, almost impassable in winter
+  ice:      {name:'Ice',      defB:1.00, incM:0.30, col:'#606870'},
+  // Marsh: wet lowlands, slows movement, poor income
+  marsh:    {name:'Marsh',    defB:1.10, incM:0.65, col:'#384030'},
+  // Farmland: cultivated fields, rich income, no defence bonus
+  farmland: {name:'Farmland', defB:0.90, incM:1.30, col:'#4e5828'},
+  // Volcanic: harsh volcanic terrain, very poor but defensible
+  volcanic: {name:'Volcanic', defB:1.20, incM:0.50, col:'#3c2418'},
 };
 
 // ── SEASONS ───────────────────────────────────────────────
 const SEASONS=[
-  {name:'Winter',icon:'❄️',moveMod:.50,incomeMod:.90,winterTerrain:['tundra','mountain','forest'],desc:'Snow slows armies in harsh terrain'},
+  {name:'Winter',icon:'❄️',moveMod:.50,incomeMod:.90,winterTerrain:['tundra','mountain','forest','taiga','highland','ice'],desc:'Snow slows armies in harsh terrain'},
   {name:'Spring',icon:'🌸',moveMod:1.0,incomeMod:1.0,desc:'Normal conditions'},
   {name:'Spring',icon:'🌸',moveMod:1.0,incomeMod:1.0,desc:'Normal conditions'},
   {name:'Summer',icon:'☀️',moveMod:1.0,incomeMod:1.10,desc:'Harvest season, +10% income'},
@@ -61,9 +85,9 @@ const SEASONS=[
   {name:'Autumn',icon:'🍂',moveMod:1.0,incomeMod:1.0,desc:'Normal conditions'},
   {name:'Autumn',icon:'🍂',moveMod:1.0,incomeMod:1.0,desc:'Normal conditions'},
   {name:'Autumn',icon:'🍂',moveMod:0.9,incomeMod:1.0,desc:'Mud slows movement'},
-  {name:'Winter',icon:'❄️',moveMod:.50,incomeMod:.90,winterTerrain:['tundra','mountain','forest'],desc:'Snow slows armies'},
-  {name:'Winter',icon:'❄️',moveMod:.50,incomeMod:.90,winterTerrain:['tundra','mountain','forest'],desc:'Deep winter'},
-  {name:'Winter',icon:'❄️',moveMod:.40,incomeMod:.85,winterTerrain:['tundra','mountain','forest','plains'],desc:'Severe winter'},
+  {name:'Winter',icon:'❄️',moveMod:.50,incomeMod:.90,winterTerrain:['tundra','mountain','forest','taiga','highland','ice'],desc:'Snow slows armies'},
+  {name:'Winter',icon:'❄️',moveMod:.50,incomeMod:.90,winterTerrain:['tundra','mountain','forest','taiga','highland','ice'],desc:'Deep winter'},
+  {name:'Winter',icon:'❄️',moveMod:.40,incomeMod:.85,winterTerrain:['tundra','mountain','forest','taiga','highland','ice','plains','steppe'],desc:'Severe winter'},
 ];
 function getSeason(month){return SEASONS[month]||SEASONS[0];}
 
@@ -1824,28 +1848,52 @@ const NB=Array.from({length:100},()=>[]);
 function ae(a,b){const ai=pidx(a),bi=pidx(b);if(ai<0||bi<0)return;if(!NB[ai].includes(bi))NB[ai].push(bi);if(!NB[bi].includes(ai))NB[bi].push(ai);}
 [[0,1],[0,18],[1,2],[2,3],[3,4],[4,7],[5,6],[5,8],[6,7],[8,9],[9,10],[10,11],[11,12],[12,14],[13,15],[14,17],[15,16],[16,17],[18,23],[19,22],[19,30],[20,21],[20,23],[21,22],[24,25],[24,44],[25,26],[25,44],[26,27],[27,28],[27,45],[28,29],[29,30],[31,35],[31,36],[32,33],[32,51],[33,34],[34,35],[36,37],[37,38],[37,39],[37,40],[38,40],[39,40],[39,41],[41,42],[42,45],[43,44],[43,45],[46,47],[46,50],[47,49],[48,49],[48,53],[50,51],[52,54],[52,56],[53,54],[55,56],[55,57],[57,58],[58,74],[58,75],[60,61],[60,68],[60,77],[61,62],[61,67],[61,68],[62,63],[62,67],[63,64],[63,66],[63,67],[65,66],[65,67],[65,68],[65,73],[66,67],[67,68],[68,73],[68,77],[69,73],[69,74],[69,78],[70,71],[70,72],[71,72],[73,77],[73,78],[74,75],[74,78],[75,76],[75,78],[76,77],[76,78],[77,78]].forEach(([a,b])=>ae(a,b));
 
-// ── NAVAL ZONES ───────────────────────────────────────────
-const NAVAL_ZONES={
-  atlantic:[0,1,2,3,4,5,8,13,18,21,22,23,24,25,129],
-  north_sea:[15,16,17,22,23,24,25,26,28,35,36],
-  norwegian:[31,32,33,52,109,129,137],
-  baltic:[26,28,34,36,37,38,39,41,55,56,64,68,69],
-  med_west:[8,10,11,44,50,51,114],
-  med_central:[42,43,45,46,47,50,51,114],
-  med_east:[42,46,47,83,84,85,89,91,92,115],
-  adriatic:[42,45,46,83,87,88],
-  aegean:[84,85,89,91,92,115],
-  black_sea:[73,91,93,96,101,102],
-  caspian:[104,113,140,146],
-  arctic:[33,52,108,109,136,137],
-};
-function getNavalZones(provId){return Object.entries(NAVAL_ZONES).filter(([,ids])=>ids.includes(provId)).map(([z])=>z);}
+// ── SEA ZONES ─────────────────────────────────────────────
+// Each zone: {id, name, cx, cy, provIds:[province ids that border this zone]}
+// cx/cy = label position in world coords
+const SEA_ZONES=[
+  {id:0,  name:'Atlantic',        cx: 40, cy:300, provIds:[0,1,2,3,4,5,8,13,18,21,22,23,24,25]},
+  {id:1,  name:'North Sea',       cx:182, cy:224, provIds:[15,16,17,22,23,24,25,26,28,35,36]},
+  {id:2,  name:'Norwegian Sea',   cx:185, cy:160, provIds:[31,32,33,52]},
+  {id:3,  name:'Baltic Sea',      cx:303, cy:226, provIds:[26,28,34,36,37,38,39,41,55,56,64,68,69]},
+  {id:4,  name:'W. Mediterranean',cx:155, cy:462, provIds:[8,10,11,44,50,51]},
+  {id:5,  name:'C. Mediterranean',cx:253, cy:460, provIds:[42,43,45,46,47,50,51]},
+  {id:6,  name:'E. Mediterranean',cx:372, cy:458, provIds:[42,46,47,83,84,85,89,91,92]},
+  {id:7,  name:'Adriatic Sea',    cx:304, cy:394, provIds:[42,45,46,83,87,88]},
+  {id:8,  name:'Aegean Sea',      cx:394, cy:430, provIds:[84,85,89,91,92]},
+  {id:9,  name:'Black Sea',       cx:440, cy:376, provIds:[73,91,93,96,101,102]},
+  {id:10, name:'Caspian Sea',     cx:568, cy:364, provIds:[104,113]},
+  {id:11, name:'Arctic Ocean',    cx:360, cy: 72, provIds:[33,52]},
+  {id:12, name:'Barents Sea',     cx:508, cy: 96, provIds:[52,108,109]},
+];
+
+// Build fast provId → zone ids lookup
+const _provZoneMap={};
+SEA_ZONES.forEach(z=>z.provIds.forEach(pid=>{
+  if(!_provZoneMap[pid])_provZoneMap[pid]=[];
+  _provZoneMap[pid].push(z.id);
+}));
+
+// Returns array of SEA_ZONES objects that a province borders
+function getNavalZones(provId){
+  return (_provZoneMap[provId]||[]).map(zid=>SEA_ZONES[zid]).filter(Boolean);
+}
+
+// Returns all province *indices* reachable by sea from fromIdx
 function getNavalReach(fromIdx){
-  const fId=PROVINCES[fromIdx].id,zones=getNavalZones(fId);
+  const fId=PROVINCES[fromIdx].id;
+  const zones=getNavalZones(fId);
   if(!zones.length)return[];
   const reach=new Set();
-  zones.forEach(z=>NAVAL_ZONES[z].forEach(id=>{if(id!==fId){const i=pidx(id);if(i>=0)reach.add(i);}}));
+  zones.forEach(z=>z.provIds.forEach(pid=>{
+    if(pid!==fId){const i=pidx(pid);if(i>=0)reach.add(i);}
+  }));
   return[...reach];
+}
+
+// Returns zone name string for UI (e.g. "Atlantic, North Sea")
+function navalZoneNames(provId){
+  return getNavalZones(provId).map(z=>z.name).join(', ');
 }
 function hasPort(i){const p=PROVINCES[i];return(G.buildings[i]||[]).includes('port')||(p.isCapital&&p.isCoastal);}
 function canLaunchNaval(i){const p=PROVINCES[i];return G.owner[i]===G.playerNation&&p.isCoastal&&hasPort(i)&&G.army[i]>100;}
