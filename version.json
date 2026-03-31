@@ -6,6 +6,6 @@
     "PATCH — bugfixes, UI tweaks, balance changes",
     "YYMMDD — build date"
   ],
-  "version": "0.9.0-30032026",
-  "changelog": "assimilation cost scales with province pop/2 for 48w base; cost curve normalized per province; pop passed through slider oninput and startAssim"
+  "version": "0.9.1-260331",
+  "changelog": "Dynamic map discovery: auto-detects map_*.js files on server, user map upload via localStorage, map carousel replaces era carousel, refresh button, 👤 badge for custom maps"
 }
