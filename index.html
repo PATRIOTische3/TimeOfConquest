@@ -1059,20 +1059,37 @@ window.refreshWorldsList=function(){
     return {label, sublabel};
   }
 
-  // Build full map list: built-in + user
+  // Build full map list: built-in (probed) + inline map.js fallback + user
   async function buildMapList(builtinNames){
     _maps = [];
-    // Built-in maps
+
+    // Always add the statically-loaded map.js as the first entry
+    // (it's already in memory via <script src="map.js">, no fetch needed)
+    _maps.push({
+      id: 'map_inline',
+      label: (typeof NATIONS !== 'undefined' && NATIONS.length)
+        ? (NATIONS[0]?.name?.split(' ').pop() || '1936').toUpperCase() + ' ERA'
+        : '1936',
+      sublabel: 'default · ' + (typeof PROVINCES !== 'undefined' ? PROVINCES.length + ' provinces' : ''),
+      src: null,
+      user: false,
+      script: null,   // already loaded — skip loadMapScript
+      preloaded: true
+    });
+
+    // Add probed server maps (skip if same as inline map.js)
     for(const name of builtinNames){
+      if(name === 'map') continue; // map.js already added above
       _maps.push({
         id: name,
         label: name.replace('map_','').toUpperCase(),
         sublabel: 'built-in',
         src: name + '.js',
         user: false,
-        script: null   // loaded on demand
+        script: null
       });
     }
+
     // User maps from localStorage
     for(const um of getUserMaps()){
       const meta = parseMapMeta(um.script || '', um.label || um.id);
@@ -1085,39 +1102,48 @@ window.refreshWorldsList=function(){
         script: um.script
       });
     }
-    // Fallback: if nothing found, show placeholder
-    if(_maps.length === 0){
-      _maps.push({id:'none', label:'NO MAPS', sublabel:'upload or add map files', src:null, user:false, script:null});
-    }
   }
 
-  // Fetch and execute a map script, replacing global PROVINCES/NATIONS/etc
-  async function loadMapScript(mapEntry){
-    if(_mapLoaded === _mapIdx) return true; // already loaded
-    let script = mapEntry.script;
-    // Fetch built-in from server
-    if(!script && mapEntry.src){
-      try{
-        const r = await fetch(mapEntry.src + '?_=' + Date.now());
-        if(!r.ok) throw new Error('not found');
-        script = await r.text();
-      }catch(e){
-        popup('⚠ Could not load ' + mapEntry.src);
-        return false;
+  // Fetch and execute a map script via <script> tag — properly exposes all globals
+  function loadMapScript(mapEntry){
+    return new Promise(async resolve => {
+      // Already in memory (static map.js) — nothing to do
+      if(mapEntry.preloaded){ _mapLoaded = _mapIdx; resolve(true); return; }
+      if(_mapLoaded === _mapIdx){ resolve(true); return; }
+      let script = mapEntry.script;
+      // Fetch built-in from server
+      if(!script && mapEntry.src){
+        try{
+          const r = await fetch(mapEntry.src + '?_=' + Date.now());
+          if(!r.ok) throw new Error('not found');
+          script = await r.text();
+        }catch(e){
+          popup('⚠ Could not load ' + mapEntry.src);
+          resolve(false); return;
+        }
       }
-    }
-    if(!script){ popup('No map data'); return false; }
-    try{
-      // Execute in global scope — redefines PROVINCES, NATIONS, NB, SEA_ZONES, HEX_GRID, LAND, INIT_ALLIANCES
-      const fn = new Function(script + '\n// expose\nif(typeof PROVINCES!=="undefined")window.PROVINCES=PROVINCES;\nif(typeof NATIONS!=="undefined")window.NATIONS=NATIONS;\nif(typeof NB!=="undefined")window.NB=NB;\nif(typeof SEA_ZONES!=="undefined")window.SEA_ZONES=SEA_ZONES;\nif(typeof HEX_GRID!=="undefined")window.HEX_GRID=HEX_GRID;\nif(typeof LAND!=="undefined")window.LAND=LAND;\nif(typeof INIT_ALLIANCES!=="undefined")window.INIT_ALLIANCES=INIT_ALLIANCES;\n');
-      fn();
-      _mapLoaded = _mapIdx;
-      return true;
-    }catch(e){
-      popup('⚠ Map script error: ' + e.message);
-      console.error('Map load error:', e);
-      return false;
-    }
+      if(!script){ popup('No map data'); resolve(false); return; }
+      // Remove any existing dynamic map script
+      const old = document.getElementById('_dynmap');
+      if(old) old.remove();
+      // Inject as real <script> tag — const/let/var all become global
+      const tag = document.createElement('script');
+      tag.id = '_dynmap';
+      tag.textContent = script;
+      tag.onerror = () => { popup('⚠ Map script error'); resolve(false); };
+      tag.onload = () => { _mapLoaded = _mapIdx; resolve(true); };
+      // Inline scripts execute synchronously, so onload won't fire
+      // Instead wrap in try/catch and resolve after append
+      try{
+        document.head.appendChild(tag);
+        _mapLoaded = _mapIdx;
+        resolve(true);
+      }catch(e){
+        popup('⚠ Map error: ' + e.message);
+        console.error('Map load error:', e);
+        resolve(false);
+      }
+    });
   }
 
   // ── CAROUSEL RENDERING ────────────────────────────────────
