@@ -100,7 +100,6 @@ function computeHexRadius(){
       }
     }
   }
-  // Build hex grid cache if new-format map
   buildHexCache();
 }
 // All hexes same size — no capital scaling (causes gap artifacts)
@@ -159,10 +158,7 @@ function startGame(){
   G.owner=PROVINCES.map(p=>p.nation??-1);
   G.pop=PROVINCES.map(p=>p.isCapital?ri(30000,50000):ri(10000,40000));
   G.army=PROVINCES.map(()=>0);
-  G.income=PROVINCES.map((p,i)=>{
-    const base=p.isCapital?ri(120,280):ri(40,130);
-    return Math.round(base * provTerrainInc(i));
-  });
+  G.income=PROVINCES.map((p,i)=>Math.round((p.isCapital?ri(120,280):ri(40,130))*provTerrainInc(i)));
   G.instab=PROVINCES.map(()=>0);
   G.assim=PROVINCES.map(()=>100);
   G.disease=PROVINCES.map(()=>0);
@@ -248,26 +244,13 @@ window.addEventListener('resize',()=>{
 });
 
 // ── PERFORMANCE DETECTION ────────────────────────────────
-// Detect slow devices and enable low-quality rendering
-let _lowQuality = false;
-let _lastFrameTime = 0;
-let _frameCount = 0;
-let _fpsCheck = false;
+let _lowQuality=false,_fpsChecked=false;
 function detectPerformance(){
-  if(_fpsCheck) return;
-  _fpsCheck = true;
-  const start = performance.now();
-  let frames = 0;
-  function measure(t){
-    frames++;
-    if(t - start < 1500){ requestAnimationFrame(measure); return; }
-    const fps = frames / ((t - start) / 1000);
-    if(fps < 20){
-      _lowQuality = true;
-      console.log('Low-quality mode enabled (fps:', Math.round(fps), ')');
-    }
-  }
-  requestAnimationFrame(measure);
+  if(_fpsChecked)return; _fpsChecked=true;
+  const t0=performance.now(); let f=0;
+  function tick(t){f++;if(t-t0<1500){requestAnimationFrame(tick);return;}
+    if(f/(( t-t0)/1000)<20){_lowQuality=true;console.log('Low-quality mode');}}
+  requestAnimationFrame(tick);
 }
 
 // Batch draws — requestAnimationFrame prevents overdraw
@@ -309,87 +292,67 @@ function canSeeArmy(i){
   if((G.buildings[i]||[]).includes('fortress')&&o===G.playerNation)return true;
   return false;
 }
-// ── TERRAIN COLORS (extended for new map format) ─────────
+// ── TERRAIN (extended — supports new map format) ──────────
 const TC={
-  plains:   '#3a4828', forest:  '#2a3a1c', mountain:'#4a3e30',
-  swamp:    '#405838', desert:  '#4a3e28', urban:   '#2a2420',
-  tundra:   '#354040', hills:   '#4a4030', highland:'#3e3828',
-  steppe:   '#4a4020', farmland:'#384820', savanna: '#4a4020',
-  jungle:   '#2a4018', coast:   '#1e3040',
+  plains:'#3a4828',forest:'#2a3a1c',mountain:'#4a3e30',swamp:'#405838',
+  desert:'#4a3e28',urban:'#2a2420',tundra:'#354040',
+  hills:'#4a4030',highland:'#3e3828',steppe:'#4a4020',
+  farmland:'#384820',savanna:'#4a4020',jungle:'#2a4018',coast:'#1e3040',
 };
-// Extended terrain definitions for game mechanics
-const TERRAIN_EXT={
-  plains:   {name:'Plains',   defB:1.0,  incM:1.10, col:TC.plains},
-  forest:   {name:'Forest',   defB:1.20, incM:.90,  col:TC.forest},
-  mountain: {name:'Mountain', defB:1.50, incM:.70,  col:TC.mountain},
-  swamp:    {name:'Swamp',    defB:1.15, incM:.80,  col:TC.swamp},
-  desert:   {name:'Desert',   defB:.90,  incM:.75,  col:TC.desert},
-  urban:    {name:'Urban',    defB:1.30, incM:1.40, col:TC.urban},
-  tundra:   {name:'Tundra',   defB:1.10, incM:.60,  col:TC.tundra},
-  hills:    {name:'Hills',    defB:1.30, incM:.85,  col:TC.hills},
-  highland: {name:'Highland', defB:1.40, incM:.75,  col:TC.highland},
-  steppe:   {name:'Steppe',   defB:.95,  incM:.90,  col:TC.steppe},
-  farmland: {name:'Farmland', defB:1.0,  incM:1.20, col:TC.farmland},
-  savanna:  {name:'Savanna',  defB:.85,  incM:.85,  col:TC.savanna},
-  jungle:   {name:'Jungle',   defB:1.25, incM:.80,  col:TC.jungle},
-  coast:    {name:'Coast',    defB:.95,  incM:1.05, col:TC.coast},
+const TERRAIN={
+  plains:{name:'Plains',defB:1.0,incM:1.10},forest:{name:'Forest',defB:1.20,incM:.90},
+  mountain:{name:'Mountain',defB:1.50,incM:.70},swamp:{name:'Swamp',defB:1.15,incM:.80},
+  desert:{name:'Desert',defB:.90,incM:.75},urban:{name:'Urban',defB:1.30,incM:1.40},
+  tundra:{name:'Tundra',defB:1.10,incM:.60},hills:{name:'Hills',defB:1.30,incM:.85},
+  highland:{name:'Highland',defB:1.40,incM:.75},steppe:{name:'Steppe',defB:.95,incM:.90},
+  farmland:{name:'Farmland',defB:1.0,incM:1.20},savanna:{name:'Savanna',defB:.85,incM:.85},
+  jungle:{name:'Jungle',defB:1.25,incM:.80},coast:{name:'Coast',defB:.95,incM:1.05},
 };
-// Fallback for old TERRAIN references
-const TERRAIN=TERRAIN_EXT;
 const RES_COLORS={oil:'#8a6020',coal:'#303030',grain:'#5a7020',steel:'#405070',iron:'#506070'};
 
-// ── HEX GRID RENDERING ──────────────────────────────────
-// Pre-computed hex positions from HEX_GRID (if available)
-let _hexCache=null; // {x,y,r,c,t,sea,p}[]
-
+// ── HEX GRID CACHE (new map format) ──────────────────────
+let _hexCache=null;
 function buildHexCache(){
   if(typeof HEX_GRID==='undefined'||!HEX_GRID||!HEX_GRID.hexes){_hexCache=null;return;}
-  const {cols,rows,hexR,hexes}=HEX_GRID;
-  const R=hexR||18;
-  // Pointy-top offset hex coordinates
-  const W=Math.sqrt(3)*R, H=2*R;
-  _hexCache=hexes.map(h=>{
-    const x=W*h.c + (h.r%2===1?W/2:0);
-    const y=H*0.75*h.r;
-    return{...h,x,y,R};
-  });
+  const {hexR,hexes}=HEX_GRID, R=hexR||18, W=Math.sqrt(3)*R, H=2*R;
+  _hexCache=hexes.map(h=>({...h, x:W*h.c+(h.r%2===1?W/2:0), y:H*0.75*h.r, R}));
 }
 
-// Get hex pixel coords by (r,c)
-function hexXY(r,c,R){
-  const W=Math.sqrt(3)*R, H=2*R;
-  return [W*c+(r%2===1?W/2:0), H*0.75*r];
-}
-
-// Province terrain defense bonus — uses terrainMap if available, else single terrain
+// Weighted terrain defence from terrainMap (or single terrain fallback)
 function provTerrainDef(i){
-  const p=PROVINCES[i];
-  if(!p) return 1.0;
+  const p=PROVINCES[i]; if(!p) return 1.0;
   const tm=p.terrainMap;
   if(tm&&typeof tm==='object'){
-    let total=0,weighted=0;
-    for(const[t,cnt] of Object.entries(tm)){
-      const td=TERRAIN_EXT[t];
-      if(td){weighted+=td.defB*cnt;total+=cnt;}
-    }
-    return total>0?weighted/total:(TERRAIN_EXT[p.terrain||'plains']?.defB||1.0);
+    let tot=0,w=0;
+    for(const[t,c] of Object.entries(tm)){const d=TERRAIN[t];if(d){w+=d.defB*c;tot+=c;}}
+    return tot>0?w/tot:(TERRAIN[p.terrain||'plains']?.defB||1.0);
   }
-  return TERRAIN_EXT[p.terrain||'plains']?.defB||1.0;
+  return TERRAIN[p.terrain||'plains']?.defB||1.0;
 }
-// Province terrain income modifier
+// Weighted terrain income modifier
 function provTerrainInc(i){
-  const p=PROVINCES[i];
-  if(!p) return 1.0;
+  const p=PROVINCES[i]; if(!p) return 1.0;
   const tm=p.terrainMap;
   if(tm&&typeof tm==='object'){
-    let total=0,weighted=0;
-    for(const[t,cnt] of Object.entries(tm)){
-      const td=TERRAIN_EXT[t];
-      if(td){weighted+=td.incM*cnt;total+=cnt;}
-    }
-    return total>0?weighted/total:(TERRAIN_EXT[p.terrain||'plains']?.incM||1.0);
+    let tot=0,w=0;
+    for(const[t,c] of Object.entries(tm)){const d=TERRAIN[t];if(d){w+=d.incM*c;tot+=c;}}
+    return tot>0?w/tot:(TERRAIN[p.terrain||'plains']?.incM||1.0);
   }
-  return TERRAIN_EXT[p.terrain||'plains']?.incM||1.0;
+  return TERRAIN[p.terrain||'plains']?.incM||1.0;
+}
+
+// Sea labels: use SEA_ZONES if available, else legacy list
+function getSeaLabels(){
+  if(typeof SEA_ZONES!=='undefined'&&SEA_ZONES&&SEA_ZONES.length)
+    return SEA_ZONES.map(z=>({t:z.name,x:z.cx,y:z.cy,fs:z.fontSize||7}));
+  return[
+    {t:'ATLANTIC',x:40,y:300},{t:'NORTH SEA',x:182,y:224},
+    {t:'NORW. SEA',x:185,y:160},{t:'BALTIC',x:303,y:226},
+    {t:'MED.',x:155,y:462},{t:'MED.',x:253,y:460},{t:'MED. E',x:372,y:458},
+    {t:'ADRIATIC',x:304,y:394},{t:'AEGEAN',x:394,y:430},
+    {t:'BLACK SEA',x:440,y:376},{t:'CASPIAN',x:568,y:364},
+    {t:'ARCTIC',x:360,y:72},{t:'BARENTS',x:508,y:96},
+  ].map(l=>({...l,fs:7}));
 }
 
 const REBEL_COLOR='#c86820'; // orange-amber for rebels
@@ -432,7 +395,7 @@ function provColor(i){
     return hasBld?'#1e1e28':'#0e0e12'; // others
   }
 
-  if(m==='terrain') return TERRAIN_EXT[PROVINCES[i].terrain]?.col||TC[PROVINCES[i].terrain]||'#2a2a2a';
+  if(m==='terrain') return TC[PROVINCES[i].terrain]||'#2a2a2a';
 
   if(m==='resources'){
     const r=G.resBase[i]||{};
@@ -455,21 +418,15 @@ function provColor(i){
   return natColor(o);
 }
 
-// ── SEA LABELS — supports both old static list and new SEA_ZONES ──
-function getSeaLabels(){
-  if(typeof SEA_ZONES!=='undefined'&&SEA_ZONES&&SEA_ZONES.length){
-    return SEA_ZONES.map(z=>({t:z.name,x:z.cx,y:z.cy,fs:z.fontSize||7}));
-  }
-  // Legacy fallback
-  return [
-    {t:'ATLANTIC',x:40,y:300},{t:'NORTH SEA',x:182,y:224},
-    {t:'NORW. SEA',x:185,y:160},{t:'BALTIC',x:303,y:226},
-    {t:'MED.',x:155,y:462},{t:'MED.',x:253,y:460},{t:'MED. E',x:372,y:458},
-    {t:'ADRIATIC',x:304,y:394},{t:'AEGEAN',x:394,y:430},
-    {t:'BLACK SEA',x:440,y:376},{t:'CASPIAN',x:568,y:364},
-    {t:'ARCTIC',x:360,y:72},{t:'BARENTS',x:508,y:96},
-  ].map(l=>({...l,fs:7}));
-}
+// ── SEA LABELS ────────────────────────────────────────────
+const SEA_LABELS=[
+  {t:'ATLANTIC',x:40,y:300},{t:'NORTH SEA',x:182,y:224},
+  {t:'NORW. SEA',x:185,y:160},{t:'BALTIC',x:303,y:226},
+  {t:'MED.',x:155,y:462},{t:'MED.',x:253,y:460},{t:'MED. E',x:372,y:458},
+  {t:'ADRIATIC',x:304,y:394},{t:'AEGEAN',x:394,y:430},
+  {t:'BLACK SEA',x:440,y:376},{t:'CASPIAN',x:568,y:364},
+  {t:'ARCTIC',x:360,y:72},{t:'BARENTS',x:508,y:96},
+];
 
 // ── MAIN DRAW ─────────────────────────────────────────────
 function drawMap(){
@@ -481,7 +438,7 @@ function drawMap(){
   grad.addColorStop(0,'#08162a');grad.addColorStop(1,'#0c1e38');
   ctx.fillStyle=grad;ctx.fillRect(0,0,CW,CH);
 
-  // Grid overlay (subtle) — skip on low-quality devices
+  // Grid overlay — skip on low-quality devices
   if(!_lowQuality){
     ctx.strokeStyle='rgba(50,110,190,.045)';ctx.lineWidth=.5;
     const gs=40*vp.scale;
@@ -496,49 +453,39 @@ function drawMap(){
   ctx.save();
   ctx.translate(vp.tx,vp.ty);ctx.scale(vp.scale,vp.scale);
 
-  // ── Sea labels (dynamic: SEA_ZONES or legacy fallback) ───
+  // Sea labels
   ctx.textAlign='center';ctx.textBaseline='middle';
-  const _seaLbls=getSeaLabels();
-  _seaLbls.forEach(sl=>{
+  getSeaLabels().forEach(sl=>{
     if(sl.x<wx0-40||sl.x>wx1+40||sl.y<wy0-20||sl.y>wy1+20)return;
-    const fs=Math.max(5,Math.min(sl.fs||7, 24));
-    ctx.font=`italic ${fs}px Cinzel,serif`;
-    ctx.fillStyle=`rgba(65,135,200,${Math.min(0.35,0.18+fs*0.01)})`;
+    ctx.font=`italic ${Math.max(5,Math.min(sl.fs||7,24))}px Cinzel,serif`;
+    ctx.fillStyle='rgba(65,135,200,.26)';
     ctx.fillText(sl.t,sl.x,sl.y);
   });
 
-  // ── HEX_GRID mode: render individual hexes ────────────────
-  // Uses HEX_GRID data (new map format) — each hex knows terrain, sea, province
+  // ── HEX_GRID render (new map format) ─────────────────────
   if(_hexCache&&_hexCache.length){
-    const R=HEX_GRID.hexR;
-    const pad=R*2;
+    const R=HEX_GRID.hexR, pad=R*2;
     // Pass 1: fill
     for(const h of _hexCache){
-      if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad) continue;
+      if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
       hexPath(ctx,h.x,h.y,R+0.5/vp.scale);
-      if(h.sea){
-        ctx.fillStyle='#071628';
-      } else if(h.p>=0){
-        ctx.fillStyle=provColor(h.p);
-      } else {
-        ctx.fillStyle=TC[h.t]||'#2a2a2a';
-      }
+      ctx.fillStyle=h.sea?'#071628':h.p>=0?provColor(h.p):(TC[h.t]||'#2a2a2a');
       ctx.fill();
     }
-    // Pass 2: borders (only non-sea hexes at province boundaries)
+    // Pass 2: borders
     for(const h of _hexCache){
       if(h.sea||h.p<0)continue;
       if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
-      const i=h.p, o=G.owner[i];
+      const i=h.p,o=G.owner[i];
       if(i===G.sel){
         hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(255,255,255,.95)';ctx.lineWidth=2/vp.scale;ctx.stroke();
-      } else if(G.moveMode&&G.moveFrom>=0&&isMoveTgt(i)){
+      }else if(G.moveMode&&G.moveFrom>=0&&isMoveTgt(i)){
         hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(80,255,80,.9)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();
-      } else if(_atkSelectMode&&isAtkSrc(i)){
+      }else if(_atkSelectMode&&isAtkSrc(i)){
         hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(255,80,80,.9)';ctx.lineWidth=1.8/vp.scale;ctx.stroke();
-      } else if(G.navalMode&&G.navalFrom>=0&&navalDests(G.navalFrom).includes(i)){
+      }else if(G.navalMode&&G.navalFrom>=0&&navalDests(G.navalFrom).includes(i)){
         hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(80,200,255,.9)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();
-      } else {
+      }else{
         const hasBorder=(NB[i]||[]).some(nb=>G.owner[nb]!==o);
         if(hasBorder){
           hexPath(ctx,h.x,h.y,R);
@@ -546,27 +493,21 @@ function drawMap(){
             ctx.save();ctx.setLineDash([2.5/vp.scale,2/vp.scale]);
             ctx.strokeStyle='rgba(200,100,30,.7)';ctx.lineWidth=1.2/vp.scale;ctx.stroke();
             ctx.setLineDash([]);ctx.restore();
-          } else if(o===G.playerNation&&G.mapMode==='political'){
+          }else if(o===G.playerNation&&G.mapMode==='political'){
             const hasRebelNb=(NB[i]||[]).some(nb=>G.owner[nb]<0&&!PROVINCES[nb]?.isSea);
-            if(hasRebelNb){
-              ctx.save();ctx.setLineDash([3/vp.scale,2/vp.scale]);
-              ctx.strokeStyle='rgba(60,200,60,.85)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();
-              ctx.setLineDash([]);ctx.restore();
-            } else {ctx.strokeStyle='rgba(6,8,14,.65)';ctx.lineWidth=.5/vp.scale;ctx.stroke();}
-          } else {ctx.strokeStyle='rgba(6,8,14,.65)';ctx.lineWidth=.5/vp.scale;ctx.stroke();}
+            if(hasRebelNb){ctx.save();ctx.setLineDash([3/vp.scale,2/vp.scale]);ctx.strokeStyle='rgba(60,200,60,.85)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();ctx.setLineDash([]);ctx.restore();}
+            else{ctx.strokeStyle='rgba(6,8,14,.65)';ctx.lineWidth=.5/vp.scale;ctx.stroke();}
+          }else{ctx.strokeStyle='rgba(6,8,14,.65)';ctx.lineWidth=.5/vp.scale;ctx.stroke();}
         }
       }
     }
-  } else {
-  // ── Province centroid mode (old map / no HEX_GRID) ────────
-  // Draw hexes — two passes: fill (slightly enlarged to kill AA gaps) then borders
+  }else{
+  // ── Centroid render (old map / no HEX_GRID) ──────────────
   PROVINCES.forEach((p,i)=>{
     if(p.cx<wx0-30||p.cx>wx1+30||p.cy<wy0-30||p.cy>wy1+30)return;
     const r=scaledR(i);
-    // Bloat fill by 0.6px in world-space to cover antialiasing seams
     hexPath(ctx,p.cx,p.cy,r+0.6/vp.scale);
-    ctx.fillStyle=provColor(i);
-    ctx.fill();
+    ctx.fillStyle=provColor(i);ctx.fill();
   });
 
   // Borders — only draw on selected/target hexes + nation boundaries (skip internal same-nation borders)
@@ -615,18 +556,14 @@ function drawMap(){
       }
     }
   });
-  } // end centroid mode (no HEX_GRID)
+  } // end centroid mode
 
-  // ── Labels — province names, army counts, icons ──────────
-  // Works for both HEX_GRID and centroid modes
-  // In HEX_GRID mode: use province centroid cx/cy from PROVINCES
+  // ── Labels (both modes — use province centroid cx/cy) ────
   if(vp.scale>0.55){
     PROVINCES.forEach((p,i)=>{
-      // In HEX_GRID mode skip if province has no hexes visible
-      const px=p.cx, py=p.cy;
+      const px=p.cx,py=p.cy;
       if(px<wx0-25||px>wx1+25||py<wy0-25||py>wy1+25)return;
-      // Determine label radius — use HEX_GRID R if available
-      const labelR=(_hexCache?HEX_GRID.hexR:scaledR(i));
+      const labelR=_hexCache?HEX_GRID.hexR:scaledR(i);
       const fs=Math.max(3,Math.min(7,labelR*.42));
 
       // Province name — only for capitals on the map
@@ -661,7 +598,7 @@ function drawMap(){
         ctx.shadowBlur=0;
       }
 
-      // Draft queue indicator — #72F372, below army number if army present
+      // Draft queue indicator
       const _draftEntry=(G.draftQueue||[]).find(d=>d.prov===i&&d.nation===G.playerNation);
       if(_draftEntry && G.mapMode==='political' && vp.scale>1.0){
         const _armyYBase = p.isCapital ? fs*.85 : 0;
@@ -675,7 +612,7 @@ function drawMap(){
         ctx.shadowBlur=0;
       }
 
-      // Army count — only political/terrain/resources modes, when zoomed in
+      // Army count
       if(G.army[i]>0 && vp.scale>1.0 && canSeeArmy(i) && G.mapMode!=='instab' && G.mapMode!=='disease' && G.mapMode!=='buildings'){
         ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;
         ctx.fillStyle='rgba(232,205,145,.85)';
@@ -698,21 +635,18 @@ function drawMap(){
         const bldR=labelR*0.82;
         const total=bldList.length;
         bldList.forEach((k,bi)=>{
-          const bDef=BUILDINGS[k];
-          if(!bDef)return;
+          const bDef=BUILDINGS[k];if(!bDef)return;
           const startX=px-(total-1)*fs*0.65;
-          const bx=startX+bi*fs*1.3;
-          const by=py+bldR*0.55;
+          const bx=startX+bi*fs*1.3, by=py+bldR*0.55;
           ctx.fillStyle='rgba(0,0,0,0.7)';
           ctx.beginPath();ctx.arc(bx,by,fs*0.72,0,Math.PI*2);ctx.fill();
-          ctx.strokeStyle='rgba(201,168,76,0.5)';ctx.lineWidth=0.8/vp.scale;
-          ctx.stroke();
+          ctx.strokeStyle='rgba(201,168,76,0.5)';ctx.lineWidth=0.8/vp.scale;ctx.stroke();
           ctx.font=`${Math.max(fs*1.1,5)}px serif`;
           ctx.textAlign='center';ctx.textBaseline='middle';
           ctx.fillText(bDef.icon||'?',bx,by);
         });
       }
-      // Construction indicator — also only in buildings mode
+      // Construction indicator
       if(G.mapMode==='buildings' && G.construction[i]){
         const c=G.construction[i];
         const prog=Math.round((c.totalTurns-c.turnsLeft)/c.totalTurns*100);
@@ -724,14 +658,14 @@ function drawMap(){
         ctx.shadowBlur=0;
       }
 
-      // Resistance indicator — only in political mode
+      // Resistance indicator
       if(G.mapMode==='political' && G.resistance[i]>30){
         ctx.font=`${fs+1}px serif`;
         ctx.textAlign='center';ctx.textBaseline='middle';
         ctx.fillText('🔥',px+labelR*.55,py+labelR*.55);
       }
 
-      // Resource dots in resource mode
+      // Resource dots
       if(G.mapMode==='resources'){
         const res=G.resBase[i]||{};
         const rkeys=Object.keys(res).filter(k=>res[k]>0);
@@ -889,48 +823,38 @@ function zoomBy(f,cx,cy){
   scheduleDraw();
 }
 function zoomReset(){
-  // HEX_GRID mode: use pixel extent of the grid
   if(_hexCache&&_hexCache.length&&HEX_GRID){
     const R=HEX_GRID.hexR;
-    const xs=_hexCache.map(h=>h.x), ys=_hexCache.map(h=>h.y);
-    const minX=Math.min(...xs)-R*2, maxX=Math.max(...xs)+R*2;
-    const minY=Math.min(...ys)-R*2, maxY=Math.max(...ys)+R*2;
-    const mw=maxX-minX, mh=maxY-minY;
-    const s=Math.min(CW/mw, CH/mh)*0.92;
-    vp.scale=s;
-    vp.tx=(CW-mw*s)/2 - minX*s;
-    vp.ty=(CH-mh*s)/2 - minY*s;
+    const xs=_hexCache.map(h=>h.x),ys=_hexCache.map(h=>h.y);
+    const minX=Math.min(...xs)-R*2,maxX=Math.max(...xs)+R*2;
+    const minY=Math.min(...ys)-R*2,maxY=Math.max(...ys)+R*2;
+    const mw=maxX-minX,mh=maxY-minY;
+    const s=Math.min(CW/mw,CH/mh)*0.92;
+    vp.scale=s;vp.tx=(CW-mw*s)/2-minX*s;vp.ty=(CH-mh*s)/2-minY*s;
     scheduleDraw();return;
   }
   if(!PROVINCES.length){vp.scale=1;vp.tx=0;vp.ty=0;scheduleDraw();return;}
-  const xs=PROVINCES.map(p=>p.cx), ys=PROVINCES.map(p=>p.cy);
-  const minX=Math.min(...xs)-25, maxX=Math.max(...xs)+25;
-  const minY=Math.min(...ys)-25, maxY=Math.max(...ys)+25;
-  const mw=maxX-minX, mh=maxY-minY;
-  const s=Math.min(CW/mw, CH/mh)*0.88;
-  vp.scale=s;
-  vp.tx=(CW-mw*s)/2 - minX*s;
-  vp.ty=(CH-mh*s)/2 - minY*s;
+  const xs=PROVINCES.map(p=>p.cx),ys=PROVINCES.map(p=>p.cy);
+  const minX=Math.min(...xs)-25,maxX=Math.max(...xs)+25;
+  const minY=Math.min(...ys)-25,maxY=Math.max(...ys)+25;
+  const mw=maxX-minX,mh=maxY-minY;
+  const s=Math.min(CW/mw,CH/mh)*0.88;
+  vp.scale=s;vp.tx=(CW-mw*s)/2-minX*s;vp.ty=(CH-mh*s)/2-minY*s;
   scheduleDraw();
 }
 
 // Hit-test: which province was clicked at world coords wx,wy
-// In HEX_GRID mode: finds the closest non-sea hex and returns its province
-// In centroid mode: distance to province centroid
 function hitProv(wx,wy){
-  // HEX_GRID mode — find hex by pixel distance
   if(_hexCache&&_hexCache.length){
-    const R=HEX_GRID.hexR;
-    const R2=R*R*1.1;
-    let best=-1,bestDist=Infinity;
+    const R=HEX_GRID.hexR, R2=R*R*1.1;
+    let best=-1,bestD=Infinity;
     for(const h of _hexCache){
-      if(h.sea||h.p<0) continue;
-      const dx=wx-h.x, dy=wy-h.y, d=dx*dx+dy*dy;
-      if(d<R2&&d<bestDist){bestDist=d;best=h.p;}
+      if(h.sea||h.p<0)continue;
+      const dx=wx-h.x,dy=wy-h.y,d=dx*dx+dy*dy;
+      if(d<R2&&d<bestD){bestD=d;best=h.p;}
     }
     return best;
   }
-  // Centroid mode (old map)
   let best=-1,bestDist=Infinity;
   PROVINCES.forEach((p,i)=>{
     const dx=wx-p.cx,dy=wy-p.cy,d=dx*dx+dy*dy;
@@ -976,7 +900,7 @@ function showProvPopup(i, screenX, screenY){
   if(isOurs){
     stats.push({l:'Satisfaction', v: Math.round(G.satisfaction[i]||0)+'%'});
   } else {
-    stats.push({l:'Terrain', v: TERRAIN_EXT[p.terrain||'plains']?.name||p.terrain||'Plains'});
+    stats.push({l:'Terrain', v: TERRAIN[p.terrain||'plains']?.name||p.terrain||'Plains'});
   }
 
   const gridHtml = stats.map(s=>`<div class="pp-cell"><div class="pp-label">${s.l}</div><div class="pp-val">${s.v}</div></div>`).join('');
@@ -1277,7 +1201,7 @@ function updateSP(i){
 
   sEl('sp-nm',p.name);
   sHTML('sp-bdg',bdg);
-  sEl('sp-ow',(o>=0?ownerName(o):'Rebels')+' · '+(TERRAIN_EXT[p.terrain||'plains']?.name||p.terrain||'')+' · '+dateStr());
+  sEl('sp-ow',(o>=0?ownerName(o):'Rebels')+' · '+(TERRAIN[p.terrain||'plains']?.name||p.terrain||'')+' · '+dateStr());
   const avArmy=G.owner[i]===G.playerNation?availableArmy(i):G.army[i];
   const armyDisp=G.owner[i]===G.playerNation&&avArmy<G.army[i]
     ?`${fa(avArmy)} <span style="color:var(--dim);font-size:9px">(${fa(G.army[i])})</span>`
@@ -2505,9 +2429,8 @@ window.skipBattleAnim=function(){
 function runBattle(fr,to,atkF,atker,done){
   const df=G.army[to],isP=atker===G.playerNation;
   const io2=isP?ideol():IDEOLOGIES[NATIONS[atker]?.ideology||'nationalism'];
-  const terrain=provTerrainDef(to);
   const hasFort=(G.buildings[to]||[]).includes('fortress');
-  const defM=terrain*(hasFort?1.6:1);
+  const defM=provTerrainDef(to)*(hasFort?1.6:1);
   const instPen=isP?Math.max(.7,1-G.instab[fr]/150):1.0;
   const capPen=G.capitalPenalty[atker]>0?.85:1.0;
   const hasArsenal=(G.buildings[fr]||[]).includes('arsenal');
@@ -3259,7 +3182,7 @@ function processEpidemics(fullMonth=false){
     // ~70% per year in peace, ~150% in war — diseases are common
     const baseChance=(atWar?0.50:0.28)*seasonMult;
     if(Math.random()<baseChance){
-      const candidates=PROVINCES.map((_,i)=>i).filter(i=>!PROVINCES[i].isSea&&PROVINCES[i].terrain!=='sea');
+      const candidates=PROVINCES.map((_,i)=>i).filter(i=>!PROVINCES[i].isSea);
       const origin=candidates[Math.floor(Math.random()*candidates.length)];
       if(!G.epidemics||!G.epidemics.find(ep=>ep.active&&ep.provinces.has(origin))){
         let pool=DISEASE_TYPES;
@@ -3302,7 +3225,7 @@ function processEpidemics(fullMonth=false){
       G.instab[prov]=Math.min(100,(G.instab[prov]||0)+ri(0,2));
 
       // ── Neighbor spread — very rare, one neighbor at a time ──
-      const neighbors=(NB[prov]||[]).filter(nb=>!ep.provinces.has(nb)&&!PROVINCES[nb]?.isSea&&PROVINCES[nb]?.terrain!=='sea');
+      const neighbors=(NB[prov]||[]).filter(nb=>!ep.provinces.has(nb)&&!PROVINCES[nb]?.isSea);
       if(neighbors.length>0&&Math.random()<0.12){ // 12% chance to even attempt spread this tick
         const nb=neighbors[Math.floor(Math.random()*neighbors.length)];
         const nbOwner=G.owner[nb];
@@ -3499,10 +3422,9 @@ function doAI(fullMonth=true){
         const sendFrac=aggressive?0.55:0.4;
         const send=Math.max(1,Math.floor(G.army[fr2]*sendFrac));
         if(def>=0&&def!==ai){G.war[ai][def]=true;G.war[def][ai]=true;}
-        const terrain2=provTerrainDef(to2);
         const frt=(G.buildings[to2]||[]).includes('fortress')?1.6:1;
         const terrMod=s.winterTerrain&&s.winterTerrain.includes(PROVINCES[to2]&&PROVINCES[to2].terrain)?s.moveMod:1.0;
-        const win=send*aio.atk*terrMod*rf(.75,1.25)>G.army[to2]*terrain2*frt*rf(.75,1.25);
+        const win=send*aio.atk*terrMod*rf(.75,1.25)>G.army[to2]*provTerrainDef(to2)*frt*rf(.75,1.25);
         if(win){
           const al=Math.floor(send*rf(.15,.3));
           G.army[fr2]-=send;G.army[to2]=Math.max(50,send-al);G.owner[to2]=ai;

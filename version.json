@@ -2,10 +2,10 @@
   "_comment": "Version format: MAJOR.MINOR.PATCH-YYMMDD",
   "_rules": [
     "MAJOR — engine rewrites, map changes, save format breaks",
-    "MINOR — new gameplay systems (economy, multiplayer, battle queue...)",
-    "PATCH — bugfixes, UI tweaks, balance changes",
+    "MINOR — new gameplay systems",
+    "PATCH — bugfixes, UI tweaks",
     "YYMMDD — build date"
   ],
-  "version": "0.9.2-260331",
-  "changelog": "Fix: loadMapScript now uses <script> tag injection (not new Function) — globals properly exposed; inline map.js always preloaded as default; buttons scope fixed"
+  "version": "0.9.2-260401",
+  "changelog": "New map format: HEX_GRID render, extended terrain types, terrainMap weighted def/income, dynamic map carousel, map upload/localStorage, <script> injection for correct global scope"
 }
