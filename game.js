@@ -320,6 +320,7 @@ function buildHexCache(){
   if(typeof HEX_GRID==='undefined'||!HEX_GRID||!HEX_GRID.hexes){_hexCache=null;return;}
   const {hexR,hexes}=HEX_GRID,R=hexR||18,W=Math.sqrt(3)*R,H=2*R;
   _hexCache=hexes.map(h=>({...h,x:W*h.c+(h.r%2?W/2:0),y:H*.75*h.r,R}));
+  _computeMapBounds();
 }
 
 function provTerrainDef(i){
@@ -450,7 +451,7 @@ function drawMap(){
   getSeaLabels().forEach(sl=>{
     if(sl.x<wx0-40||sl.x>wx1+40||sl.y<wy0-20||sl.y>wy1+20)return;
     ctx.font=`italic ${Math.max(5,Math.min(sl.fs||7,24))}px Cinzel,serif`;
-    ctx.fillStyle='rgba(65,135,200,.26)';
+    ctx.fillStyle='rgba(100,170,230,.65)';
     ctx.fillText(sl.t,sl.x,sl.y);
   });
 
@@ -757,25 +758,64 @@ function drawMap(){
     }
   }
 }
+// ── MAP BOUNDS (computed once, used for clamping) ────────
+let _mapBounds={minX:0,maxX:100,minY:0,maxY:100};
+function _computeMapBounds(){
+  if(_hexCache&&_hexCache.length){
+    const R=HEX_GRID.hexR;
+    let mnX=Infinity,mxX=-Infinity,mnY=Infinity,mxY=-Infinity;
+    for(const h of _hexCache){mnX=Math.min(mnX,h.x);mxX=Math.max(mxX,h.x);mnY=Math.min(mnY,h.y);mxY=Math.max(mxY,h.y);}
+    _mapBounds={minX:mnX-R*2,maxX:mxX+R*2,minY:mnY-R*2,maxY:mxY+R*2};
+    return;
+  }
+  if(!PROVINCES.length)return;
+  let mnX=Infinity,mxX=-Infinity,mnY=Infinity,mxY=-Infinity;
+  for(const p of PROVINCES){mnX=Math.min(mnX,p.cx);mxX=Math.max(mxX,p.cx);mnY=Math.min(mnY,p.cy);mxY=Math.max(mxY,p.cy);}
+  _mapBounds={minX:mnX-30,maxX:mxX+30,minY:mnY-30,maxY:mxY+30};
+}
+
+// Clamp viewport so map never fully leaves the screen
+function clampViewport(){
+  const {minX,maxX,minY,maxY}=_mapBounds;
+  const mapW=(maxX-minX)*vp.scale, mapH=(maxY-minY)*vp.scale;
+  const margin=Math.min(CW,CH)*0.15; // 15% of screen must stay visible
+  // Right edge of map must stay >= margin from left of screen
+  const maxTx=margin-minX*vp.scale;
+  // Left edge of map must stay <= CW-margin from left of screen
+  const minTx=CW-margin-maxX*vp.scale;
+  // Similarly for Y
+  const maxTy=margin-minY*vp.scale;
+  const minTy=CH-margin-maxY*vp.scale;
+  vp.tx=Math.max(minTx,Math.min(maxTx,vp.tx));
+  vp.ty=Math.max(minTy,Math.min(maxTy,vp.ty));
+}
+
 function zoomBy(f,cx,cy){
   if(cx===undefined){cx=CW/2;cy=CH/2;}
   const ns=Math.max(.18,Math.min(9,vp.scale*f)),r=ns/vp.scale;
   vp.tx=cx-(cx-vp.tx)*r;vp.ty=cy-(cy-vp.ty)*r;vp.scale=ns;
+  clampViewport();
   scheduleDraw();
 }
 function zoomReset(){
   if(_hexCache&&_hexCache.length){
-    const R=HEX_GRID.hexR,xs=_hexCache.map(h=>h.x),ys=_hexCache.map(h=>h.y);
-    const minX=Math.min(...xs)-R*2,maxX=Math.max(...xs)+R*2,minY=Math.min(...ys)-R*2,maxY=Math.max(...ys)+R*2;
+    const R=HEX_GRID.hexR;
+    // Use reduce instead of spread to avoid stack overflow on 15k+ arrays
+    let mnX=Infinity,mxX=-Infinity,mnY=Infinity,mxY=-Infinity;
+    for(const h of _hexCache){mnX=Math.min(mnX,h.x);mxX=Math.max(mxX,h.x);mnY=Math.min(mnY,h.y);mxY=Math.max(mxY,h.y);}
+    const minX=mnX-R*2,maxX=mxX+R*2,minY=mnY-R*2,maxY=mxY+R*2;
     const s=Math.min(CW/(maxX-minX),CH/(maxY-minY))*0.92;
     vp.scale=s;vp.tx=(CW-(maxX-minX)*s)/2-minX*s;vp.ty=(CH-(maxY-minY)*s)/2-minY*s;
+    _computeMapBounds();
     scheduleDraw();return;
   }
   if(!PROVINCES.length){vp.scale=1;vp.tx=0;vp.ty=0;scheduleDraw();return;}
-  const xs=PROVINCES.map(p=>p.cx),ys=PROVINCES.map(p=>p.cy);
-  const minX=Math.min(...xs)-25,maxX=Math.max(...xs)+25,minY=Math.min(...ys)-25,maxY=Math.max(...ys)+25;
+  let mnX=Infinity,mxX=-Infinity,mnY=Infinity,mxY=-Infinity;
+  for(const p of PROVINCES){mnX=Math.min(mnX,p.cx);mxX=Math.max(mxX,p.cx);mnY=Math.min(mnY,p.cy);mxY=Math.max(mxY,p.cy);}
+  const minX=mnX-25,maxX=mxX+25,minY=mnY-25,maxY=mxY+25;
   const s=Math.min(CW/(maxX-minX),CH/(maxY-minY))*0.88;
   vp.scale=s;vp.tx=(CW-(maxX-minX)*s)/2-minX*s;vp.ty=(CH-(maxY-minY)*s)/2-minY*s;
+  _computeMapBounds();
   scheduleDraw();
 }
 
@@ -974,12 +1014,14 @@ window.addEventListener('mousemove',e=>{
   const dx=e.clientX-_pan.lx,dy=e.clientY-_pan.ly;
   if(Math.abs(dx)>3||Math.abs(dy)>3){_moved=true;hideProvPopup();}
   vp.tx+=dx;vp.ty+=dy;_pan.lx=e.clientX;_pan.ly=e.clientY;
+  clampViewport();
   scheduleDraw();
 });
 window.addEventListener('mouseup',e=>{
   if(!_pan.active)return;
   _pan.active=false;wrap.style.cursor='';
-  if(!_moved&&Date.now()-_tapStart.t<400){
+  // Only fire click if mouse was pressed AND released on the canvas itself
+  if(!_moved&&Date.now()-_tapStart.t<400&&e.target===canvas){
     const r=canvas.getBoundingClientRect();
     const[wx,wy]=toWorld(e.clientX-r.left,e.clientY-r.top);
     onCanvasClick(wx,wy);
@@ -1014,6 +1056,7 @@ canvas.addEventListener('touchmove',e=>{
     const dx=t.clientX-_pan.lx,dy=t.clientY-_pan.ly;
     if(Math.abs(dx)>2||Math.abs(dy)>2){_moved=true;hideProvPopup();}
     vp.tx+=dx;vp.ty+=dy;_pan.lx=t.clientX;_pan.ly=t.clientY;
+    clampViewport();
     scheduleDraw();
   }else if(e.touches.length===2&&_pinch.active){
     const dx=e.touches[0].clientX-e.touches[1].clientX;
@@ -2185,31 +2228,7 @@ function showAttackDialog(fr,to){
   openMo('QUEUE ATTACK',html,btns);
   setTimeout(()=>document.getElementById('asl')&&document.getElementById('asl').style.setProperty('--pct','100%'),40);
 }
-function launchAtk(breakDiplo){
-  const fr=window._af,to=window._at,force=+(document.getElementById('asl')?.value||G.army[fr]);
-  const en=G.owner[to],PN=G.playerNation;
-  if(breakDiplo&&en>=0){
-    G.pact[PN][en]=G.pact[en][PN]=false;G.pLeft[PN][en]=G.pLeft[en][PN]=0;
-    // Break alliance if applicable
-    const ai=G.allianceOf[PN];
-    if(ai>=0&&G.alliance[ai]?.members.includes(en)){
-      G.alliance[ai].members=G.alliance[ai].members.filter(m=>m!==PN);
-      G.allianceOf[PN]=-1;
-      addLog(`Alliance broken: attacked ally ${ownerName(en)}!`,'diplo');
-    }
-  }
-  if(en>=0)G.war[PN][en]=G.war[en][PN]=true;
-  // Allied nations join the war
-  const enAlly=G.allianceOf[en];
-  if(enAlly>=0){
-    G.alliance[enAlly].members.filter(m=>m!==en&&m!==PN).forEach(m=>{
-      G.war[PN][m]=G.war[m][PN]=true;
-      addLog(`${ownerName(m)} joined the war as ally of ${ownerName(en)}!`,'war');
-    });
-  }
-  addLog(`⚔ Attack on ${PROVINCES[to].name}!`,'war');
-  runBattle(fr,to,force,PN,()=>{scheduleDraw();updateHUD();if(G.sel>=0)updateSP(G.sel);chkBtns();chkVic();});
-}
+// (first launchAtk removed — duplicate that called runBattle directly, bypassing queue)
 
 function launchAtk(breakDiplo){
   const fr=window._af,to=window._at;
