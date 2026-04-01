@@ -61,35 +61,39 @@ function advanceWeek(){
 // ── HEX RADIUS (computed from actual grid spacing) ───────
 let HEX_R = 4.75;
 function computeHexRadius(){
-  if(PROVINCES.length < 10){HEX_R=4.75;return;}
+  if(PROVINCES.length < 2){HEX_R=4.75;return;}
+  const N=PROVINCES.length;
+
+  // Ensure NB covers all provinces
+  while(NB.length<N) NB.push([]);
+
+  // Auto-detect hex spacing from province centroids.
+  // Search up to 80px to handle both dense (old) and sparse (new editor) maps.
   const dists=[];
-  const sample=Math.min(PROVINCES.length,300);
+  const sample=Math.min(N,300);
   for(let i=0;i<sample;i++){
     for(let j=i+1;j<sample;j++){
       const dx=PROVINCES[i].cx-PROVINCES[j].cx, dy=PROVINCES[i].cy-PROVINCES[j].cy;
       const d=Math.sqrt(dx*dx+dy*dy);
-      if(d>3&&d<14) dists.push(d);
+      if(d>2&&d<80) dists.push(d);
     }
   }
-  if(dists.length<5){HEX_R=4.75;return;}
-  dists.sort((a,b)=>a-b);
-  const step=0.5;
-  const bins={};
-  dists.forEach(d=>{const b=Math.round(d/step)*step;bins[b]=(bins[b]||0)+1;});
-  const neighborDist=parseFloat(Object.entries(bins).sort((a,b)=>b[1]-a[1])[0][0]);
+
+  let neighborDist=8;
+  if(dists.length>=3){
+    dists.sort((a,b)=>a-b);
+    const range=dists[dists.length-1]-dists[0];
+    const step=range>30?1:0.5;
+    const bins={};
+    dists.forEach(d=>{const b=Math.round(d/step)*step;bins[b]=(bins[b]||0)+1;});
+    neighborDist=parseFloat(Object.entries(bins).sort((a,b)=>b[1]-a[1])[0][0]);
+  }
   HEX_R = (neighborDist / Math.sqrt(3)) * 0.995;
 
-  // ── Rebuild NB for ALL provinces using coordinate proximity ──
-  // NB in map.js only has 100 slots — fix for full 1700+ province set
-  const N=PROVINCES.length;
-  // Resize NB to cover all provinces
-  while(NB.length<N) NB.push([]);
-  // Threshold: neighbor if distance < neighborDist * 1.25
-  const thresh=neighborDist*1.25;
+  // Rebuild NB from coordinate proximity
+  const thresh=neighborDist*1.35;
   const thresh2=thresh*thresh;
-  for(let i=0;i<N;i++){
-    NB[i]=[];  // clear old
-  }
+  for(let i=0;i<N;i++) NB[i]=[];
   for(let i=0;i<N;i++){
     for(let j=i+1;j<N;j++){
       const dx=PROVINCES[i].cx-PROVINCES[j].cx;
