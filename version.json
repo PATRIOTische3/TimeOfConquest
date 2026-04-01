@@ -1,4 +1,4 @@
 {
-  "version": "0.9.0-260401",
-  "changelog": "HEX_GRID support: multi-hex provinces, hexCount-scaled income/pop, terrainMap weighted defence/income, HEX_GRID renderer, hitProv per-hex, zoomReset grid-aware, new terrain types, SEA_ZONES labels"
+  "version": "0.9.1-260401",
+  "changelog": "Fix: TERRAIN defined in game.js as fallback (was ReferenceError); HEX_GRID render, hexCount-scaled income/pop, provTerrainDef/Inc, hitProv per-hex, zoomReset grid-aware"
 }

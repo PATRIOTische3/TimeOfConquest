@@ -159,16 +159,9 @@ function startGame(){
   G.month=0;G.week=0;G.year=1936;
   initDiplo();
   G.owner=PROVINCES.map(p=>p.nation??-1);
-  // Scale pop and income by hexCount (1 province = N hexes)
-  G.pop=PROVINCES.map((p,i)=>{
-    const base=p.isCapital?ri(30000,50000):ri(10000,40000);
-    return Math.round(base * Math.sqrt(provSize(i)));
-  });
+  G.pop=PROVINCES.map((p,i)=>Math.round((p.isCapital?ri(30000,50000):ri(10000,40000))*Math.sqrt(provSize(i))));
   G.army=PROVINCES.map(()=>0);
-  G.income=PROVINCES.map((p,i)=>{
-    const base=p.isCapital?ri(120,280):ri(40,130);
-    return Math.round(base * Math.sqrt(provSize(i)) * provTerrainInc(i));
-  });
+  G.income=PROVINCES.map((p,i)=>Math.round((p.isCapital?ri(120,280):ri(40,130))*Math.sqrt(provSize(i))*provTerrainInc(i)));
   G.instab=PROVINCES.map(()=>0);
   G.assim=PROVINCES.map(()=>100);
   G.disease=PROVINCES.map(()=>0);
@@ -300,34 +293,49 @@ const TC={
 };
 const RES_COLORS={oil:'#8a6020',coal:'#303030',grain:'#5a7020',steel:'#405070',iron:'#506070'};
 
-// ── HEX_GRID support ──────────────────────────────────────
-// Pre-computed per-hex pixel positions; rebuilt whenever map loads
-let _hexCache=null; // [{r,c,t,sea,p,x,y,R}]
+// TERRAIN defined here as fallback — map.js may also define it (map.js wins via script order)
+// If map.js already defined TERRAIN, we don't overwrite it
+if(typeof TERRAIN==='undefined'){
+  window.TERRAIN={
+    plains: {name:'Plains',  defB:1.0, incM:1.10},
+    forest: {name:'Forest',  defB:1.20,incM:.90},
+    mountain:{name:'Mountain',defB:1.50,incM:.70},
+    swamp:  {name:'Swamp',   defB:1.15,incM:.80},
+    desert: {name:'Desert',  defB:.90, incM:.75},
+    urban:  {name:'Urban',   defB:1.30,incM:1.40},
+    tundra: {name:'Tundra',  defB:1.10,incM:.60},
+    hills:  {name:'Hills',   defB:1.30,incM:.85},
+    highland:{name:'Highland',defB:1.40,incM:.75},
+    steppe: {name:'Steppe',  defB:.95, incM:.90},
+    farmland:{name:'Farmland',defB:1.0, incM:1.20},
+    savanna:{name:'Savanna', defB:.85, incM:.85},
+    jungle: {name:'Jungle',  defB:1.25,incM:.80},
+    coast:  {name:'Coast',   defB:.95, incM:1.05},
+  };
+}
 
+// ── HEX_GRID support ──────────────────────────────────────
+let _hexCache=null;
 function buildHexCache(){
   if(typeof HEX_GRID==='undefined'||!HEX_GRID||!HEX_GRID.hexes){_hexCache=null;return;}
   const {hexR,hexes}=HEX_GRID,R=hexR||18,W=Math.sqrt(3)*R,H=2*R;
   _hexCache=hexes.map(h=>({...h,x:W*h.c+(h.r%2?W/2:0),y:H*.75*h.r,R}));
 }
 
-// Weighted terrain defence bonus (uses terrainMap if available)
 function provTerrainDef(i){
   const p=PROVINCES[i];if(!p)return 1;
   const tm=p.terrainMap;
   if(tm){let w=0,n=0;for(const[t,c]of Object.entries(tm)){const d=TERRAIN[t];if(d){w+=d.defB*c;n+=c;}}if(n)return w/n;}
   return TERRAIN[p.terrain||'plains']?.defB||1;
 }
-// Weighted terrain income modifier
 function provTerrainInc(i){
   const p=PROVINCES[i];if(!p)return 1;
   const tm=p.terrainMap;
   if(tm){let w=0,n=0;for(const[t,c]of Object.entries(tm)){const d=TERRAIN[t];if(d){w+=d.incM*c;n+=c;}}if(n)return w/n;}
   return TERRAIN[p.terrain||'plains']?.incM||1;
 }
-// Province size in hexes (fallback=1 for old map format)
 function provSize(i){return PROVINCES[i]?.hexCount||1;}
 
-// Sea labels: SEA_ZONES (new format) or legacy list
 function getSeaLabels(){
   if(typeof SEA_ZONES!=='undefined'&&SEA_ZONES?.length)
     return SEA_ZONES.map(z=>({t:z.name,x:z.cx,y:z.cy,fs:z.fontSize||7}));
@@ -437,7 +445,7 @@ function drawMap(){
   ctx.save();
   ctx.translate(vp.tx,vp.ty);ctx.scale(vp.scale,vp.scale);
 
-  // Sea labels — SEA_ZONES (new format) or legacy list
+  // Sea labels — SEA_ZONES (new map) or legacy list
   ctx.textAlign='center';ctx.textBaseline='middle';
   getSeaLabels().forEach(sl=>{
     if(sl.x<wx0-40||sl.x>wx1+40||sl.y<wy0-20||sl.y>wy1+20)return;
@@ -446,47 +454,34 @@ function drawMap(){
     ctx.fillText(sl.t,sl.x,sl.y);
   });
 
-  // ── HEX_GRID mode: each hex rendered individually ─────────
+  // ── HEX_GRID mode ─────────────────────────────────────────
   if(_hexCache&&_hexCache.length){
-    const R=HEX_GRID.hexR, pad=R*2;
-    // Pass 1: fill all hexes
+    const R=HEX_GRID.hexR,pad=R*2;
     for(const h of _hexCache){
       if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
       hexPath(ctx,h.x,h.y,R+0.5/vp.scale);
       ctx.fillStyle=h.sea?'#071628':h.p>=0?provColor(h.p):(TC[h.t]||'#2a2a2a');
       ctx.fill();
     }
-    // Pass 2: borders at province/nation boundaries
     for(const h of _hexCache){
       if(h.sea||h.p<0)continue;
       if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
       const i=h.p,o=G.owner[i];
-      if(i===G.sel){
-        hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(255,255,255,.95)';ctx.lineWidth=2/vp.scale;ctx.stroke();
-      }else if(G.moveMode&&G.moveFrom>=0&&isMoveTgt(i)){
-        hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(80,255,80,.9)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();
-      }else if(_atkSelectMode&&isAtkSrc(i)){
-        hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(255,80,80,.9)';ctx.lineWidth=1.8/vp.scale;ctx.stroke();
-      }else if(G.navalMode&&G.navalFrom>=0&&navalDests(G.navalFrom).includes(i)){
-        hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(80,200,255,.9)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();
-      }else{
-        const hasBorder=(NB[i]||[]).some(nb=>G.owner[nb]!==o);
-        if(hasBorder){
+      if(i===G.sel){hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(255,255,255,.95)';ctx.lineWidth=2/vp.scale;ctx.stroke();}
+      else if(G.moveMode&&G.moveFrom>=0&&isMoveTgt(i)){hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(80,255,80,.9)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();}
+      else if(_atkSelectMode&&isAtkSrc(i)){hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(255,80,80,.9)';ctx.lineWidth=1.8/vp.scale;ctx.stroke();}
+      else if(G.navalMode&&G.navalFrom>=0&&navalDests(G.navalFrom).includes(i)){hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(80,200,255,.9)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();}
+      else{
+        if((NB[i]||[]).some(nb=>G.owner[nb]!==o)){
           hexPath(ctx,h.x,h.y,R);
-          if(o<0&&G.mapMode==='political'){
-            ctx.save();ctx.setLineDash([2.5/vp.scale,2/vp.scale]);
-            ctx.strokeStyle='rgba(200,100,30,.7)';ctx.lineWidth=1.2/vp.scale;ctx.stroke();
-            ctx.setLineDash([]);ctx.restore();
-          }else if(o===G.playerNation&&G.mapMode==='political'){
-            const hasRebelNb=(NB[i]||[]).some(nb=>G.owner[nb]<0);
-            if(hasRebelNb){ctx.save();ctx.setLineDash([3/vp.scale,2/vp.scale]);ctx.strokeStyle='rgba(60,200,60,.85)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();ctx.setLineDash([]);ctx.restore();}
-            else{ctx.strokeStyle='rgba(6,8,14,.65)';ctx.lineWidth=.5/vp.scale;ctx.stroke();}
-          }else{ctx.strokeStyle='rgba(6,8,14,.65)';ctx.lineWidth=.5/vp.scale;ctx.stroke();}
+          if(o<0&&G.mapMode==='political'){ctx.save();ctx.setLineDash([2.5/vp.scale,2/vp.scale]);ctx.strokeStyle='rgba(200,100,30,.7)';ctx.lineWidth=1.2/vp.scale;ctx.stroke();ctx.setLineDash([]);ctx.restore();}
+          else if(o===G.playerNation&&G.mapMode==='political'&&(NB[i]||[]).some(nb=>G.owner[nb]<0)){ctx.save();ctx.setLineDash([3/vp.scale,2/vp.scale]);ctx.strokeStyle='rgba(60,200,60,.85)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();ctx.setLineDash([]);ctx.restore();}
+          else{ctx.strokeStyle='rgba(6,8,14,.65)';ctx.lineWidth=.5/vp.scale;ctx.stroke();}
         }
       }
     }
   }else{
-  // ── Centroid mode (old map format, no HEX_GRID) ───────────
+  // ── Centroid mode (old map) ───────────────────────────────
   PROVINCES.forEach((p,i)=>{
     if(p.cx<wx0-30||p.cx>wx1+30||p.cy<wy0-30||p.cy>wy1+30)return;
     const r=scaledR(i);
@@ -542,8 +537,7 @@ function drawMap(){
   });
   } // end centroid mode
 
-  // ── Labels: province names, armies, icons ────────────────
-  // Works for both modes — uses province centroid (cx,cy) for label position
+  // ── Labels (both modes) ───────────────────────────────────
   if(vp.scale>0.55){
     PROVINCES.forEach((p,i)=>{
       const px=p.cx,py=p.cy;
@@ -551,7 +545,7 @@ function drawMap(){
       const labelR=_hexCache?HEX_GRID.hexR:scaledR(i);
       const fs=Math.max(3,Math.min(7,labelR*.42));
 
-      // Province name — only for capitals on the map
+      // Province name — capitals only
       if(p.isCapital){
         ctx.font=`700 ${fs+1}px Cinzel,serif`;
         ctx.fillStyle='#f0d080';
@@ -561,100 +555,62 @@ function drawMap(){
         ctx.shadowBlur=0;
       }
 
-      // Rebel label — only in political mode
-      if(G.owner[i]<0 && !PROVINCES[i]?.isSea && vp.scale>0.8 && G.mapMode==='political'){
-        ctx.font=`bold ${Math.max(4,fs)}px Cinzel,serif`;
-        ctx.fillStyle='rgba(220,130,50,.95)';
-        ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=3;
-        ctx.fillText('REBELS',px,py);
-        ctx.shadowBlur=0;
+      if(G.owner[i]<0&&!PROVINCES[i]?.isSea&&vp.scale>0.8&&G.mapMode==='political'){
+        ctx.font=`bold ${Math.max(4,fs)}px Cinzel,serif`;ctx.fillStyle='rgba(220,130,50,.95)';
+        ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=3;
+        ctx.fillText('REBELS',px,py);ctx.shadowBlur=0;
       }
 
-      // Instab mode — show satisfaction% on player provinces only
-      if(G.mapMode==='instab' && G.owner[i]===G.playerNation && vp.scale>0.9){
-        const sat=Math.round(G.satisfaction[i]||70);
-        const ins=G.instab[i]||0;
+      if(G.mapMode==='instab'&&G.owner[i]===G.playerNation&&vp.scale>0.9){
+        const sat=Math.round(G.satisfaction[i]||70),ins=G.instab[i]||0;
         ctx.font=`bold ${Math.max(4,fs)}px Cinzel,serif`;
         ctx.fillStyle=ins>70?'#ff8060':ins>40?'#ffcc60':ins>15?'#c0e860':'#80ff80';
-        ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=3;
-        ctx.fillText(sat+'%',px,py);
-        ctx.shadowBlur=0;
+        ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=3;
+        ctx.fillText(sat+'%',px,py);ctx.shadowBlur=0;
       }
 
-      // Draft queue indicator
       const _draftEntry=(G.draftQueue||[]).find(d=>d.prov===i&&d.nation===G.playerNation);
-      if(_draftEntry && G.mapMode==='political' && vp.scale>1.0){
-        const _armyYBase = p.isCapital ? fs*.85 : 0;
-        const _hasArmy = G.army[i]>0 && canSeeArmy(i);
-        const _draftY = py + _armyYBase + (_hasArmy ? fs*1.4 : 0);
-        ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;
-        ctx.fillStyle='#72F372';
-        ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=2;
-        ctx.fillText(fm(_draftEntry.amount),px,_draftY);
-        ctx.shadowBlur=0;
+      if(_draftEntry&&G.mapMode==='political'&&vp.scale>1.0){
+        const _draftY=py+(p.isCapital?fs*.85:0)+(G.army[i]>0&&canSeeArmy(i)?fs*1.4:0);
+        ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;ctx.fillStyle='#72F372';
+        ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=2;
+        ctx.fillText(fm(_draftEntry.amount),px,_draftY);ctx.shadowBlur=0;
       }
 
-      // Army count
-      if(G.army[i]>0 && vp.scale>1.0 && canSeeArmy(i) && G.mapMode!=='instab' && G.mapMode!=='disease' && G.mapMode!=='buildings'){
-        ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;
-        ctx.fillStyle='rgba(232,205,145,.85)';
-        ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.shadowColor='rgba(0,0,0,.9)';ctx.shadowBlur=2;
-        ctx.fillText(fm(G.army[i]),px,py+(p.isCapital?fs*.85:0));
-        ctx.shadowBlur=0;
+      if(G.army[i]>0&&vp.scale>1.0&&canSeeArmy(i)&&G.mapMode!=='instab'&&G.mapMode!=='disease'&&G.mapMode!=='buildings'){
+        ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;ctx.fillStyle='rgba(232,205,145,.85)';
+        ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='rgba(0,0,0,.9)';ctx.shadowBlur=2;
+        ctx.fillText(fm(G.army[i]),px,py+(p.isCapital?fs*.85:0));ctx.shadowBlur=0;
       }
 
-      // Capital star
       if(p.isCapital){
-        ctx.font=`${fs+3}px serif`;
-        ctx.fillStyle='#f0d080';ctx.shadowColor='rgba(0,0,0,.8)';ctx.shadowBlur=2;
+        ctx.font=`${fs+3}px serif`;ctx.fillStyle='#f0d080';ctx.shadowColor='rgba(0,0,0,.8)';ctx.shadowBlur=2;
         ctx.fillText('★',px+labelR*.62,py-labelR*.55);ctx.shadowBlur=0;
       }
 
-      // Building icons — ONLY in buildings map mode
-      if(G.mapMode==='buildings' && G.buildings[i]&&G.buildings[i].length){
-        const bldList=G.buildings[i];
-        const bldR=labelR*0.82;
-        const total=bldList.length;
-        bldList.forEach((k,bi)=>{
+      if(G.mapMode==='buildings'&&G.buildings[i]?.length){
+        const bldR=labelR*0.82,total=G.buildings[i].length;
+        G.buildings[i].forEach((k,bi)=>{
           const bDef=BUILDINGS[k];if(!bDef)return;
-          const startX=px-(total-1)*fs*0.65;
-          const bx=startX+bi*fs*1.3, by=py+bldR*0.55;
-          ctx.fillStyle='rgba(0,0,0,0.7)';
-          ctx.beginPath();ctx.arc(bx,by,fs*0.72,0,Math.PI*2);ctx.fill();
+          const bx=px-(total-1)*fs*0.65+bi*fs*1.3,by=py+bldR*0.55;
+          ctx.fillStyle='rgba(0,0,0,0.7)';ctx.beginPath();ctx.arc(bx,by,fs*0.72,0,Math.PI*2);ctx.fill();
           ctx.strokeStyle='rgba(201,168,76,0.5)';ctx.lineWidth=0.8/vp.scale;ctx.stroke();
-          ctx.font=`${Math.max(fs*1.1,5)}px serif`;
-          ctx.textAlign='center';ctx.textBaseline='middle';
+          ctx.font=`${Math.max(fs*1.1,5)}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
           ctx.fillText(bDef.icon||'?',bx,by);
         });
       }
-      // Construction indicator
-      if(G.mapMode==='buildings' && G.construction[i]){
-        const c=G.construction[i];
-        const prog=Math.round((c.totalTurns-c.turnsLeft)/c.totalTurns*100);
-        ctx.font=`${Math.max(4,fs-1)}px Cinzel,serif`;
-        ctx.fillStyle='rgba(201,168,76,0.9)';
-        ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=2;
-        ctx.fillText('🏗'+prog+'%',px,py);
-        ctx.shadowBlur=0;
+      if(G.mapMode==='buildings'&&G.construction[i]){
+        const c=G.construction[i],prog=Math.round((c.totalTurns-c.turnsLeft)/c.totalTurns*100);
+        ctx.font=`${Math.max(4,fs-1)}px Cinzel,serif`;ctx.fillStyle='rgba(201,168,76,0.9)';
+        ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=2;
+        ctx.fillText('🏗'+prog+'%',px,py);ctx.shadowBlur=0;
       }
-
-      // Resistance indicator
-      if(G.mapMode==='political' && G.resistance[i]>30){
-        ctx.font=`${fs+1}px serif`;
-        ctx.textAlign='center';ctx.textBaseline='middle';
+      if(G.mapMode==='political'&&G.resistance[i]>30){
+        ctx.font=`${fs+1}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
         ctx.fillText('🔥',px+labelR*.55,py+labelR*.55);
       }
-
-      // Resource dots
       if(G.mapMode==='resources'){
-        const res=G.resBase[i]||{};
-        const rkeys=Object.keys(res).filter(k=>res[k]>0);
-        rkeys.forEach((k,ki)=>{
+        Object.entries(G.resBase[i]||{}).filter(([,v])=>v>0).forEach(([k,],ki)=>{
           ctx.fillStyle=RES_COLORS[k]||'#888';
           ctx.beginPath();ctx.arc(px-4+ki*5,py+labelR*.6,2,0,Math.PI*2);ctx.fill();
         });
@@ -809,26 +765,21 @@ function zoomBy(f,cx,cy){
 }
 function zoomReset(){
   if(_hexCache&&_hexCache.length){
-    const R=HEX_GRID.hexR;
-    const xs=_hexCache.map(h=>h.x),ys=_hexCache.map(h=>h.y);
-    const minX=Math.min(...xs)-R*2,maxX=Math.max(...xs)+R*2;
-    const minY=Math.min(...ys)-R*2,maxY=Math.max(...ys)+R*2;
+    const R=HEX_GRID.hexR,xs=_hexCache.map(h=>h.x),ys=_hexCache.map(h=>h.y);
+    const minX=Math.min(...xs)-R*2,maxX=Math.max(...xs)+R*2,minY=Math.min(...ys)-R*2,maxY=Math.max(...ys)+R*2;
     const s=Math.min(CW/(maxX-minX),CH/(maxY-minY))*0.92;
     vp.scale=s;vp.tx=(CW-(maxX-minX)*s)/2-minX*s;vp.ty=(CH-(maxY-minY)*s)/2-minY*s;
     scheduleDraw();return;
   }
   if(!PROVINCES.length){vp.scale=1;vp.tx=0;vp.ty=0;scheduleDraw();return;}
   const xs=PROVINCES.map(p=>p.cx),ys=PROVINCES.map(p=>p.cy);
-  const minX=Math.min(...xs)-25,maxX=Math.max(...xs)+25;
-  const minY=Math.min(...ys)-25,maxY=Math.max(...ys)+25;
+  const minX=Math.min(...xs)-25,maxX=Math.max(...xs)+25,minY=Math.min(...ys)-25,maxY=Math.max(...ys)+25;
   const s=Math.min(CW/(maxX-minX),CH/(maxY-minY))*0.88;
   vp.scale=s;vp.tx=(CW-(maxX-minX)*s)/2-minX*s;vp.ty=(CH-(maxY-minY)*s)/2-minY*s;
   scheduleDraw();
 }
 
-// Hit-test: which province was clicked at world coords wx,wy
 function hitProv(wx,wy){
-  // HEX_GRID mode — find nearest non-sea hex within R
   if(_hexCache&&_hexCache.length){
     const R=HEX_GRID.hexR,R2=R*R*1.1;
     let best=-1,bestD=Infinity;
@@ -839,11 +790,9 @@ function hitProv(wx,wy){
     }
     return best;
   }
-  // Centroid mode
   let best=-1,bestDist=Infinity;
   PROVINCES.forEach((p,i)=>{
-    const dx=wx-p.cx,dy=wy-p.cy,d=dx*dx+dy*dy;
-    const r=p.isCapital?19:15;
+    const dx=wx-p.cx,dy=wy-p.cy,d=dx*dx+dy*dy,r=p.isCapital?19:15;
     if(d<r*r*1.2&&d<bestDist){bestDist=d;best=i;}
   });
   return best;
@@ -3408,7 +3357,7 @@ function doAI(fullMonth=true){
         const send=Math.max(1,Math.floor(G.army[fr2]*sendFrac));
         if(def>=0&&def!==ai){G.war[ai][def]=true;G.war[def][ai]=true;}
         const frt=(G.buildings[to2]||[]).includes('fortress')?1.6:1;
-        const terrMod=s.winterTerrain&&s.winterTerrain.includes(PROVINCES[to2]?.terrain)?s.moveMod:1.0;
+        const terrMod=s.winterTerrain?.includes(PROVINCES[to2]?.terrain)?s.moveMod:1.0;
         const win=send*aio.atk*terrMod*rf(.75,1.25)>G.army[to2]*provTerrainDef(to2)*frt*rf(.75,1.25);
         if(win){
           const al=Math.floor(send*rf(.15,.3));
