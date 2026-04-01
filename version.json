@@ -1,11 +1,4 @@
 {
-  "_comment": "Version format: MAJOR.MINOR.PATCH-YYMMDD",
-  "_rules": [
-    "MAJOR — engine rewrites, map changes, save format breaks",
-    "MINOR — new gameplay systems",
-    "PATCH — bugfixes, UI tweaks",
-    "YYMMDD — build date"
-  ],
-  "version": "0.9.2-260401",
-  "changelog": "New map format: HEX_GRID render, extended terrain types, terrainMap weighted def/income, dynamic map carousel, map upload/localStorage, <script> injection for correct global scope"
+  "version": "0.9.3-260401",
+  "changelog": "Fix: buildNations now called after map loaded; startGame captured lazily via _gameStart; initMaps awaited before drawing nations list"
 }

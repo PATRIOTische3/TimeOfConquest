@@ -1141,18 +1141,25 @@ window.refreshWorldsList=function(){
 
   async function initMaps(){
     const builtins=await probeBuiltinMaps();
-    buildMapList(builtins);buildMapCarousel();initMapDrag();
+    buildMapList(builtins);
+    buildMapCarousel();
+    initMapDrag();
+    // After carousel built — refresh nations for the default (preloaded) map
+    buildNations();
+    drawMap(hilite);
   }
 
-  // Patch startGame to load selected map first
-  const _origStartGame=window.startGame;
+  // Patch startGame — capture _origStartGame lazily at call time, not at parse time
   window.startGame=async function(){
     const m=_maps[_mapIdx];
     if(!m){popup('No map selected!');return;}
     const ok=await loadMapScript(m);
     if(!ok)return;
+    // After map script injected — refresh nations list in case map changed
+    buildNations();
     if(typeof computeHexRadius==='function')computeHexRadius();
-    _origStartGame&&_origStartGame();
+    // Call the real startGame from game.js directly
+    if(typeof _gameStart==='function') _gameStart();
   };
 
   // ── TITLE ────────────────────────────────────────────────
@@ -1224,9 +1231,13 @@ window.refreshWorldsList=function(){
     origShow(id);
     if(id==='setup'){
       setTimeout(()=>{
-        rsz();buildNations();hilite=-1;drawMap(-1);
+        rsz(); hilite=-1;
         document.getElementById('nation-info-card').style.display='none';
-        initMaps();initTitle();
+        initTitle();
+        // initMaps is async — it will call buildNations+drawMap when done
+        initMaps().then(()=>{
+          rsz();
+        });
       },30);
     }
     if(id==='worlds')refreshWorldsList();

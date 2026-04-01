@@ -149,7 +149,8 @@ function switchTab(id){document.querySelectorAll('.tab,.tpane').forEach(e=>e.cla
 function setMapMode(mode){G.mapMode=mode;document.querySelectorAll('.mmbtn').forEach(b=>b.classList.remove('on'));document.getElementById('mm-'+mode).classList.add('on');scheduleDraw();}
 
 // ── GAME START ────────────────────────────────────────────
-function startGame(){
+function startGame(){_gameStart();}
+function _gameStart(){
   if(SC<0)return;
   G.leaderName=document.getElementById('rname').value.trim()||'The Leader';
   G.ideology=SI||'fascism';G.playerNation=SC;
