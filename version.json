@@ -1,11 +1,4 @@
 {
-  "_comment": "Version format: MAJOR.MINOR.PATCH-YYMMDD",
-  "_rules": [
-    "MAJOR — engine rewrites, map changes, save format breaks",
-    "MINOR — new gameplay systems (economy, multiplayer, battle queue...)",
-    "PATCH — bugfixes, UI tweaks, balance changes",
-    "YYMMDD — build date"
-  ],
-  "version": "0.8.6-260319",
-  "changelog": "assimilation cost scales with province pop/2 for 48w base; cost curve normalized per province; pop passed through slider oninput and startAssim"
+  "version": "0.9.0-260401",
+  "changelog": "HEX_GRID support: multi-hex provinces, hexCount-scaled income/pop, terrainMap weighted defence/income, HEX_GRID renderer, hitProv per-hex, zoomReset grid-aware, new terrain types, SEA_ZONES labels"
 }
