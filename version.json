@@ -1,4 +1,11 @@
 {
-  "version": "0.9.3-260401",
-  "changelog": "Fix: buildNations now called after map loaded; startGame captured lazily via _gameStart; initMaps awaited before drawing nations list"
+  "_comment": "Version format: MAJOR.MINOR.PATCH-YYMMDD",
+  "_rules": [
+    "MAJOR — engine rewrites, map changes, save format breaks",
+    "MINOR — new gameplay systems (economy, multiplayer, battle queue...)",
+    "PATCH — bugfixes, UI tweaks, balance changes",
+    "YYMMDD — build date"
+  ],
+  "version": "0.8.6-260319",
+  "changelog": "assimilation cost scales with province pop/2 for 48w base; cost curve normalized per province; pop passed through slider oninput and startAssim"
 }

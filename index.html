@@ -522,25 +522,16 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
         <span class="camp-title-edit-icon">✎</span>
       </div>
       <div class="setup-block">
-      <div class="setup-block">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <div class="setup-lbl">MAP</div>
-          <div style="display:flex;align-items:center;gap:5px">
-            <span id="map-user-badge" style="display:none;font-size:8px;color:var(--dim);letter-spacing:1px">👤 CUSTOM</span>
-            <button onclick="triggerMapUpload()" style="background:none;border:1px solid var(--border);color:var(--dim);font-size:8px;font-family:Cinzel,serif;letter-spacing:1px;padding:2px 7px;cursor:pointer;transition:color .14s,border-color .14s" onmouseenter="this.style.color='var(--gold)';this.style.borderColor='var(--gold)'" onmouseleave="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">+ UPLOAD</button>
-            <button onclick="refreshMaps()" title="Rescan maps" style="background:none;border:1px solid var(--border);color:var(--dim);font-size:13px;padding:0px 6px;line-height:1.6;cursor:pointer;transition:color .14s,border-color .14s" onmouseenter="this.style.color='var(--gold)';this.style.borderColor='var(--gold)'" onmouseleave="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">⟳</button>
-          </div>
-        </div>
-        <div class="era-carousel" id="map-carousel">
-          <button class="era-arrow" id="map-prev" onclick="mapStep(-1)">‹</button>
-          <div class="era-track-outer" id="map-track-outer">
+        <div class="setup-lbl">ERA</div>
+        <div class="era-carousel" id="era-carousel">
+          <button class="era-arrow" id="era-prev" onclick="eraStep(-1)">‹</button>
+          <div class="era-track-outer" id="era-track-outer">
             <div class="era-fog-l"></div>
-            <div class="era-track" id="map-track"></div>
+            <div class="era-track" id="era-track"></div>
             <div class="era-fog-r"></div>
           </div>
-          <button class="era-arrow" id="map-next" onclick="mapStep(1)">›</button>
+          <button class="era-arrow" id="era-next" onclick="eraStep(1)">›</button>
         </div>
-        <input type="file" id="map-file-input" accept=".js" style="display:none" onchange="handleMapUpload(event)">
       </div>
       <div class="setup-block">
         <div class="setup-lbl">LEADER NAME</div>
@@ -997,170 +988,70 @@ window.refreshWorldsList=function(){
     ctx.fillStyle=vg;ctx.fillRect(0,0,cw,ch);
   }
 
-  // ── MAP DISCOVERY SYSTEM ─────────────────────────────────
-  const BUILTIN_MAP_NAMES=['map_1936','map_1444','map_1815','map_1914','map_1939','map_1942','map_1600','map_1200'];
-  const LS_MAPS_KEY='toc_user_maps';
-  let _maps=[],_mapIdx=0,_mapLoaded=-1;
+  // ── ERA ──────────────────────────────────────────────────
+  const ERAS=[
+    {year:1936,sub:'Age of Ideologies',locked:false},
+    {year:1939,sub:'World at War',locked:true},
+    {year:1942,sub:'Turning Point',locked:true},
+  ];
+  let eraIdx=0;
 
-  function getUserMaps(){try{const r=localStorage.getItem(LS_MAPS_KEY);return r?JSON.parse(r):[];}catch(e){return[];}}
-  function saveUserMap(id,label,script){
-    const maps=getUserMaps(),ex=maps.findIndex(m=>m.id===id);
-    const e={id,label,script,saved:Date.now()};
-    if(ex>=0)maps[ex]=e;else maps.push(e);
-    try{localStorage.setItem(LS_MAPS_KEY,JSON.stringify(maps));}catch(e){popup('Storage full');}
-  }
-  function deleteUserMap(id){try{localStorage.setItem(LS_MAPS_KEY,JSON.stringify(getUserMaps().filter(m=>m.id!==id)));}catch(e){}}
-
-  async function probeBuiltinMaps(){
-    const found=[];
-    await Promise.all(BUILTIN_MAP_NAMES.map(async n=>{
-      try{const r=await fetch(n+'.js',{method:'HEAD',cache:'no-cache'});if(r.ok)found.push(n);}catch(e){}
-    }));
-    return found;
-  }
-
-  function parseMapMeta(script,filename){
-    const proj=script.match(/Project\s*:\s*(.+)/),stats=script.match(/Stats\s*:\s*(.+)/),yr=filename.match(/(\d{3,4})/);
-    const label=proj?proj[1].trim():yr?yr[1]:filename.replace('map_','').replace('.js','');
-    const sublabel=stats?stats[1].trim():'';
-    return{label,sublabel};
-  }
-
-  function buildMapList(builtinNames){
-    _maps=[];
-    // Always add static map.js as first entry (already loaded, no fetch needed)
-    _maps.push({id:'map_inline',label:(typeof NATIONS!=='undefined'&&NATIONS.length?(NATIONS[0]?.name?.split(' ').pop()||'1936').toUpperCase()+' ERA':'1936'),sublabel:'default · '+(typeof PROVINCES!=='undefined'?PROVINCES.length+' provinces':''),src:null,user:false,script:null,preloaded:true});
-    for(const n of builtinNames){
-      if(n==='map')continue;
-      _maps.push({id:n,label:n.replace('map_','').toUpperCase(),sublabel:'built-in',src:n+'.js',user:false,script:null,preloaded:false});
-    }
-    for(const um of getUserMaps()){
-      const meta=parseMapMeta(um.script||'',um.label||um.id);
-      _maps.push({id:um.id,label:meta.label.toUpperCase(),sublabel:meta.sublabel||'uploaded',src:null,user:true,script:um.script,preloaded:false});
-    }
-  }
-
-  function loadMapScript(mapEntry){
-    return new Promise(async resolve=>{
-      if(mapEntry.preloaded){_mapLoaded=_mapIdx;resolve(true);return;}
-      if(_mapLoaded===_mapIdx){resolve(true);return;}
-      let script=mapEntry.script;
-      if(!script&&mapEntry.src){
-        try{const r=await fetch(mapEntry.src+'?_='+Date.now());if(!r.ok)throw 0;script=await r.text();}
-        catch(e){popup('⚠ Could not load '+mapEntry.src);resolve(false);return;}
-      }
-      if(!script){popup('No map data');resolve(false);return;}
-      const old=document.getElementById('_dynmap');if(old)old.remove();
-      const tag=document.createElement('script');
-      tag.id='_dynmap';tag.textContent=script;
-      try{document.head.appendChild(tag);_mapLoaded=_mapIdx;resolve(true);}
-      catch(e){popup('⚠ Map error: '+e.message);resolve(false);}
-    });
-  }
-
-  function buildMapCarousel(){
-    const track=document.getElementById('map-track');if(!track)return;
+  function buildEra(){
+    const track=document.getElementById('era-track');if(!track)return;
     track.innerHTML='';
-    _maps.forEach((m,i)=>{
+    ERAS.forEach((e,i)=>{
       const d=document.createElement('div');
-      d.className='era-slide';d.id='map-s'+i;
-      d.innerHTML=m.user
-        ?`<div style="font-size:9px;color:var(--dim);margin-bottom:1px">👤</div><div class="era-year" style="font-size:clamp(12px,1.6vw,18px)">${m.label}</div><div class="era-sub">${m.sublabel}</div>`
-        :`<div class="era-year">${m.label}</div><div class="era-sub">${m.sublabel}</div>`;
-      if(m.user){
-        let _lt;
-        d.addEventListener('contextmenu',e=>{e.preventDefault();if(confirm('Remove "'+m.label+'"?')){deleteUserMap(m.id);refreshMaps();}});
-        d.addEventListener('touchstart',()=>{_lt=setTimeout(()=>{if(confirm('Remove "'+m.label+'"?')){deleteUserMap(m.id);refreshMaps();}},700);},{passive:true});
-        d.addEventListener('touchend',()=>clearTimeout(_lt),{passive:true});
-      }
+      d.className='era-slide'+(e.locked?' locked':'');
+      d.id='era-s'+i;
+      d.innerHTML=e.locked
+        ?`<div class="era-lock">🔒</div><div class="era-year">${e.year}</div><div class="era-sub">${e.sub}</div>`
+        :`<div class="era-year">${e.year}</div><div class="era-sub">${e.sub}</div>`;
       track.appendChild(d);
     });
-    posMap(false);
+    posEra(false);
   }
 
-  function posMap(anim){
-    const track=document.getElementById('map-track');if(!track)return;
+  function posEra(anim){
+    const track=document.getElementById('era-track');if(!track)return;
+    // slide so active is in center (slot 1 of 3 visible)
+    const pct=(-eraIdx+1)*33.3333;
     track.style.transition=anim?'transform .3s cubic-bezier(.4,0,.2,1)':'none';
-    track.style.transform=`translateX(${(-_mapIdx+1)*33.3333}%)`;
-    _maps.forEach((_,i)=>{
-      const sl=document.getElementById('map-s'+i);if(!sl)return;
-      const d=i-_mapIdx;
+    track.style.transform=`translateX(${pct}%)`;
+    ERAS.forEach((_,i)=>{
+      const sl=document.getElementById('era-s'+i);if(!sl)return;
+      const d=i-eraIdx;
       sl.classList.remove('active','side','hidden');
       if(d===0)sl.classList.add('active');
       else if(Math.abs(d)===1)sl.classList.add('side');
       else sl.classList.add('hidden');
     });
-    const prev=document.getElementById('map-prev'),next=document.getElementById('map-next');
-    if(prev)prev.style.opacity=_mapIdx===0?'.2':'1';
-    if(next)next.style.opacity=_mapIdx===_maps.length-1?'.2':'1';
-    const badge=document.getElementById('map-user-badge');
-    if(badge)badge.style.display=_maps[_mapIdx]?.user?'inline':'none';
+    const prev=document.getElementById('era-prev'),next=document.getElementById('era-next');
+    if(prev)prev.style.opacity=eraIdx===0?'.2':'1';
+    if(next)next.style.opacity=eraIdx===ERAS.length-1?'.2':'1';
   }
 
-  function shake(id){const b=document.getElementById(id);if(!b)return;b.classList.remove('shake');void b.offsetWidth;b.classList.add('shake');setTimeout(()=>b.classList.remove('shake'),400);}
+  function shake(id){
+    const b=document.getElementById(id);if(!b)return;
+    b.classList.remove('shake');void b.offsetWidth;b.classList.add('shake');
+    setTimeout(()=>b.classList.remove('shake'),400);
+  }
 
-  window.mapStep=function(dir){
-    const n=_mapIdx+dir;
-    if(n<0){shake('map-prev');return;}
-    if(n>=_maps.length){shake('map-next');return;}
-    _mapIdx=n;posMap(true);
+  window.eraStep=function(dir){
+    const n=eraIdx+dir;
+    if(n<0){shake('era-prev');return;}
+    if(n>=ERAS.length){shake('era-next');return;}
+    eraIdx=n;posEra(true);
   };
 
-  function initMapDrag(){
-    const outer=document.getElementById('map-track-outer');if(!outer)return;
+  // drag/swipe
+  function initDrag(){
+    const outer=document.getElementById('era-track-outer');if(!outer)return;
     let sx=null,dragging=false;
     outer.addEventListener('mousedown',e=>{sx=e.clientX;dragging=true;e.preventDefault();});
-    window.addEventListener('mouseup',e=>{if(dragging){const dx=sx-e.clientX;dragging=false;if(Math.abs(dx)>22)mapStep(dx>0?1:-1);}});
+    window.addEventListener('mouseup',e=>{if(dragging){const dx=sx-e.clientX;dragging=false;if(Math.abs(dx)>22)eraStep(dx>0?1:-1);}});
     outer.addEventListener('touchstart',e=>{sx=e.touches[0].clientX;},{passive:true});
-    outer.addEventListener('touchend',e=>{if(sx!==null){const dx=sx-e.changedTouches[0].clientX;if(Math.abs(dx)>22)mapStep(dx>0?1:-1);sx=null;}},{passive:true});
+    outer.addEventListener('touchend',e=>{if(sx!==null){const dx=sx-e.changedTouches[0].clientX;if(Math.abs(dx)>22)eraStep(dx>0?1:-1);sx=null;}},{passive:true});
   }
-
-  window.triggerMapUpload=function(){document.getElementById('map-file-input')?.click();};
-  window.handleMapUpload=function(event){
-    const file=event.target.files?.[0];if(!file)return;
-    if(!file.name.endsWith('.js')){popup('Only .js map files');return;}
-    const reader=new FileReader();
-    reader.onload=e=>{
-      const script=e.target.result,meta=parseMapMeta(script,file.name);
-      const id='user_'+file.name.replace(/[^a-zA-Z0-9_]/g,'_');
-      saveUserMap(id,meta.label||file.name,script);
-      popup('✓ Map "'+(meta.label||file.name)+'" uploaded!',2500);
-      refreshMaps();
-    };
-    reader.readAsText(file);event.target.value='';
-  };
-
-  window.refreshMaps=async function(){
-    const btn=document.querySelector('[onclick="refreshMaps()"]');
-    if(btn){btn.style.transform='rotate(360deg)';btn.style.transition='transform .5s';setTimeout(()=>{btn.style.transform='';btn.style.transition='';},520);}
-    const builtins=await probeBuiltinMaps();
-    buildMapList(builtins);
-    _mapIdx=Math.min(_mapIdx,Math.max(0,_maps.length-1));
-    buildMapCarousel();buildNations();
-  };
-
-  async function initMaps(){
-    const builtins=await probeBuiltinMaps();
-    buildMapList(builtins);
-    buildMapCarousel();
-    initMapDrag();
-    // After carousel built — refresh nations for the default (preloaded) map
-    buildNations();
-    drawMap(hilite);
-  }
-
-  // Patch startGame — capture _origStartGame lazily at call time, not at parse time
-  window.startGame=async function(){
-    const m=_maps[_mapIdx];
-    if(!m){popup('No map selected!');return;}
-    const ok=await loadMapScript(m);
-    if(!ok)return;
-    // After map script injected — refresh nations list in case map changed
-    buildNations();
-    if(typeof computeHexRadius==='function')computeHexRadius();
-    // Call the real startGame from game.js directly
-    if(typeof _gameStart==='function') _gameStart();
-  };
 
   // ── TITLE ────────────────────────────────────────────────
   function initTitle(){
@@ -1222,7 +1113,7 @@ window.refreshWorldsList=function(){
     SC=-1;SI='fascism';
     const d=document.getElementById('camp-title-display');if(d)d.textContent='NEW CAMPAIGN';
     const inp=document.getElementById('camp-title-input');if(inp)inp.value='NEW CAMPAIGN';
-    _mapIdx=0;
+    eraIdx=0;
   };
   window.selectYear=function(){};
 
@@ -1231,13 +1122,9 @@ window.refreshWorldsList=function(){
     origShow(id);
     if(id==='setup'){
       setTimeout(()=>{
-        rsz(); hilite=-1;
+        rsz();buildNations();hilite=-1;drawMap(-1);
         document.getElementById('nation-info-card').style.display='none';
-        initTitle();
-        // initMaps is async — it will call buildNations+drawMap when done
-        initMaps().then(()=>{
-          rsz();
-        });
+        buildEra();initDrag();initTitle();
       },30);
     }
     if(id==='worlds')refreshWorldsList();
