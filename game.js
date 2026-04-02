@@ -158,7 +158,7 @@ function startGame(){
   G.ideology=SI||'fascism';G.playerNation=SC;
   G.month=0;G.week=0;G.year=1936;
   initDiplo();
-  G.owner=PROVINCES.map(p=>p.nation??-1);
+  G.owner=PROVINCES.map(p=>typeof p.nation==='number'?p.nation:-1);
   G.pop=PROVINCES.map((p,i)=>Math.round((p.isCapital?ri(30000,50000):ri(10000,40000))*Math.sqrt(provSize(i))));
   G.army=PROVINCES.map(()=>0);
   G.income=PROVINCES.map((p,i)=>Math.round((p.isCapital?ri(120,280):ri(40,130))*Math.sqrt(provSize(i))*provTerrainInc(i)));
@@ -468,16 +468,52 @@ function drawMap(){
       if(h.sea||h.p<0)continue;
       if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
       const i=h.p,o=G.owner[i];
-      if(i===G.sel){hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(255,255,255,.95)';ctx.lineWidth=2/vp.scale;ctx.stroke();}
-      else if(G.moveMode&&G.moveFrom>=0&&isMoveTgt(i)){hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(80,255,80,.9)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();}
-      else if(_atkSelectMode&&isAtkSrc(i)){hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(255,80,80,.9)';ctx.lineWidth=1.8/vp.scale;ctx.stroke();}
-      else if(G.navalMode&&G.navalFrom>=0&&navalDests(G.navalFrom).includes(i)){hexPath(ctx,h.x,h.y,R);ctx.strokeStyle='rgba(80,200,255,.9)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();}
-      else{
-        if((NB[i]||[]).some(nb=>G.owner[nb]!==o)){
+
+      // Determine what border style to apply to this hex
+      const isSel=i===G.sel;
+      const isMoveTgt_=G.moveMode&&G.moveFrom>=0&&isMoveTgt(i);
+      const isAtkSrc_=_atkSelectMode&&isAtkSrc(i);
+      const isNavalDst=G.navalMode&&G.navalFrom>=0&&navalDests(G.navalFrom).includes(i);
+
+      if(isSel||isMoveTgt_||isAtkSrc_||isNavalDst){
+        // For selection highlights: draw edge only if adjacent hex is NOT same province/state
+        // This gives a clean outer-border glow instead of per-hex outline
+        const W2=Math.sqrt(3)*R,H2=2*R;
+        // 6 neighbour offsets for pointy-top hex grid (alternating rows)
+        const even=h.r%2===0;
+        const nbOffsets=even
+          ?[[0,-1],[1,-1],[1,0],[0,1],[-1,0],[-1,-1]]
+          :[[0,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0]];
+        // For each edge (between vertex j and j+1), check if neighbour in that direction is same province
+        // We use a simpler approach: stroke full hex but only if it's a border hex of the selection
+        const isEdge=_hexCache.some(nb=>{
+          if(nb===h)return false;
+          const dx=Math.abs(nb.x-h.x),dy=Math.abs(nb.y-h.y);
+          if(dx>W2*1.1||dy>R*1.6)return false;
+          return nb.p!==i; // adjacent hex belongs to different province
+        });
+        if(isEdge||!_hexCache.some(nb=>nb!==h&&nb.p===i&&Math.abs(nb.x-h.x)<W2*1.1&&Math.abs(nb.y-h.y)<R*1.6)){
           hexPath(ctx,h.x,h.y,R);
+          if(isSel){ctx.strokeStyle='rgba(255,255,255,.95)';ctx.lineWidth=1.8/vp.scale;}
+          else if(isMoveTgt_){ctx.strokeStyle='rgba(80,255,80,.9)';ctx.lineWidth=1.5/vp.scale;}
+          else if(isAtkSrc_){ctx.strokeStyle='rgba(255,80,80,.9)';ctx.lineWidth=1.7/vp.scale;}
+          else{ctx.strokeStyle='rgba(80,200,255,.9)';ctx.lineWidth=1.5/vp.scale;}
+          ctx.stroke();
+        }
+      }else{
+        // Normal border: only draw if hex borders a different owner
+        const W2=Math.sqrt(3)*R;
+        const isProvBorder=_hexCache.some(nb=>{
+          if(nb===h)return false;
+          const dx=Math.abs(nb.x-h.x),dy=Math.abs(nb.y-h.y);
+          if(dx>W2*1.1||dy>R*1.6)return false;
+          return nb.sea||(nb.p>=0&&G.owner[nb.p]!==o)||(nb.p<0&&o>=0);
+        });
+        if(isProvBorder){
+          hexPath(ctx,h.x,h.y,R+0.2/vp.scale);
           if(o<0&&G.mapMode==='political'){ctx.save();ctx.setLineDash([2.5/vp.scale,2/vp.scale]);ctx.strokeStyle='rgba(200,100,30,.7)';ctx.lineWidth=1.2/vp.scale;ctx.stroke();ctx.setLineDash([]);ctx.restore();}
-          else if(o===G.playerNation&&G.mapMode==='political'&&(NB[i]||[]).some(nb=>G.owner[nb]<0)){ctx.save();ctx.setLineDash([3/vp.scale,2/vp.scale]);ctx.strokeStyle='rgba(60,200,60,.85)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();ctx.setLineDash([]);ctx.restore();}
-          else{ctx.strokeStyle='rgba(6,8,14,.65)';ctx.lineWidth=.5/vp.scale;ctx.stroke();}
+          else if(o===G.playerNation&&G.mapMode==='political'&&_hexCache.some(nb=>{const dx=Math.abs(nb.x-h.x),dy=Math.abs(nb.y-h.y);return dx<Math.sqrt(3)*R*1.1&&dy<R*1.6&&nb.p>=0&&G.owner[nb.p]<0;})){ctx.save();ctx.setLineDash([3/vp.scale,2/vp.scale]);ctx.strokeStyle='rgba(60,200,60,.85)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();ctx.setLineDash([]);ctx.restore();}
+          else{ctx.strokeStyle='rgba(6,8,14,.7)';ctx.lineWidth=.6/vp.scale;ctx.stroke();}
         }
       }
     }
@@ -539,9 +575,24 @@ function drawMap(){
   } // end centroid mode
 
   // ── Labels (both modes) ───────────────────────────────────
+  // Build province→representative hex position map for HEX_GRID mode
+  let _provHexPos=null;
+  if(_hexCache&&_hexCache.length){
+    _provHexPos=new Map();
+    for(const h of _hexCache){
+      if(h.sea||h.p<0)continue;
+      if(!_provHexPos.has(h.p)){_provHexPos.set(h.p,{x:h.x,y:h.y,count:1});}
+      else{const e=_provHexPos.get(h.p);e.x+=h.x;e.y+=h.y;e.count++;}
+    }
+    // Average to get centroid of all hexes in province
+    _provHexPos.forEach((v,k)=>{v.x/=v.count;v.y/=v.count;});
+  }
+
   if(vp.scale>0.55){
     PROVINCES.forEach((p,i)=>{
-      const px=p.cx,py=p.cy;
+      // Use hex centroid for HEX_GRID mode, province cx/cy for centroid mode
+      const hpos=_provHexPos&&_provHexPos.get(i);
+      const px=hpos?hpos.x:p.cx, py=hpos?hpos.y:p.cy;
       if(px<wx0-25||px>wx1+25||py<wy0-25||py>wy1+25)return;
       const labelR=_hexCache?HEX_GRID.hexR:scaledR(i);
       const fs=Math.max(3,Math.min(7,labelR*.42));
@@ -819,23 +870,47 @@ function zoomReset(){
   scheduleDraw();
 }
 
+// Returns the province index hit by world-coord click, or -1
 function hitProv(wx,wy){
   if(_hexCache&&_hexCache.length){
-    const R=HEX_GRID.hexR,R2=R*R*1.1;
+    const R=HEX_GRID.hexR;
+    // Pointy-top hex hit test: find nearest hex center within R distance
+    // Use flat iteration — spatial grid would be ideal but R*1.5 radius check is fast enough
     let best=-1,bestD=Infinity;
     for(const h of _hexCache){
       if(h.sea||h.p<0)continue;
       const dx=wx-h.x,dy=wy-h.y,d=dx*dx+dy*dy;
-      if(d<R2&&d<bestD){bestD=d;best=h.p;}
+      if(d<R*R*1.5&&d<bestD){bestD=d;best=h.p;}
+    }
+    // If nothing found in tight radius, widen search to 3*R (gap between hexes)
+    if(best<0){
+      const R3=R*3*R*3;
+      for(const h of _hexCache){
+        if(h.sea||h.p<0)continue;
+        const dx=wx-h.x,dy=wy-h.y,d=dx*dx+dy*dy;
+        if(d<R3&&d<bestD){bestD=d;best=h.p;}
+      }
     }
     return best;
   }
+  // Centroid mode: find nearest province centroid
   let best=-1,bestDist=Infinity;
+  const threshold=HEX_R*HEX_R*4;
   PROVINCES.forEach((p,i)=>{
-    const dx=wx-p.cx,dy=wy-p.cy,d=dx*dx+dy*dy,r=p.isCapital?19:15;
-    if(d<r*r*1.2&&d<bestDist){bestDist=d;best=i;}
+    const dx=wx-p.cx,dy=wy-p.cy,d=dx*dx+dy*dy;
+    if(d<threshold&&d<bestDist){bestDist=d;best=i;}
   });
   return best;
+}
+
+// Get screen position of province i (center of its hex cluster)
+function provScreenPos(i){
+  if(_hexCache&&_hexCache.length){
+    // Find a hex belonging to this province
+    const h=_hexCache.find(h=>h.p===i&&!h.sea);
+    if(h) return toScreen(h.x,h.y);
+  }
+  return toScreen(PROVINCES[i].cx,PROVINCES[i].cy);
 }
 
 // ── PROVINCE POPUP ────────────────────────────────────────
@@ -988,9 +1063,9 @@ function onCanvasClick(wx,wy){
   if(window.innerWidth<=700) switchTab('info');
 
   // Show popup with province info + action buttons
-  // Convert world coords back to screen for popup positioning
-  const [sx,sy] = toScreen(PROVINCES[i].cx, PROVINCES[i].cy);
-  showProvPopup(i, sx, sy - HEX_R*vp.scale);
+  const [sx,sy] = provScreenPos(i);
+  const hexR = _hexCache ? HEX_GRID.hexR : HEX_R;
+  showProvPopup(i, sx, sy - hexR*vp.scale);
 }
 
 // ── POINTER EVENTS (unified mouse+touch) ──────────────────
