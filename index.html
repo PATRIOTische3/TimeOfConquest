@@ -113,23 +113,65 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .camp-title-input{font-family:'Cinzel Decorative',serif;font-size:clamp(14px,1.8vw,22px);color:var(--gold);background:transparent;border:none;border-bottom:1.5px solid var(--gold);outline:none;width:100%;letter-spacing:3px;padding:2px 0}
 .camp-title-input::placeholder{color:var(--dim)}
 
-/* SCENARIO PICKER (replaces ERA carousel) */
+/* SCENARIO PICKER */
 #scenario-section{display:flex;flex-direction:column;gap:6px}
-#scenario-list{display:flex;flex-direction:column;gap:3px;max-height:clamp(120px,22vh,220px);overflow-y:auto}
+#scenario-header{display:flex;align-items:center;justify-content:space-between;gap:6px}
+#scenario-view-toggle{display:flex;gap:3px}
+.scen-view-btn{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--dim);font-size:10px;padding:3px 8px;cursor:pointer;transition:all .12s;font-family:'Cinzel',serif}
+.scen-view-btn.on{border-color:var(--gold);color:var(--gold);background:rgba(201,168,76,.08)}
+#scenario-list{display:flex;flex-direction:column;gap:3px;max-height:clamp(130px,24vh,240px);overflow-y:auto}
+#scenario-list.tile-mode{flex-direction:row;flex-wrap:wrap;gap:5px}
 #scenario-list::-webkit-scrollbar{width:2px}
 #scenario-list::-webkit-scrollbar-thumb{background:var(--border)}
-.scen-card{display:flex;align-items:center;gap:10px;padding:8px 11px;background:rgba(0,0,0,.35);border:1px solid var(--border);cursor:pointer;transition:all .12s;user-select:none}
-.scen-card:hover{border-color:var(--border2);background:rgba(201,168,76,.05)}
-.scen-card.active{border-color:var(--gold);background:rgba(201,168,76,.09)}
-.scen-card.locked{opacity:.45;cursor:not-allowed}
-.scen-card.user-map{border-color:rgba(80,150,255,.35)}
-.scen-icon{font-size:16px;flex-shrink:0;width:22px;text-align:center}
+/* List mode card */
+.scen-card{display:flex;align-items:center;gap:10px;padding:8px 11px;background:rgba(0,0,0,.38);border:1px solid var(--border);cursor:pointer;transition:all .12s;user-select:none;position:relative}
+.scen-card:hover:not(.locked){border-color:var(--border2);background:rgba(201,168,76,.06)}
+.scen-card.active{border-color:var(--gold);background:rgba(201,168,76,.1)}
+.scen-card.locked{opacity:.42;cursor:not-allowed}
+.scen-card.user-map{border-color:rgba(100,160,255,.3)}
+.scen-card.loading::after{content:'';position:absolute;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+.scen-icon{font-size:15px;flex-shrink:0;width:20px;text-align:center}
 .scen-info{flex:1;min-width:0}
 .scen-name{font-family:'Cinzel',serif;font-size:clamp(9px,.95vw,12px);color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scen-sub{font-size:clamp(7px,.7vw,9px);color:var(--dim);margin-top:1px}
-.scen-badge{font-size:8px;padding:1px 5px;border:1px solid;border-radius:1px;flex-shrink:0}
-#scenario-actions{display:flex;gap:6px;align-items:center}
-#scenario-actions .btn{padding:5px 10px;font-size:9px;letter-spacing:1px}
+.scen-del{background:none;border:none;color:var(--dim);cursor:pointer;font-size:11px;padding:2px 6px;transition:color .12s;flex-shrink:0}
+.scen-del:hover{color:#ff7070}
+/* Tile mode card */
+.tile-mode .scen-card{flex-direction:column;align-items:center;justify-content:center;padding:10px 8px;width:calc(50% - 3px);min-height:70px;text-align:center}
+.tile-mode .scen-icon{font-size:22px;width:auto;margin-bottom:4px}
+.tile-mode .scen-name{font-size:clamp(8px,.9vw,11px);white-space:normal;line-height:1.3}
+.tile-mode .scen-sub{font-size:clamp(6px,.65vw,8px)}
+.tile-mode .scen-del{position:absolute;top:3px;right:3px;padding:1px 4px}
+/* Scenario actions */
+#scenario-actions{display:flex;gap:5px;align-items:center}
+#scenario-actions .btn{padding:4px 9px;font-size:8px;letter-spacing:1px}
+/* Carousel mode (era-style) */
+#era-carousel-wrap{display:none}
+#era-carousel-wrap.on{display:block}
+#scen-carousel{display:flex;align-items:center;height:clamp(70px,10vh,90px)}
+.era-arrow{background:none;border:none;color:var(--dim);font-size:clamp(24px,3.2vw,36px);cursor:pointer;padding:0 clamp(4px,.5vw,9px);flex-shrink:0;transition:color .15s;line-height:1;z-index:3;touch-action:manipulation;user-select:none}
+.era-arrow:hover{color:var(--gold)}
+@keyframes eraShake{0%,100%{transform:translateX(0) scaleX(1)}20%{transform:translateX(-6px) scaleX(.95)}40%{transform:translateX(5px)}60%{transform:translateX(-4px)}80%{transform:translateX(3px)}}
+.era-arrow.shake{animation:eraShake .38s ease;color:#cc3030!important}
+.era-track-outer{flex:1;overflow:hidden;position:relative;height:100%}
+.era-fog-l,.era-fog-r{position:absolute;top:0;bottom:0;width:28%;pointer-events:none;z-index:2}
+.era-fog-l{left:0;background:linear-gradient(90deg,rgba(6,8,14,.95) 0%,transparent 100%)}
+.era-fog-r{right:0;background:linear-gradient(270deg,rgba(6,8,14,.95) 0%,transparent 100%)}
+.era-track{display:flex;height:100%;will-change:transform}
+.era-slide{flex:0 0 33.3333%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:1px solid transparent;transition:border-color .25s,background .25s,opacity .25s,transform .25s;padding:4px;overflow:hidden}
+.era-slide.active{border-color:var(--gold);background:rgba(201,168,76,.08)}
+.era-slide.side{border-color:rgba(42,36,24,.4);background:rgba(0,0,0,.18);opacity:.5;transform:scaleY(.88)}
+.era-slide.hidden{opacity:0;pointer-events:none}
+.era-slide.locked{opacity:.38;cursor:not-allowed}
+.era-scen-icon{font-size:18px;line-height:1}
+.era-scen-name{font-family:'Cinzel',serif;font-size:clamp(8px,.9vw,11px);color:var(--gold);letter-spacing:1px;text-align:center;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;padding:0 4px}
+.era-slide.side .era-scen-name,.era-slide.locked .era-scen-name{color:var(--dim)}
+.era-scen-sub{font-size:clamp(6px,.65vw,8px);color:var(--dim);text-align:center}
+
+/* NATION FLAGS */
+.nat-flag{width:22px;height:15px;border-radius:1px;flex-shrink:0;border:1px solid rgba(255,255,255,.15);overflow:hidden;position:relative;background:#1a1a2a}
+.nat-flag-svg{width:100%;height:100%;display:block}
+.nat-swatch{width:14px;height:14px;border-radius:2px;flex-shrink:0;border:1px solid rgba(255,255,255,.1)}
 
 /* HUD */
 #s-game{flex-direction:column}
@@ -525,14 +567,34 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 
       <!-- SCENARIO PICKER -->
       <div class="setup-block" id="scenario-section">
-        <div style="display:flex;align-items:center;justify-content:space-between">
+        <div id="scenario-header">
           <div class="setup-lbl">SCENARIO / MAP</div>
-          <div id="scenario-actions">
-            <button class="btn" onclick="refreshScenarios()" title="Scan for new maps on server" style="padding:4px 8px;font-size:8px;letter-spacing:1px">↺ Refresh</button>
-            <button class="btn" onclick="importUserMap()" title="Upload your own map JS file" style="padding:4px 8px;font-size:8px;letter-spacing:1px">↑ Upload</button>
+          <div style="display:flex;gap:5px;align-items:center">
+            <div id="scenario-view-toggle">
+              <button class="scen-view-btn on" id="scen-btn-list" onclick="setScenView('list')" title="List view">☰</button>
+              <button class="scen-view-btn" id="scen-btn-tile" onclick="setScenView('tile')" title="Tile view">⊞</button>
+              <button class="scen-view-btn" id="scen-btn-carousel" onclick="setScenView('carousel')" title="Carousel">◫</button>
+            </div>
+            <div id="scenario-actions">
+              <button class="btn" onclick="refreshScenarios()" title="Scan server for new maps" style="padding:4px 8px;font-size:8px">↺</button>
+              <button class="btn" onclick="importUserMap()" title="Upload your own map .js file" style="padding:4px 8px;font-size:8px">↑</button>
+            </div>
           </div>
         </div>
+        <!-- List / Tile view -->
         <div id="scenario-list"></div>
+        <!-- Carousel view -->
+        <div id="era-carousel-wrap">
+          <div id="scen-carousel">
+            <button class="era-arrow" id="era-prev" onclick="eraStep(-1)">‹</button>
+            <div class="era-track-outer">
+              <div class="era-fog-l"></div>
+              <div class="era-track" id="era-track"></div>
+              <div class="era-fog-r"></div>
+            </div>
+            <button class="era-arrow" id="era-next" onclick="eraStep(1)">›</button>
+          </div>
+        </div>
       </div>
 
       <div class="setup-block">
@@ -795,6 +857,7 @@ function _miniMapBounds(hexes){
     document.getElementById('s-intro')?.classList.contains('on')?start():(cancelAnimationFrame(raf),raf=null);
   }).observe(document.getElementById('s-intro'),{attributes:true,attributeFilter:['class']});
   window.addEventListener('resize',()=>{if(raf)rsz();});
+  window.addEventListener('toc-map-changed',()=>{hexes=null;});
   start();
 })();
 
@@ -828,6 +891,7 @@ function _miniMapBounds(hexes){
     document.getElementById('s-worlds')?.classList.contains('on')?start():(raf&&(cancelAnimationFrame(raf),raf=null));
   }).observe(document.getElementById('s-worlds'),{attributes:true,attributeFilter:['class']});
   window.addEventListener('resize',()=>{if(raf)rsz();});
+  window.addEventListener('toc-map-changed',()=>{hexes=null;});
 })();
 
 // ── SAVE SYSTEM ──────────────────────────────────────────────
@@ -997,182 +1061,297 @@ window.refreshWorldsList=function(){
   let hilite=-1;
   let _setupHexes=null,_setupBnds=null;
 
-  // ── SCENARIO STORAGE ───────────────────────────────────────
+  // ── SCENARIO STORAGE & SYSTEM ─────────────────────────────
   const SCEN_KEY='toc_scenarios_v1';
-  // Built-in server scenarios: game will probe these filenames
-  const SERVER_MAP_NAMES=['map.js','map_europe.js','map_ww2.js','map_ancient.js','map_cold_war.js','map_1914.js','map_asia.js','map_africa.js'];
-  // Currently active scenario (null = default loaded map.js)
-  let _activeScenario=null; // {id, name, source:'server'|'user', filename, data?}
+  const SERVER_MAP_NAMES=['map_europe.js','map_ww2.js','map_ancient.js','map_cold_war.js','map_1914.js','map_asia.js','map_africa.js','map_1800.js'];
+  // Secret that must be present in map.js files to load in-game
+  // Format: export const TOC_MAP_KEY = 'TOC-XXXX-XXXX'; (any string starting with TOC-)
+  const MAP_KEY_PREFIX='TOC-';
+  // The default map.js is always trusted (already loaded)
 
-  function getAllUserMaps(){
-    try{return JSON.parse(localStorage.getItem(SCEN_KEY)||'[]');}catch{return[];}
-  }
-  function saveUserMaps(arr){
-    try{localStorage.setItem(SCEN_KEY,JSON.stringify(arr));}catch(e){showToast('Storage full!');}
+  let _activeScenario=null;
+  let _scenView='list'; // 'list' | 'tile' | 'carousel'
+  let _eraIdx=0;
+
+  function getAllUserMaps(){try{return JSON.parse(localStorage.getItem(SCEN_KEY)||'[]');}catch{return[];}}
+  function saveUserMaps(arr){try{localStorage.setItem(SCEN_KEY,JSON.stringify(arr));}catch(e){showToast('Storage full!');}}
+
+  function _validateMapKey(data){
+    // Map must contain a line like: TOC_MAP_KEY = 'TOC-XXXX...'
+    return /TOC_MAP_KEY\s*=\s*['"`]TOC-/.test(data);
   }
 
-  // Probe server for available map_*.js files
+  function _extractMapMeta(data){
+    // Try to read TOC_MAP_NAME and TOC_MAP_DESC from the file
+    const nameM=data.match(/TOC_MAP_NAME\s*=\s*['"`]([^'"`]+)['"`]/);
+    const descM=data.match(/TOC_MAP_DESC\s*=\s*['"`]([^'"`]+)['"`]/);
+    return{
+      name:nameM?nameM[1]:null,
+      desc:descM?descM[1]:null,
+    };
+  }
+
   async function probeServerMaps(){
     const found=[];
-    // Always include the default map.js (already loaded)
-    found.push({id:'default',name:_getDefaultMapName(),sub:'Default · Built-in',source:'server',filename:'map.js',loaded:true});
-    // Probe additional map_*.js files
-    const probes=SERVER_MAP_NAMES.filter(f=>f!=='map.js').map(async filename=>{
+    found.push({id:'default',name:_getDefaultMapName(),sub:'Built-in · Default',source:'server',filename:'map.js',loaded:true,trusted:true});
+    const probes=SERVER_MAP_NAMES.map(async filename=>{
       try{
         const r=await fetch(filename,{method:'HEAD'});
-        if(r.ok) found.push({id:filename,name:_filenameToName(filename),sub:'Server map',source:'server',filename,loaded:false});
+        if(r.ok) found.push({id:filename,name:_filenameToName(filename),sub:'Server map',source:'server',filename,loaded:false,trusted:true});
       }catch{}
     });
     await Promise.allSettled(probes);
     return found;
   }
 
-  function _filenameToName(fn){
-    return fn.replace(/^map_?/,'').replace(/\.js$/,'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())||'Map';
-  }
+  function _filenameToName(fn){return fn.replace(/^map_?/,'').replace(/\.js$/,'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())||'Map';}
   function _getDefaultMapName(){
     if(typeof NATIONS!=='undefined'&&NATIONS.length){
-      // Guess from nations: if it has Nazi Germany → Europe 1936
-      const hasGermany=NATIONS.some(n=>n.name&&/reich|germany|german/i.test(n.name));
-      if(hasGermany)return'Europe 1936';
+      if(NATIONS.some(n=>/reich|germany|german/i.test(n.name||'')))return'Europe 1936';
+      if(typeof TOC_MAP_NAME!=='undefined')return TOC_MAP_NAME;
       return'Default Map';
     }
     return'Map';
   }
 
-  // Cache of server maps found
   let _serverMaps=null;
-  let _scanningServer=false;
 
   async function getScenarioList(){
-    if(!_serverMaps){
-      _serverMaps=await probeServerMaps();
-    }
+    if(!_serverMaps) _serverMaps=await probeServerMaps();
     const userMaps=getAllUserMaps().map(u=>({
-      id:'user_'+u.id,name:u.name,sub:`Uploaded · ${u.size||'?'}`,source:'user',
-      filename:u.id,data:u.data,loaded:false
+      id:'user_'+u.id,name:u.name,sub:`👤 Uploaded · ${u.size||'?'}`,source:'user',data:u.data,loaded:false,trusted:true
     }));
     return[..._serverMaps,...userMaps,{id:'__mystery',name:'???',sub:'Coming soon…',source:'locked',locked:true}];
   }
 
-  // Load a scenario by injecting its script (server) or evaluating stored data (user)
+  // ── GLOBAL MINI-MAP REFRESH ────────────────────────────────
+  // Called after loading a new scenario to refresh all background maps
+  function _refreshAllMiniMaps(){
+    _setupHexes=null;_setupBnds=null; // invalidate setup cache
+    // Dispatch event so intro/worlds canvases reset their hex cache too
+    window.dispatchEvent(new CustomEvent('toc-map-changed'));
+  }
+
+  // ── LOAD SCENARIO ─────────────────────────────────────────
   function loadScenario(scen,cb){
-    if(scen.loaded||scen.id==='default'){_activeScenario=scen;cb&&cb(true);return;}
+    if(scen.id==='default'||scen.loaded){
+      _activeScenario=scen;
+      _refreshAllMiniMaps();
+      cb&&cb(true);return;
+    }
     if(scen.source==='user'&&scen.data){
+      if(!_validateMapKey(scen.data)){
+        showToast('❌ Invalid map key — map rejected');cb&&cb(false);return;
+      }
       try{
-        // eslint-disable-next-line no-new-func
-        new Function(scen.data)();
+        new Function(scen.data)(); // execute map script
         _activeScenario={...scen,loaded:true};
-        _setupHexes=null;_setupBnds=null; // invalidate map cache
+        _refreshAllMiniMaps();
         cb&&cb(true);
-      }catch(e){showToast('Map load error: '+e.message);cb&&cb(false);}
+      }catch(e){
+        showToast('Map error: '+e.message);
+        _loadFallback(cb);
+      }
       return;
     }
     if(scen.source==='server'){
-      const existing=document.getElementById('dyn-map-script');
-      if(existing)existing.remove();
-      const s=document.createElement('script');
-      s.id='dyn-map-script';
-      s.src=scen.filename+'?_='+Date.now();
-      s.onload=()=>{_activeScenario={...scen,loaded:true};_setupHexes=null;_setupBnds=null;cb&&cb(true);};
-      s.onerror=()=>{showToast('Failed to load '+scen.filename);cb&&cb(false);};
-      document.head.appendChild(s);
+      // Fetch to validate key before executing
+      fetch(scen.filename+'?_='+Date.now())
+        .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text();})
+        .then(data=>{
+          if(!_validateMapKey(data)){
+            showToast('❌ Map key missing in '+scen.filename);_loadFallback(cb);return;
+          }
+          const existing=document.getElementById('dyn-map-script');
+          if(existing)existing.remove();
+          const s=document.createElement('script');
+          s.id='dyn-map-script';
+          s.textContent=data;
+          document.head.appendChild(s);
+          _activeScenario={...scen,loaded:true};
+          _refreshAllMiniMaps();
+          cb&&cb(true);
+        })
+        .catch(e=>{showToast('Failed: '+e.message);_loadFallback(cb);});
       return;
     }
     cb&&cb(false);
   }
 
-  // ── SCENARIO UI ────────────────────────────────────────────
+  function _loadFallback(cb){
+    showToast('↩ Falling back to default map');
+    const def=_serverMaps&&_serverMaps[0];
+    if(def){_activeScenario=def;_refreshAllMiniMaps();cb&&cb(false);}
+    else cb&&cb(false);
+  }
+
+  // ── SCENARIO UI ───────────────────────────────────────────
   let _currentScenarios=[];
   let _selectedScenId='default';
 
+  window.setScenView=function(mode){
+    _scenView=mode;
+    ['list','tile','carousel'].forEach(m=>{
+      const b=document.getElementById('scen-btn-'+m);
+      if(b)b.classList.toggle('on',m===mode);
+    });
+    const list=document.getElementById('scenario-list');
+    const car=document.getElementById('era-carousel-wrap');
+    if(mode==='carousel'){
+      if(list)list.style.display='none';
+      if(car)car.classList.add('on');
+      buildCarousel();
+    }else{
+      if(list){list.style.display='';list.className=mode==='tile'?'tile-mode':'';}
+      if(car)car.classList.remove('on');
+    }
+  };
+
   async function buildScenarios(){
-    const list=document.getElementById('scenario-list');if(!list)return;
-    list.innerHTML='<div style="font-size:9px;color:var(--dim);padding:8px;text-align:center;font-style:italic">Scanning…</div>';
+    const list=document.getElementById('scenario-list');
+    if(list)list.innerHTML='<div style="font-size:9px;color:var(--dim);padding:8px;text-align:center;font-style:italic">Scanning…</div>';
     _currentScenarios=await getScenarioList();
+    renderScenList();
+    if(_scenView==='carousel')buildCarousel();
+  }
+
+  function renderScenList(){
+    const list=document.getElementById('scenario-list');if(!list)return;
     list.innerHTML='';
+    list.className=_scenView==='tile'?'tile-mode':'';
     _currentScenarios.forEach(scen=>{
-      const row=document.createElement('div');
       const isActive=scen.id===_selectedScenId;
       const isUser=scen.source==='user';
       const isLocked=scen.locked;
-      row.className='scen-card'+(isActive?' active':'')+(isUser?' user-map':'')+(isLocked?' locked':'');
-      row.innerHTML=`
+      const div=document.createElement('div');
+      div.className='scen-card'+(isActive?' active':'')+(isUser?' user-map':'')+(isLocked?' locked':'');
+      div.innerHTML=`
         <div class="scen-icon">${isLocked?'🔒':isUser?'👤':'🗺'}</div>
         <div class="scen-info">
           <div class="scen-name">${scen.name}</div>
           <div class="scen-sub">${scen.sub||''}</div>
         </div>
-        ${isUser?`<button style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:11px;padding:2px 5px" onclick="event.stopPropagation();deleteUserMap('${scen.id}')" title="Delete">✕</button>`:''}
-        ${isLocked?'<div class="scen-badge" style="color:var(--dim);border-color:#333">soon</div>':''}
-      `;
-      if(!isLocked){
-        row.onclick=()=>selectScenario(scen.id);
-      }
-      list.appendChild(row);
+        ${isUser?`<button class="scen-del" onclick="event.stopPropagation();deleteUserMap('${scen.id}')" title="Delete">✕</button>`:''}`;
+      if(!isLocked) div.onclick=()=>selectScenario(scen.id);
+      list.appendChild(div);
     });
   }
 
-  function selectScenario(id){
-    const scen=_currentScenarios.find(s=>s.id===id);if(!scen||scen.locked)return;
-    _selectedScenId=id;
-    // Show loading state
-    document.querySelectorAll('.scen-card').forEach((r,i)=>{
-      const s=_currentScenarios[i];
-      r.classList.toggle('active',s&&s.id===id);
+  function buildCarousel(){
+    const track=document.getElementById('era-track');if(!track)return;
+    track.innerHTML='';
+    _currentScenarios.forEach((scen,i)=>{
+      const isLocked=scen.locked;
+      const d=document.createElement('div');
+      d.className='era-slide'+(isLocked?' locked':'');
+      d.id='era-sc'+i;
+      d.innerHTML=`<div class="era-scen-icon">${isLocked?'🔒':scen.source==='user'?'👤':'🗺'}</div>
+        <div class="era-scen-name">${scen.name}</div>
+        <div class="era-scen-sub">${scen.sub||''}</div>`;
+      if(!isLocked)d.onclick=()=>selectScenario(scen.id);
+      track.appendChild(d);
     });
-    // Load the scenario
-    const listEl=document.getElementById('scenario-list');
-    if(listEl){const loading=listEl.querySelector('.scen-card.active');if(loading)loading.style.opacity='.6';}
+    posCarousel(false);
+  }
+
+  function posCarousel(anim){
+    const track=document.getElementById('era-track');if(!track)return;
+    const pct=(-_eraIdx+1)*33.3333;
+    track.style.transition=anim?'transform .3s cubic-bezier(.4,0,.2,1)':'none';
+    track.style.transform=`translateX(${pct}%)`;
+    _currentScenarios.forEach((_,i)=>{
+      const sl=document.getElementById('era-sc'+i);if(!sl)return;
+      const d=i-_eraIdx;
+      sl.classList.remove('active','side','hidden');
+      if(d===0)sl.classList.add('active');
+      else if(Math.abs(d)===1)sl.classList.add('side');
+      else sl.classList.add('hidden');
+    });
+    const prev=document.getElementById('era-prev'),next=document.getElementById('era-next');
+    if(prev)prev.style.opacity=_eraIdx===0?'.2':'1';
+    if(next)next.style.opacity=_eraIdx>=_currentScenarios.length-1?'.2':'1';
+  }
+
+  window.eraStep=function(dir){
+    const n=_eraIdx+dir;
+    if(n<0||n>=_currentScenarios.length)return;
+    _eraIdx=n;posCarousel(true);
+    // Auto-select on carousel step
+    const scen=_currentScenarios[n];
+    if(scen&&!scen.locked)selectScenario(scen.id);
+  };
+
+  function selectScenario(id){
+    const scen=_currentScenarios.find(s=>s.id===id);
+    if(!scen||scen.locked)return;
+    _selectedScenId=id;
+    // Mark active in all views
+    document.querySelectorAll('.scen-card').forEach(r=>{
+      r.classList.toggle('active',r.onclick&&r.onclick.toString().includes(`'${id}'`));
+    });
+    document.querySelectorAll('.era-slide').forEach((sl,i)=>{
+      if(_currentScenarios[i]){
+        sl.classList.toggle('active',_currentScenarios[i].id===id);
+        sl.classList.toggle('side',Math.abs(i-_eraIdx)===1&&_currentScenarios[i].id!==id);
+      }
+    });
+    // Rebuild list to reflect active state properly
+    renderScenList();
+    if(_scenView==='carousel')buildCarousel();
+    // Loading indicator
+    showToast('⏳ Loading '+scen.name+'…',1200);
     loadScenario(scen,ok=>{
       if(ok){
-        // Rebuild nations for new map
         SC=-1;SI='fascism';
+        _setupHexes=null;_setupBnds=null;
         buildNations();
         hilite=-1;drawMap(-1);
         document.getElementById('nation-info-card').style.display='none';
         chkSB();
+        renderScenList();
+        if(_scenView==='carousel')buildCarousel();
       }
-      if(listEl){const loading=listEl.querySelector('.scen-card.active');if(loading)loading.style.opacity='';}
     });
   }
 
   window.refreshScenarios=async function(){
-    _serverMaps=null; // force rescan
+    _serverMaps=null;
     await buildScenarios();
-    showToast('↺ Map list refreshed');
+    showToast('↺ Refreshed');
   };
 
   window.importUserMap=function(){
     const inp=document.createElement('input');inp.type='file';inp.accept='.js';
     inp.onchange=e=>{
       const f=e.target.files[0];if(!f)return;
-      const r=new FileReader();
-      r.onload=ev=>{
+      const reader=new FileReader();
+      reader.onload=ev=>{
         const data=ev.target.result;
-        // Basic validation: must define PROVINCES and NATIONS
         if(!data.includes('PROVINCES')||!data.includes('NATIONS')){
-          showToast('Invalid map file — must define PROVINCES and NATIONS');return;
+          showToast('❌ Invalid map — needs PROVINCES & NATIONS');return;
         }
+        if(!_validateMapKey(data)){
+          showToast('❌ Map rejected — missing TOC_MAP_KEY = "TOC-..."');return;
+        }
+        const meta=_extractMapMeta(data);
         const maps=getAllUserMaps();
         const id='u'+Date.now();
-        const name=f.name.replace(/\.js$/,'').replace(/^map_?/,'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())||'Custom Map';
-        const size=f.size>1024*100?Math.round(f.size/1024)+'KB':Math.round(f.size/1024)+'KB';
-        maps.push({id,name,size,data,uploaded:new Date().toLocaleDateString()});
+        const name=meta.name||f.name.replace(/\.js$/,'').replace(/^map_?/,'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())||'Custom Map';
+        const size=Math.round(f.size/1024)+'KB';
+        maps.push({id,name,size,data,desc:meta.desc||'',uploaded:new Date().toLocaleDateString()});
         saveUserMaps(maps);
-        _serverMaps=null; // force rebuild
+        _serverMaps=null;
         buildScenarios().then(()=>selectScenario('user_'+id));
-        showToast('✓ Map uploaded: '+name);
+        showToast('✓ Uploaded: '+name);
       };
-      r.readAsText(f);
+      reader.readAsText(f);
     };
     inp.click();
   };
 
   window.deleteUserMap=function(scenId){
     const rawId=scenId.replace(/^user_/,'');
-    const maps=getAllUserMaps().filter(m=>m.id!==rawId);
-    saveUserMaps(maps);
+    saveUserMaps(getAllUserMaps().filter(m=>m.id!==rawId));
     _serverMaps=null;
     if(_selectedScenId===scenId)_selectedScenId='default';
     buildScenarios();
@@ -1232,15 +1411,56 @@ window.refreshWorldsList=function(){
     inp.onclick=e=>e.stopPropagation();
   }
 
+  // ── FLAG RENDERING ────────────────────────────────────────
+  // Generates a mini SVG flag for a nation using its color + a simple pattern
+  // based on the ideology — crude but distinctive
+  function makeFlagSvg(nat,ideo){
+    const c=nat.color||'#334';
+    // Parse hex to rgb
+    const rr=parseInt(c.slice(1,3),16)||50,gg=parseInt(c.slice(3,5),16)||50,bb=parseInt(c.slice(5,7),16)||80;
+    const light=`rgb(${Math.min(255,rr+60)},${Math.min(255,gg+60)},${Math.min(255,bb+60)})`;
+    const dark2=`rgb(${Math.max(0,rr-30)},${Math.max(0,gg-30)},${Math.max(0,bb-30)})`;
+    const ik=nat.ideology||'';
+    let pat='';
+    if(/nazism|fascism|militarism/.test(ik)){
+      // Horizontal triband
+      pat=`<rect width="22" height="5" y="0" fill="${dark2}"/>
+           <rect width="22" height="5" y="5" fill="${c}"/>
+           <rect width="22" height="5" y="10" fill="${light}"/>`;
+    }else if(/communism|stalinism/.test(ik)){
+      // Red with left stripe
+      pat=`<rect width="22" height="15" fill="${c}"/>
+           <rect width="5" height="15" fill="${dark2}"/>`;
+    }else if(/democracy|liberalism/.test(ik)){
+      // Cross pattern
+      pat=`<rect width="22" height="15" fill="${c}"/>
+           <rect width="22" height="4" y="5.5" fill="${light}" opacity=".6"/>
+           <rect width="4" height="15" x="9" fill="${light}" opacity=".6"/>`;
+    }else if(/monarchy/.test(ik)){
+      // Diagonal bicolor
+      pat=`<rect width="22" height="15" fill="${c}"/>
+           <polygon points="0,0 11,0 0,15" fill="${dark2}" opacity=".7"/>`;
+    }else{
+      // Plain with thin bottom stripe
+      pat=`<rect width="22" height="15" fill="${c}"/>
+           <rect width="22" height="3" y="12" fill="${dark2}" opacity=".6"/>`;
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="15" viewBox="0 0 22 15">${pat}</svg>`;
+  }
+
   // ── NATIONS ──────────────────────────────────────────────
   function buildNations(){
     const list=document.getElementById('nation-list');if(!list)return;
     list.innerHTML='';
     NATIONS.forEach((nat,i)=>{
       const ideo=IDEOLOGIES[nat.ideology];
+      const flagSvg=makeFlagSvg(nat,ideo);
       const row=document.createElement('div');
       row.className='nat-row';
-      row.innerHTML=`<div class="nat-swatch" style="background:${nat.color}"></div><div class="nat-name">${nat.name}</div><div class="nat-ideo" style="color:${ideo?.color||'#888'};border-color:${ideo?.color||'#444'}">${ideo?.icon||''} ${nat.ideology}</div>`;
+      row.innerHTML=`
+        <div class="nat-flag">${flagSvg}</div>
+        <div class="nat-name">${nat.name}</div>
+        <div class="nat-ideo" style="color:${ideo?.color||'#888'};border-color:${ideo?.color||'#444'}">${ideo?.icon||''} ${nat.ideology}</div>`;
       row.onmouseenter=()=>{hilite=i;drawMap(i);const l=document.getElementById('setup-map-label');if(l){l.textContent=nat.name;l.classList.add('vis');}};
       row.onmouseleave=()=>{if(SC!==i){hilite=SC;drawMap(SC);const l=document.getElementById('setup-map-label');if(SC<0&&l)l.classList.remove('vis');}};
       row.onclick=()=>{
@@ -1256,7 +1476,8 @@ window.refreshWorldsList=function(){
   function showCard(i){
     const nat=NATIONS[i],ideo=IDEOLOGIES[nat.ideology],card=document.getElementById('nation-info-card');
     if(!card)return;card.style.display='flex';
-    document.getElementById('nic-flag').style.background=nat.color;
+    const flagEl=document.getElementById('nic-flag');
+    if(flagEl){flagEl.style.background='none';flagEl.innerHTML=makeFlagSvg(nat,ideo);}
     document.getElementById('nic-name').textContent=nat.name;
     document.getElementById('nic-ideo').innerHTML=`${ideo?.icon||''} ${ideo?.name||nat.ideology}`;
     document.getElementById('nic-ideo').style.color=ideo?.color||'#888';
