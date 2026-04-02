@@ -149,7 +149,30 @@ function chkSB(){const b=document.getElementById('startbtn');if(b)b.disabled=SC<
 // ── SCREEN MANAGEMENT ─────────────────────────────────────
 function show(id){document.querySelectorAll('.scr').forEach(e=>e.classList.remove('on'));document.getElementById('s-'+id).classList.add('on');}
 function switchTab(id){document.querySelectorAll('.tab,.tpane').forEach(e=>e.classList.remove('on'));document.getElementById('tab-'+id).classList.add('on');document.getElementById('pane-'+id).classList.add('on');hideProvPopup();}
-function setMapMode(mode){G.mapMode=mode;document.querySelectorAll('.mmbtn').forEach(b=>b.classList.remove('on'));document.getElementById('mm-'+mode).classList.add('on');scheduleDraw();}
+function setMapMode(mode){G.mapMode=mode;document.querySelectorAll('.mmbtn').forEach(b=>b.classList.remove('on'));document.getElementById('mm-'+mode).classList.add('on');updateResFilterPanel();scheduleDraw();}
+function updateResFilterPanel(){
+  const panel=document.getElementById('res-filter-panel');
+  if(!panel)return;
+  panel.style.display=G.mapMode==='resources'?'flex':'none';
+  if(G.mapMode==='resources')updateResCountsInPanel();
+}
+function updateResCountsInPanel(){
+  if(!window.PROVINCES||!G.resBase)return;
+  const counts={coal:0,iron:0,oil:0};
+  PROVINCES.forEach((_,i)=>{
+    if(PROVINCES[i]?.isSea)return;
+    const r=G.resBase[i]||{};
+    if(r.coal>0)counts.coal++;
+    if(r.iron>0)counts.iron++;
+    if(r.oil>0)counts.oil++;
+  });
+  const ec=document.getElementById('rfp-coal-count');
+  const ei=document.getElementById('rfp-iron-count');
+  const eo=document.getElementById('rfp-oil-count');
+  if(ec)ec.textContent=counts.coal+' prov';
+  if(ei)ei.textContent=counts.iron+' prov';
+  if(eo)eo.textContent=counts.oil+' prov';
+}
 
 // ── GAME START ────────────────────────────────────────────
 function startGame(){
@@ -220,7 +243,7 @@ function startGame(){
     computeHexRadius();
     buildCanvas();
     zoomReset();
-    updateHUD();updateIdeoHUD();updateSeasonUI();
+    updateHUD();updateIdeoHUD();updateSeasonUI();updateResCountsInPanel();
     addLog(`${dateStr()}: ${G.leaderName} rises to power.`,'event');
     // Log starting alliances
     G.alliance.forEach(al=>{addLog(`🤝 ${al.name} alliance active: ${al.members.map(m=>NATIONS[m]?.short).join(', ')}`, 'diplo');});
@@ -303,6 +326,10 @@ const TC={
   farmland:'#384820',savanna:'#4a4020',jungle:'#2a4018',coast:'#1e3040',
 };
 const RES_COLORS={oil:'#8a6020',coal:'#303030',grain:'#5a7020',steel:'#405070',iron:'#506070'};
+// Resource filter for resources map mode
+window.RES_FILTER={coal:true,iron:true,oil:true};
+// Hex color values for blending
+const RES_HEX={coal:[40,40,40],iron:[70,90,110],oil:[130,90,20]};
 
 // TERRAIN defined here as fallback — map.js may also define it (map.js wins via script order)
 // If map.js already defined TERRAIN, we don't overwrite it
@@ -468,11 +495,15 @@ function provColor(i){
 
   if(m==='resources'){
     const r=G.resBase[i]||{};
-    if(r.oil>0)return'#6a4010';
-    if(r.coal>0)return'#282828';
-    if(r.grain>0)return'#3a5018';
-    if(r.steel>0)return'#283848';
-    return'#181618';
+    const F=window.RES_FILTER||{coal:true,iron:true,oil:true};
+    const active=[];
+    if(F.coal&&(r.coal>0)) active.push([40,40,40]);
+    if(F.iron&&(r.iron>0)) active.push([70,90,110]);
+    if(F.oil&&(r.oil>0))   active.push([130,90,20]);
+    if(active.length===0) return '#181618';
+    const blend=active.reduce((a,c)=>[a[0]+c[0],a[1]+c[1],a[2]+c[2]],[0,0,0]);
+    const n=active.length;
+    return`rgb(${Math.round(blend[0]/n)},${Math.round(blend[1]/n)},${Math.round(blend[2]/n)})`;
   }
 
   // Political — clean colors, no instability overlay
@@ -714,12 +745,7 @@ function drawMap(){
         ctx.font=`${fs+1}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
         ctx.fillText('🔥',px+labelR*.55,py+labelR*.55);
       }
-      if(G.mapMode==='resources'){
-        Object.entries(G.resBase[i]||{}).filter(([,v])=>v>0).forEach(([k,],ki)=>{
-          ctx.fillStyle=RES_COLORS[k]||'#888';
-          ctx.beginPath();ctx.arc(px-4+ki*5,py+labelR*.6,2,0,Math.PI*2);ctx.fill();
-        });
-      }
+
     });
   }
 
@@ -785,81 +811,215 @@ function drawMap(){
       drawOrderArrow(fsx,fsy,tsx,tsy,'rgba(80,220,80,.85)','#a0ffb0',fm(amount));
     });
   }
+  // ── UNIFIED MAP MODE OVERLAY PANELS ──────────────────────
+  drawMapOverlay();
+}
+
+function drawMapOverlay(){
+  // Shared panel style helpers
+  const PAD=10, LH=17, SW=172, CORNER_X=CW-SW-8, CORNER_Y=8;
+  const GOLD='#c9a84c', DIM='#7a6a40', TEXT='#ddd0b0', BG='rgba(5,7,12,.92)';
+  const ACCENT_LINE='rgba(201,168,76,.18)';
+
+  function panelBg(x,y,w,h,accentColor){
+    ctx.save();
+    ctx.fillStyle=BG;
+    ctx.strokeStyle=accentColor||'rgba(201,168,76,.22)';
+    ctx.lineWidth=1;
+    ctx.beginPath();ctx.rect(x,y,w,h);ctx.fill();ctx.stroke();
+    // Thin top accent line
+    ctx.strokeStyle=accentColor&&accentColor!=='rgba(201,168,76,.22)'?accentColor:GOLD;
+    ctx.globalAlpha=0.4;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(x+1,y+1);ctx.lineTo(x+w-1,y+1);ctx.stroke();
+    ctx.restore();
+  }
+  function panelTitle(x,y,label){
+    ctx.save();
+    ctx.font='bold 8px Cinzel,serif';ctx.fillStyle=GOLD;
+    ctx.textAlign='left';ctx.textBaseline='top';
+    ctx.letterSpacing='1px';
+    ctx.fillText(label,x,y);
+    ctx.restore();
+  }
+  function panelRow(x,y,label,value,valColor){
+    ctx.save();
+    ctx.textAlign='left';ctx.textBaseline='middle';
+    ctx.font='8px Cinzel,serif';ctx.fillStyle=TEXT;
+    ctx.fillText(label,x,y);
+    ctx.textAlign='right';
+    ctx.fillStyle=valColor||GOLD;
+    ctx.fillText(value,x+SW-PAD*2,y);
+    ctx.restore();
+  }
+  function divider(x,y,w){
+    ctx.save();ctx.strokeStyle=ACCENT_LINE;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+w,y);ctx.stroke();
+    ctx.restore();
+  }
+
+  const PN=G.playerNation;
+  const myProvs=PROVINCES.map((_,i)=>i).filter(i=>G.owner[i]===PN);
+
   if(G.mapMode==='disease'){
     const active=G.epidemics?.filter(ep=>ep.active)||[];
-    if(active.length>0){
-      const pad=10, lh=18, sw=160, sh=pad*2+active.length*lh+16;
-      const lx=CW-sw-8, ly=8;
-      ctx.fillStyle='rgba(6,8,14,.88)';
-      ctx.strokeStyle='rgba(42,36,24,.8)';ctx.lineWidth=1;
-      ctx.beginPath();ctx.rect(lx,ly,sw,sh);ctx.fill();ctx.stroke();
-      ctx.font='bold 9px Cinzel,serif';
-      ctx.fillStyle='#c9a84c';ctx.textAlign='left';ctx.textBaseline='top';
-      ctx.fillText('ACTIVE EPIDEMICS',lx+pad,ly+pad);
-      active.forEach((ep,idx)=>{
-        const ey=ly+pad+14+idx*lh;
-        // Colored dot
-        ctx.fillStyle=ep.color;
-        ctx.beginPath();ctx.arc(lx+pad+5,ey+7,5,0,Math.PI*2);ctx.fill();
-        // Name + death count
-        ctx.fillStyle='#e8d5a3';ctx.font='8px Cinzel,serif';
-        ctx.fillText(`${ep.icon} ${ep.name}`,lx+pad+14,ey+2);
-        ctx.fillStyle='#8a7848';ctx.font='7px serif';
-        ctx.fillText(`${ep.provinces.size} provs · ☠${fm(ep.dead)}`,lx+pad+14,ey+10);
-      });
+    const rows=active.length||1;
+    const sh=PAD*2+14+rows*LH+4;
+    panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(180,60,30,.35)');
+    panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'☣  EPIDEMICS');
+    if(active.length===0){
+      ctx.save();ctx.font='8px Cinzel,serif';ctx.fillStyle=DIM;
+      ctx.textAlign='left';ctx.textBaseline='top';
+      ctx.fillText('No active epidemics',CORNER_X+PAD,CORNER_Y+PAD+14);
+      ctx.restore();
     } else {
-      // No active epidemics message
-      ctx.fillStyle='rgba(6,8,14,.75)';
-      ctx.strokeStyle='rgba(42,36,24,.6)';ctx.lineWidth=1;
-      ctx.beginPath();ctx.rect(CW-160,8,152,28);ctx.fill();ctx.stroke();
-      ctx.font='9px Cinzel,serif';ctx.fillStyle='#8a7848';
-      ctx.textAlign='left';ctx.textBaseline='middle';
-      ctx.fillText('No active epidemics',CW-150,22);
+      active.forEach((ep,idx)=>{
+        const ey=CORNER_Y+PAD+14+idx*LH;
+        ctx.save();
+        ctx.fillStyle=ep.color;
+        ctx.beginPath();ctx.arc(CORNER_X+PAD+4,ey+LH/2,3.5,0,Math.PI*2);ctx.fill();
+        ctx.font='8px Cinzel,serif';ctx.fillStyle=TEXT;
+        ctx.textAlign='left';ctx.textBaseline='middle';
+        ctx.fillText(`${ep.icon} ${ep.name}`,CORNER_X+PAD+13,ey+LH/2-3);
+        ctx.fillStyle=DIM;ctx.font='7px serif';
+        ctx.fillText(`${ep.provinces.size} prov · ☠${fm(ep.dead)}`,CORNER_X+PAD+13,ey+LH/2+5);
+        ctx.restore();
+      });
     }
   }
+
   if(G.mapMode==='buildings'){
-    // Count player buildings
-    const PN=G.playerNation;
     const bldCounts={};
-    PROVINCES.forEach((_,i)=>{
-      if(G.owner[i]!==PN)return;
+    myProvs.forEach(i=>{
       (G.buildings[i]||[]).forEach(k=>{bldCounts[k]=(bldCounts[k]||0)+1;});
       if(G.construction[i])bldCounts['_const']=(bldCounts['_const']||0)+1;
     });
-    const entries=Object.entries(bldCounts).filter(([k])=>k!=='_const');
+    const entries=Object.entries(bldCounts).filter(([k])=>k!=='_const').sort((a,b)=>b[1]-a[1]);
     const constCount=bldCounts['_const']||0;
-    if(entries.length||constCount){
-      const pad=9,lh=16,sw=165,sh=pad*2+20+(entries.length+(constCount?1:0))*lh;
-      const lx=CW-sw-8,ly=8;
-      ctx.fillStyle='rgba(6,8,14,.9)';ctx.strokeStyle='rgba(40,60,30,.9)';ctx.lineWidth=1;
-      ctx.beginPath();ctx.rect(lx,ly,sw,sh);ctx.fill();ctx.stroke();
-      ctx.font='bold 9px Cinzel,serif';ctx.fillStyle='#c9a84c';ctx.textAlign='left';ctx.textBaseline='top';
-      ctx.fillText('YOUR BUILDINGS',lx+pad,ly+pad);
-      let row=0;
-      entries.sort((a,b)=>b[1]-a[1]).forEach(([k,cnt])=>{
+    const rows=entries.length+(constCount?1:0)||(1);
+    const sh=PAD*2+14+rows*LH+4;
+    panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(40,80,60,.4)');
+    panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'🏛  BUILDINGS');
+    if(!entries.length&&!constCount){
+      ctx.save();ctx.font='8px Cinzel,serif';ctx.fillStyle=DIM;
+      ctx.textAlign='left';ctx.textBaseline='top';
+      ctx.fillText('No buildings constructed',CORNER_X+PAD,CORNER_Y+PAD+14);
+      ctx.restore();
+    } else {
+      entries.forEach(([k,cnt],idx)=>{
         const b=BUILDINGS[k];if(!b)return;
-        const ey=ly+pad+16+row*lh;
-        ctx.font=`${lh-4}px serif`;ctx.fillText(b.icon||'?',lx+pad,ey);
-        ctx.font='8px Cinzel,serif';ctx.fillStyle='#e8d5a3';
-        ctx.fillText(b.name,lx+pad+18,ey+1);
-        ctx.fillStyle='#c9a84c';ctx.font='bold 9px Cinzel,serif';
-        ctx.textAlign='right';ctx.fillText('×'+cnt,lx+sw-pad,ey+1);
-        ctx.textAlign='left';ctx.fillStyle='#e8d5a3';
-        row++;
+        const ey=CORNER_Y+PAD+14+idx*LH+LH/2;
+        ctx.save();
+        ctx.font='10px serif';ctx.fillStyle=TEXT;
+        ctx.textAlign='left';ctx.textBaseline='middle';
+        ctx.fillText(b.icon||'?',CORNER_X+PAD,ey);
+        ctx.font='8px Cinzel,serif';
+        ctx.fillText(b.name,CORNER_X+PAD+16,ey);
+        ctx.fillStyle=GOLD;ctx.textAlign='right';
+        ctx.fillText('×'+cnt,CORNER_X+SW-PAD,ey);
+        ctx.restore();
       });
       if(constCount){
-        const ey=ly+pad+16+row*lh;
-        ctx.font='8px Cinzel,serif';ctx.fillStyle='#c9a84c';
-        ctx.fillText('🏗 Under construction',lx+pad,ey+1);
-        ctx.textAlign='right';ctx.fillText('×'+constCount,lx+sw-pad,ey+1);
-        ctx.textAlign='left';
+        const ey=CORNER_Y+PAD+14+entries.length*LH+LH/2;
+        ctx.save();ctx.font='8px Cinzel,serif';ctx.fillStyle=DIM;
+        ctx.textAlign='left';ctx.textBaseline='middle';
+        ctx.fillText('🏗 Under construction',CORNER_X+PAD,ey);
+        ctx.fillStyle=GOLD;ctx.textAlign='right';
+        ctx.fillText('×'+constCount,CORNER_X+SW-PAD,ey);
+        ctx.restore();
       }
-    } else {
-      ctx.fillStyle='rgba(6,8,14,.8)';ctx.strokeStyle='rgba(40,60,30,.7)';ctx.lineWidth=1;
-      ctx.beginPath();ctx.rect(CW-180,8,172,26);ctx.fill();ctx.stroke();
-      ctx.font='9px Cinzel,serif';ctx.fillStyle='#8a7848';ctx.textAlign='left';ctx.textBaseline='middle';
-      ctx.fillText('No buildings constructed yet',CW-172,21);
     }
+  }
+
+  if(G.mapMode==='instab'){
+    // Average instability + average satisfaction for player provinces
+    const instVals=myProvs.map(i=>G.instab[i]||0);
+    const satVals=myProvs.map(i=>G.satisfaction[i]||70);
+    const avgInstab=instVals.length?Math.round(instVals.reduce((a,b)=>a+b,0)/instVals.length):0;
+    const avgSat=satVals.length?Math.round(satVals.reduce((a,b)=>a+b,0)/satVals.length):0;
+    const highInstab=instVals.filter(v=>v>50).length;
+    const unstable=instVals.filter(v=>v>25).length;
+    const rows=4;
+    const sh=PAD*2+14+rows*LH+4;
+    panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(180,120,20,.3)');
+    panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'⚡  UNREST');
+    const instColor=avgInstab>60?'#ff6040':avgInstab>35?'#e08830':'#9aba50';
+    panelRow(CORNER_X+PAD,CORNER_Y+PAD+14+LH*0,'Avg. disorder',avgInstab+'%',instColor);
+    panelRow(CORNER_X+PAD,CORNER_Y+PAD+14+LH*1,'Avg. satisfaction',avgSat+'%','#9aba50');
+    panelRow(CORNER_X+PAD,CORNER_Y+PAD+14+LH*2,'Unstable provs',unstable+' / '+myProvs.length,unstable>0?'#e08830':DIM);
+    panelRow(CORNER_X+PAD,CORNER_Y+PAD+14+LH*3,'Critical (>50%)',highInstab,highInstab>0?'#ff6040':DIM);
+  }
+
+  if(G.mapMode==='terrain'){
+    // Count terrain types across player provinces
+    const terrCount={};
+    myProvs.forEach(i=>{
+      const t=PROVINCES[i].terrain||'plains';
+      terrCount[t]=(terrCount[t]||0)+1;
+    });
+    const sorted=Object.entries(terrCount).sort((a,b)=>b[1]-a[1]);
+    const rows=Math.max(1,sorted.length);
+    const sh=PAD*2+14+rows*LH+4;
+    panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(50,80,50,.35)');
+    panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'🏔  TERRAIN');
+    sorted.forEach(([t,cnt],idx)=>{
+      const tInfo=TERRAIN[t];
+      const label=tInfo?.name||t;
+      const ey=CORNER_Y+PAD+14+idx*LH+LH/2;
+      ctx.save();
+      // Small terrain color swatch
+      ctx.fillStyle=TC[t]||'#444';
+      ctx.beginPath();ctx.rect(CORNER_X+PAD,ey-4,8,8);ctx.fill();
+      ctx.font='8px Cinzel,serif';ctx.fillStyle=TEXT;
+      ctx.textAlign='left';ctx.textBaseline='middle';
+      ctx.fillText(label,CORNER_X+PAD+12,ey);
+      ctx.fillStyle=DIM;ctx.textAlign='right';
+      ctx.fillText(cnt+' prov',CORNER_X+SW-PAD,ey);
+      ctx.restore();
+    });
+    if(!sorted.length){
+      ctx.save();ctx.font='8px Cinzel,serif';ctx.fillStyle=DIM;
+      ctx.textAlign='left';ctx.textBaseline='top';
+      ctx.fillText('No territories',CORNER_X+PAD,CORNER_Y+PAD+14);
+      ctx.restore();
+    }
+  }
+
+  if(G.mapMode==='resources'){
+    // Count resources across all visible provinces
+    const F=window.RES_FILTER||{coal:true,iron:true,oil:true};
+    const resDefs=[
+      {k:'coal',label:'Coal',color:'#888',dot:[80,80,80]},
+      {k:'iron',label:'Iron',color:'#7ab0d0',dot:[100,140,180]},
+      {k:'oil', label:'Oil', color:'#c8902a',dot:[180,130,40]},
+    ];
+    const counts={coal:0,iron:0,oil:0};
+    PROVINCES.forEach((_,i)=>{
+      if(PROVINCES[i].isSea)return;
+      const r=G.resBase[i]||{};
+      if(r.coal>0)counts.coal++;
+      if(r.iron>0)counts.iron++;
+      if(r.oil>0)counts.oil++;
+    });
+    // Panel drawn as HTML overlay instead — skip canvas for checkboxes
+    // Just show summary in canvas corner
+    const rows=3;
+    const sh=PAD*2+14+rows*LH+4;
+    panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(80,70,20,.35)');
+    panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'⛏  RESOURCES');
+    resDefs.forEach(({k,label,color,dot},idx)=>{
+      const ey=CORNER_Y+PAD+14+idx*LH+LH/2;
+      const active=F[k];
+      ctx.save();
+      ctx.fillStyle=active?`rgb(${dot[0]},${dot[1]},${dot[2]})`:'rgba(80,80,80,.3)';
+      ctx.beginPath();ctx.arc(CORNER_X+PAD+4,ey,4,0,Math.PI*2);ctx.fill();
+      ctx.font='8px Cinzel,serif';
+      ctx.fillStyle=active?TEXT:'rgba(100,100,100,.5)';
+      ctx.textAlign='left';ctx.textBaseline='middle';
+      ctx.fillText(label,CORNER_X+PAD+13,ey);
+      ctx.fillStyle=active?GOLD:DIM;ctx.textAlign='right';
+      ctx.fillText(counts[k]+' prov',CORNER_X+SW-PAD,ey);
+      ctx.restore();
+    });
   }
 }
 // ── MAP BOUNDS (computed once, used for clamping) ────────

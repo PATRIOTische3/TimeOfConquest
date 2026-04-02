@@ -1,4 +1,11 @@
 {
-  "version": "0.9.1-260401",
-  "changelog": "Fix: TERRAIN defined in game.js as fallback (was ReferenceError); HEX_GRID render, hexCount-scaled income/pop, provTerrainDef/Inc, hitProv per-hex, zoomReset grid-aware"
+  "_comment": "Version format: MAJOR.MINOR.PATCH-YYMMDD",
+  "_rules": [
+    "MAJOR — engine rewrites, map changes, save format breaks",
+    "MINOR — new gameplay systems (economy, multiplayer, battle queue...)",
+    "PATCH — bugfixes, UI tweaks, balance changes",
+    "YYMMDD — build date"
+  ],
+  "version": "0.8.9-02042026",
+  "changelog": "Fix"
 }
