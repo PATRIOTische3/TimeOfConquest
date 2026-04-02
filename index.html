@@ -1076,9 +1076,53 @@ window.refreshWorldsList=function(){
   function getAllUserMaps(){try{return JSON.parse(localStorage.getItem(SCEN_KEY)||'[]');}catch{return[];}}
   function saveUserMaps(arr){try{localStorage.setItem(SCEN_KEY,JSON.stringify(arr));}catch(e){showToast('Storage full!');}}
 
+  // ── MAP KEY DECODE & VERIFY ────────────────────────────────
+  // Must match the encoding in the editor exactly.
+  const _KEY_SALT  = 0x4F4354;   // 'TOC' in hex
+  const _KEY_PRIME = 1_000_003;
+  const _KEY_MOD   = 36 ** 5;    // 60,466,176
+
+  function _encodeVal(n){
+    const mixed = ((n * _KEY_SALT + n * n + 7) % _KEY_PRIME + _KEY_PRIME) % _KEY_PRIME;
+    return (mixed % _KEY_MOD).toString(36).toUpperCase().padStart(5,'0');
+  }
+
+  function _decodeKey(key){
+    // Format: TOC-PPPPP-NNNNN-HHHHH
+    const m=key&&key.match(/^TOC-([0-9A-Z]{5})-([0-9A-Z]{5})-([0-9A-Z]{5})$/i);
+    if(!m)return null;
+    return{pEnc:m[1].toUpperCase(),nEnc:m[2].toUpperCase(),hEnc:m[3].toUpperCase()};
+  }
+
   function _validateMapKey(data){
-    // Map must contain a line like: TOC_MAP_KEY = 'TOC-XXXX...'
-    return /TOC_MAP_KEY\s*=\s*['"`]TOC-/.test(data);
+    // Step 1: Key must be present
+    const keyMatch=data.match(/TOC_MAP_KEY\s*=\s*['"`](TOC-[^'"`]+)['"`]/);
+    if(!keyMatch)return{ok:false,reason:'Missing TOC_MAP_KEY'};
+    const key=keyMatch[1];
+    const parts=_decodeKey(key);
+    if(!parts)return{ok:false,reason:'Malformed key: '+key};
+    // Step 2: Extract actual counts from the data to verify
+    // Province count: length of PROVINCES array (count top-level objects)
+    const provMatch=data.match(/const PROVINCES\s*=\s*(\[[\s\S]*?\]);/);
+    const natMatch =data.match(/const NATIONS\s*=\s*(\[[\s\S]*?\]);/);
+    const hexMatch =data.match(/const HEX_GRID\s*=\s*(\{[\s\S]*?\});/);
+    if(!provMatch||!natMatch||!hexMatch)return{ok:false,reason:'Missing required arrays'};
+    let provCount,natCount,landHexCount;
+    try{
+      // Parse arrays safely — count "id": N entries for provinces/nations
+      provCount=(provMatch[1].match(/"id"\s*:/g)||[]).length;
+      natCount =(natMatch[1].match(/"id"\s*:/g)||[]).length;
+      // Count land hexes: "sea":0 entries
+      landHexCount=(hexMatch[1].match(/"sea"\s*:\s*0/g)||[]).length;
+    }catch(e){return{ok:false,reason:'Parse error: '+e.message};}
+    // Step 3: Re-encode actual values and compare
+    const expP=_encodeVal(provCount);
+    const expN=_encodeVal(natCount);
+    const expH=_encodeVal(landHexCount);
+    if(parts.pEnc!==expP)return{ok:false,reason:`Province count mismatch (key:${parts.pEnc} expected:${expP})`};
+    if(parts.nEnc!==expN)return{ok:false,reason:`Nation count mismatch (key:${parts.nEnc} expected:${expN})`};
+    if(parts.hEnc!==expH)return{ok:false,reason:`Hex count mismatch (key:${parts.hEnc} expected:${expH})`};
+    return{ok:true};
   }
 
   function _extractMapMeta(data){
@@ -1140,8 +1184,9 @@ window.refreshWorldsList=function(){
       cb&&cb(true);return;
     }
     if(scen.source==='user'&&scen.data){
-      if(!_validateMapKey(scen.data)){
-        showToast('❌ Invalid map key — map rejected');cb&&cb(false);return;
+      const check=_validateMapKey(scen.data);
+      if(!check.ok){
+        showToast('❌ Key error: '+check.reason);cb&&cb(false);return;
       }
       try{
         new Function(scen.data)(); // execute map script
@@ -1159,8 +1204,9 @@ window.refreshWorldsList=function(){
       fetch(scen.filename+'?_='+Date.now())
         .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text();})
         .then(data=>{
-          if(!_validateMapKey(data)){
-            showToast('❌ Map key missing in '+scen.filename);_loadFallback(cb);return;
+          const check=_validateMapKey(data);
+          if(!check.ok){
+            showToast('❌ Key error: '+check.reason);_loadFallback(cb);return;
           }
           const existing=document.getElementById('dyn-map-script');
           if(existing)existing.remove();
@@ -1330,9 +1376,8 @@ window.refreshWorldsList=function(){
         if(!data.includes('PROVINCES')||!data.includes('NATIONS')){
           showToast('❌ Invalid map — needs PROVINCES & NATIONS');return;
         }
-        if(!_validateMapKey(data)){
-          showToast('❌ Map rejected — missing TOC_MAP_KEY = "TOC-..."');return;
-        }
+        const check=_validateMapKey(data);
+        if(!check.ok){showToast('❌ '+check.reason);return;}
         const meta=_extractMapMeta(data);
         const maps=getAllUserMaps();
         const id='u'+Date.now();

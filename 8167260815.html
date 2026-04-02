@@ -1378,10 +1378,36 @@ function confirmClear(){
   }}]);
 }
 
+// ── Map Key System ────────────────────────────────────
+// The key encodes real map stats so the game can verify integrity.
+// Format: TOC-PPPPP-NNNNN-HHHHH
+//   PPPPP = encoded province count
+//   NNNNN = encoded nation count
+//   HHHHH = encoded hex count (land hexes only)
+// Encoding: value * SALT mod PRIME, then Base36, padded to 5 chars.
+// The game decodes and compares against the actual loaded data.
+
+const _KEY_SALT   = 0x4F43_54;   // 'TCO' in hex — "Time of Conquest"
+const _KEY_PRIME  = 1_000_003;   // large prime for spreading values
+const _KEY_MOD    = 36 ** 5;     // Base36^5 = 60,466,176
+
+function _encodeVal(n) {
+  // Mix: (n * SALT + n^2) mod PRIME, then mod KEY_MOD for 5-char Base36
+  const mixed = ((n * _KEY_SALT + n * n + 7) % _KEY_PRIME + _KEY_PRIME) % _KEY_PRIME;
+  const encoded = mixed % _KEY_MOD;
+  return encoded.toString(36).toUpperCase().padStart(5, '0');
+}
+
+function generateMapKey(provCount, natCount, landHexCount) {
+  const p = _encodeVal(provCount);
+  const n = _encodeVal(natCount);
+  const h = _encodeVal(landHexCount);
+  return `TOC-${p}-${n}-${h}`;
+}
+
 // ── Export ───────────────────────────────────────────
 function exportById(id){const p=getProjs().find(x=>x.id===id);if(p)doExport(p);}
 function exportJS(){if(P)doExport(P);}
-function exportById(id){const p=getProjs().find(x=>x.id===id);if(p)doExport(p);}
 
 function doExport(proj){
   const H=proj.hexes, R=proj.hexR||18;
@@ -1468,12 +1494,16 @@ function doExport(proj){
   });
 
   // ── HEXES — compact array (only non-default values) ──
-  // Format: [row, col, terrain, sea(0/1), provinceIdx(-1=none)]
   const hexesOut=H.map((h,i)=>{
     const pi=hexProvIdx[i];
-    // Omit defaults: terrain=plains sea=true(water) prov=-1 to keep compact
     return{r:h.r,c:h.c,t:h.t,sea:h.sea?1:0,p:pi};
   });
+
+  // ── Generate Map Key ─────────────────────────────────
+  const landHexCount = H.filter(h=>!h.sea).length;
+  const mapKey = generateMapKey(provOut.length, natsOut.length, landHexCount);
+  const mapName = proj.name || 'Custom Map';
+  const mapDesc = `${provOut.length} provinces · ${natsOut.length} nations · ${proj.cols}×${proj.rows} grid`;
 
   // ── Assemble JS ───────────────────────────────────────
   const date=new Date().toISOString().slice(0,10);
@@ -1482,8 +1512,15 @@ function doExport(proj){
 // Project : ${proj.name}
 // Date    : ${date}
 // Grid    : ${proj.cols} × ${proj.rows} (hex R=${R}px)
-// Stats   : ${provOut.length} provinces · ${natsOut.length} nations · ${seaZonesOut.length} sea zones · ${H.filter(h=>!h.sea).length} land hexes
+// Stats   : ${provOut.length} provinces · ${natsOut.length} nations · ${seaZonesOut.length} sea zones · ${landHexCount} land hexes
 // ═══════════════════════════════════════════════════════
+
+// ── Map Identity (required by game engine) ──────────────
+// Key encodes: provinces=${provOut.length}, nations=${natsOut.length}, land hexes=${landHexCount}
+// Do NOT edit these lines — the game verifies them on load.
+const TOC_MAP_KEY  = '${mapKey}';
+const TOC_MAP_NAME = '${mapName.replace(/'/g,"\\'")}';
+const TOC_MAP_DESC = '${mapDesc}';
 
 // ── Provinces ───────────────────────────────────────────
 const PROVINCES = ${JSON.stringify(provOut,null,2)};
@@ -1531,6 +1568,11 @@ const IDEOLOGIES = {
       ✓ ${NB.reduce((s,a)=>s+a.length,0)/2|0} province adjacency pairs (NB)<br>
       ✓ ${seaZonesOut.length} sea zones with labels<br>
       ✓ ${H.length} hexes (terrain + sea/land map)
+    </div>
+    <div style="margin-top:10px;padding:8px;background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.25);font-size:9px">
+      <div style="font-family:'Cinzel',serif;color:var(--gold);margin-bottom:4px;letter-spacing:1px">🔑 MAP KEY</div>
+      <div style="font-family:monospace;font-size:11px;color:#e8d5a3;letter-spacing:2px">${mapKey}</div>
+      <div style="color:var(--dim);margin-top:4px">Encodes: ${provOut.length} provinces · ${natsOut.length} nations · ${landHexCount} land hexes</div>
     </div>`,[{lbl:'OK'}]);
 }
 
