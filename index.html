@@ -196,22 +196,6 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .mmbtn{padding:clamp(3px,.4vh,6px) clamp(8px,.9vw,14px);background:rgba(0,0,0,.28);border:1px solid var(--border);color:var(--dim);font-family:'Cinzel',serif;font-size:clamp(8px,.8vw,12px);letter-spacing:1px;cursor:pointer;transition:all .12s;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
 .mmbtn:hover{border-color:var(--border2);color:var(--text)}
 .mmbtn.on{border-color:var(--gold);color:var(--gold);background:rgba(201,168,76,.07)}
-#res-filter-panel{display:none;position:absolute;top:8px;left:8px;z-index:12;flex-direction:column;gap:0;background:rgba(5,7,12,.92);border:1px solid rgba(201,168,76,.22);pointer-events:auto;min-width:148px}
-#res-filter-panel::before{content:'';display:block;height:1px;background:rgba(201,168,76,.4);position:absolute;top:0;left:0;right:0}
-.rfp-title{font-family:'Cinzel',serif;font-size:8px;letter-spacing:1px;color:#c9a84c;padding:7px 10px 4px;text-transform:uppercase;font-weight:bold}
-.rfp-row{display:flex;align-items:center;gap:7px;padding:3px 10px 3px 8px;cursor:pointer;transition:background .1s}
-.rfp-row:hover{background:rgba(255,255,255,.04)}
-.rfp-row input[type=checkbox]{appearance:none;-webkit-appearance:none;width:11px;height:11px;border:1px solid rgba(201,168,76,.4);background:transparent;cursor:pointer;flex-shrink:0;position:relative;transition:all .12s}
-.rfp-row input[type=checkbox]:checked{background:rgba(201,168,76,.2);border-color:#c9a84c}
-.rfp-row input[type=checkbox]:checked::after{content:'';position:absolute;inset:2px;background:#c9a84c}
-.rfp-row input[type=checkbox].coal-check:checked{border-color:#aaa;background:rgba(100,100,100,.3)}
-.rfp-row input[type=checkbox].coal-check:checked::after{background:#aaa}
-.rfp-row input[type=checkbox].iron-check:checked{border-color:#7ab0d0;background:rgba(100,160,200,.2)}
-.rfp-row input[type=checkbox].iron-check:checked::after{background:#7ab0d0}
-.rfp-row input[type=checkbox].oil-check:checked{border-color:#c8902a;background:rgba(180,130,30,.2)}
-.rfp-row input[type=checkbox].oil-check:checked::after{background:#c8902a}
-.rfp-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.rfp-label{font-family:'Cinzel',serif;font-size:8px;color:#ddd0b0;flex:1;text-transform:uppercase;letter-spacing:.5px}
 .rfp-count{font-family:'Cinzel',serif;font-size:7px;color:#7a6a40;margin-left:auto}
 #game-body{flex:1;display:flex;overflow:hidden;min-height:0}
 #map-wrap{flex:1;position:relative;overflow:hidden;min-height:0;min-width:0}
@@ -673,28 +657,6 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <div id="map-wrap">
       <div id="move-banner">🚶 MOVE MODE</div>
       <div id="season-banner">☀️ Summer</div>
-      <!-- Resource filter panel (shown only in Resources map mode) -->
-      <div id="res-filter-panel">
-        <div class="rfp-title">⛏ Resources</div>
-        <label class="rfp-row">
-          <input type="checkbox" class="coal-check" checked onchange="window.RES_FILTER.coal=this.checked;updateResCountsInPanel();scheduleDraw()">
-          <span class="rfp-dot" style="background:rgb(80,80,80)"></span>
-          <span class="rfp-label">Coal</span>
-          <span class="rfp-count" id="rfp-coal-count"></span>
-        </label>
-        <label class="rfp-row">
-          <input type="checkbox" class="iron-check" checked onchange="window.RES_FILTER.iron=this.checked;updateResCountsInPanel();scheduleDraw()">
-          <span class="rfp-dot" style="background:rgb(100,140,180)"></span>
-          <span class="rfp-label">Iron</span>
-          <span class="rfp-count" id="rfp-iron-count"></span>
-        </label>
-        <label class="rfp-row">
-          <input type="checkbox" class="oil-check" checked onchange="window.RES_FILTER.oil=this.checked;updateResCountsInPanel();scheduleDraw()">
-          <span class="rfp-dot" style="background:rgb(180,130,40)"></span>
-          <span class="rfp-label">Oil</span>
-          <span class="rfp-count" id="rfp-oil-count"></span>
-        </label>
-      </div>
       <div id="res-tooltip">
         <div class="rt-row"><span class="rt-lbl">🛢️ Oil</span><span id="tt-oil">0</span></div>
         <div class="rt-row"><span class="rt-lbl">⚫ Coal</span><span id="tt-coal">0</span></div>

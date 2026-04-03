@@ -150,29 +150,8 @@ function chkSB(){const b=document.getElementById('startbtn');if(b)b.disabled=SC<
 function show(id){document.querySelectorAll('.scr').forEach(e=>e.classList.remove('on'));document.getElementById('s-'+id).classList.add('on');}
 function switchTab(id){document.querySelectorAll('.tab,.tpane').forEach(e=>e.classList.remove('on'));document.getElementById('tab-'+id).classList.add('on');document.getElementById('pane-'+id).classList.add('on');hideProvPopup();}
 function setMapMode(mode){G.mapMode=mode;document.querySelectorAll('.mmbtn').forEach(b=>b.classList.remove('on'));document.getElementById('mm-'+mode).classList.add('on');updateResFilterPanel();scheduleDraw();}
-function updateResFilterPanel(){
-  const panel=document.getElementById('res-filter-panel');
-  if(!panel)return;
-  panel.style.display=G.mapMode==='resources'?'flex':'none';
-  if(G.mapMode==='resources')updateResCountsInPanel();
-}
-function updateResCountsInPanel(){
-  if(!window.PROVINCES||!G.resBase)return;
-  const counts={coal:0,iron:0,oil:0};
-  PROVINCES.forEach((_,i)=>{
-    if(PROVINCES[i]?.isSea)return;
-    const r=G.resBase[i]||{};
-    if(r.coal>0)counts.coal++;
-    if(r.iron>0)counts.iron++;
-    if(r.oil>0)counts.oil++;
-  });
-  const ec=document.getElementById('rfp-coal-count');
-  const ei=document.getElementById('rfp-iron-count');
-  const eo=document.getElementById('rfp-oil-count');
-  if(ec)ec.textContent=counts.coal+' prov';
-  if(ei)ei.textContent=counts.iron+' prov';
-  if(eo)eo.textContent=counts.oil+' prov';
-}
+function updateResFilterPanel(){} // no-op, overlay is canvas-only now
+function updateResCountsInPanel(){} // no-op
 
 // ── GAME START ────────────────────────────────────────────
 function startGame(){
@@ -931,22 +910,40 @@ function drawMapOverlay(){
   }
 
   if(G.mapMode==='instab'){
-    // Average instability + average satisfaction for player provinces
-    const instVals=myProvs.map(i=>G.instab[i]||0);
-    const satVals=myProvs.map(i=>G.satisfaction[i]||70);
-    const avgInstab=instVals.length?Math.round(instVals.reduce((a,b)=>a+b,0)/instVals.length):0;
-    const avgSat=satVals.length?Math.round(satVals.reduce((a,b)=>a+b,0)/satVals.length):0;
-    const highInstab=instVals.filter(v=>v>50).length;
-    const unstable=instVals.filter(v=>v>25).length;
-    const rows=4;
-    const sh=PAD*2+14+rows*LH+4;
+    const satVals=myProvs.map(i=>G.satisfaction[i]??70);
+    const avgSat=satVals.length?Math.round(satVals.reduce((a,b)=>a+b,0)/satVals.length):70;
+    const satColor=avgSat>=70?'#9aba50':avgSat>=50?'#e08830':'#ff6040';
+    // Panel height: title + gap + value row + bar + bottom pad
+    const BAR_H=7, BAR_W=SW-PAD*2, TITLE_H=22, VAL_H=18;
+    const sh=TITLE_H+VAL_H+BAR_H+PAD+8;
     panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(180,120,20,.3)');
-    panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'⚡  UNREST');
-    const instColor=avgInstab>60?'#ff6040':avgInstab>35?'#e08830':'#9aba50';
-    panelRow(CORNER_X+PAD,CORNER_Y+PAD+14+LH*0,'Avg. disorder',avgInstab+'%',instColor);
-    panelRow(CORNER_X+PAD,CORNER_Y+PAD+14+LH*1,'Avg. satisfaction',avgSat+'%','#9aba50');
-    panelRow(CORNER_X+PAD,CORNER_Y+PAD+14+LH*2,'Unstable provs',unstable+' / '+myProvs.length,unstable>0?'#e08830':DIM);
-    panelRow(CORNER_X+PAD,CORNER_Y+PAD+14+LH*3,'Critical (>50%)',highInstab,highInstab>0?'#ff6040':DIM);
+    // Title
+    panelTitle(CORNER_X+PAD,CORNER_Y+7,'⚡  UNREST');
+    // Value row
+    const vy=CORNER_Y+TITLE_H+VAL_H/2+2;
+    ctx.save();
+    ctx.font='8px Cinzel,serif';ctx.fillStyle=TEXT;
+    ctx.textAlign='left';ctx.textBaseline='middle';
+    ctx.fillText('Avg. satisfaction',CORNER_X+PAD,vy);
+    ctx.font='bold 9px Cinzel,serif';ctx.fillStyle=satColor;
+    ctx.textAlign='right';
+    ctx.fillText(avgSat+'%',CORNER_X+SW-PAD,vy);
+    ctx.restore();
+    // Gradient bar
+    const bx=CORNER_X+PAD, by=CORNER_Y+TITLE_H+VAL_H+4;
+    const grad=ctx.createLinearGradient(bx,0,bx+BAR_W,0);
+    grad.addColorStop(0,'#c03020');grad.addColorStop(0.4,'#c08020');
+    grad.addColorStop(0.65,'#a0b030');grad.addColorStop(1,'#50c040');
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,.4)';
+    ctx.beginPath();ctx.rect(bx,by,BAR_W,BAR_H);ctx.fill();
+    ctx.fillStyle=grad;
+    const filled=Math.round(BAR_W*(avgSat/100));
+    ctx.beginPath();ctx.rect(bx,by,filled,BAR_H);ctx.fill();
+    // Tick marker
+    ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.globalAlpha=0.9;
+    ctx.beginPath();ctx.moveTo(bx+filled,by-1);ctx.lineTo(bx+filled,by+BAR_H+1);ctx.stroke();
+    ctx.restore();
   }
 
   if(G.mapMode==='terrain'){
@@ -985,41 +982,44 @@ function drawMapOverlay(){
   }
 
   if(G.mapMode==='resources'){
-    // Count resources across all visible provinces
     const F=window.RES_FILTER||{coal:true,iron:true,oil:true};
     const resDefs=[
-      {k:'coal',label:'Coal',color:'#888',dot:[80,80,80]},
-      {k:'iron',label:'Iron',color:'#7ab0d0',dot:[100,140,180]},
-      {k:'oil', label:'Oil', color:'#c8902a',dot:[180,130,40]},
+      {k:'coal',label:'Coal',dot:[80,80,80]},
+      {k:'iron',label:'Iron',dot:[100,140,180]},
+      {k:'oil', label:'Oil', dot:[180,130,40]},
     ];
     const counts={coal:0,iron:0,oil:0};
     PROVINCES.forEach((_,i)=>{
-      if(PROVINCES[i].isSea)return;
+      if(PROVINCES[i]?.isSea)return;
       const r=G.resBase[i]||{};
       if(r.coal>0)counts.coal++;
       if(r.iron>0)counts.iron++;
       if(r.oil>0)counts.oil++;
     });
-    // Panel drawn as HTML overlay instead — skip canvas for checkboxes
-    // Just show summary in canvas corner
     const rows=3;
     const sh=PAD*2+14+rows*LH+4;
     panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(80,70,20,.35)');
     panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'⛏  RESOURCES');
-    resDefs.forEach(({k,label,color,dot},idx)=>{
-      const ey=CORNER_Y+PAD+14+idx*LH+LH/2;
+    window._resOverlayHitRects=[];
+    resDefs.forEach(({k,label,dot},idx)=>{
+      const rowY=CORNER_Y+PAD+14+idx*LH;
+      const ey=rowY+LH/2;
       const active=F[k];
+      window._resOverlayHitRects.push({k,x:CORNER_X,y:rowY,w:SW,h:LH});
       ctx.save();
-      ctx.fillStyle=active?`rgb(${dot[0]},${dot[1]},${dot[2]})`:'rgba(80,80,80,.3)';
+      ctx.globalAlpha=active?1:0.35;
+      ctx.fillStyle=`rgb(${dot[0]},${dot[1]},${dot[2]})`;
       ctx.beginPath();ctx.arc(CORNER_X+PAD+4,ey,4,0,Math.PI*2);ctx.fill();
       ctx.font='8px Cinzel,serif';
-      ctx.fillStyle=active?TEXT:'rgba(100,100,100,.5)';
+      ctx.fillStyle=active?TEXT:'rgba(180,160,120,.5)';
       ctx.textAlign='left';ctx.textBaseline='middle';
       ctx.fillText(label,CORNER_X+PAD+13,ey);
-      ctx.fillStyle=active?GOLD:DIM;ctx.textAlign='right';
+      ctx.fillStyle=active?GOLD:'rgba(120,100,60,.5)';ctx.textAlign='right';
       ctx.fillText(counts[k]+' prov',CORNER_X+SW-PAD,ey);
       ctx.restore();
     });
+  } else {
+    window._resOverlayHitRects=[];
   }
 }
 // ── MAP BOUNDS (computed once, used for clamping) ────────
@@ -1300,21 +1300,20 @@ canvas.addEventListener('mousedown',e=>{
   wrap.style.cursor='grabbing';
   hideProvPopup();
 });
-window.addEventListener('mousemove',e=>{
-  if(!_pan.active)return;
-  const dx=e.clientX-_pan.lx,dy=e.clientY-_pan.ly;
-  if(Math.abs(dx)>3||Math.abs(dy)>3){_moved=true;hideProvPopup();}
-  vp.tx+=dx;vp.ty+=dy;_pan.lx=e.clientX;_pan.ly=e.clientY;
-  clampViewport();
-  scheduleDraw();
-});
+window.addEventListener('mousemove',e=>{\n  if(_pan.active){\n    const dx=e.clientX-_pan.lx,dy=e.clientY-_pan.ly;\n    if(Math.abs(dx)>3||Math.abs(dy)>3){_moved=true;hideProvPopup();}\n    vp.tx+=dx;vp.ty+=dy;_pan.lx=e.clientX;_pan.ly=e.clientY;\n    clampViewport();\n    scheduleDraw();\n    return;\n  }\n  // Hover cursor for resource overlay rows\n  if(G.mapMode==='resources'&&window._resOverlayHitRects&&e.target===canvas){\n    const r=canvas.getBoundingClientRect();\n    const sx=e.clientX-r.left,sy=e.clientY-r.top;\n    const hit=window._resOverlayHitRects.find(h=>sx>=h.x&&sx<=h.x+h.w&&sy>=h.y&&sy<=h.y+h.h);\n    canvas.style.cursor=hit?'pointer':'';\n  } else if(!_pan.active){\n    canvas.style.cursor='';\n  }\n});
 window.addEventListener('mouseup',e=>{
   if(!_pan.active)return;
   _pan.active=false;wrap.style.cursor='';
   // Only fire click if mouse was pressed AND released on the canvas itself
   if(!_moved&&Date.now()-_tapStart.t<400&&e.target===canvas){
     const r=canvas.getBoundingClientRect();
-    const[wx,wy]=toWorld(e.clientX-r.left,e.clientY-r.top);
+    const sx=e.clientX-r.left, sy=e.clientY-r.top;
+    // Check resource overlay hit rects (screen space)
+    if(G.mapMode==='resources'&&window._resOverlayHitRects){
+      const hit=window._resOverlayHitRects.find(h=>sx>=h.x&&sx<=h.x+h.w&&sy>=h.y&&sy<=h.y+h.h);
+      if(hit){window.RES_FILTER[hit.k]=!window.RES_FILTER[hit.k];scheduleDraw();return;}
+    }
+    const[wx,wy]=toWorld(sx,sy);
     onCanvasClick(wx,wy);
   }
 });
@@ -1367,7 +1366,12 @@ canvas.addEventListener('touchend',e=>{
     _pinch.active=false;
     if(!_moved&&_pan.active&&Date.now()-_tapStart.t<400){
       const r=canvas.getBoundingClientRect();
-      const[wx,wy]=toWorld(_tapStart.x-r.left,_tapStart.y-r.top);
+      const sx=_tapStart.x-r.left, sy=_tapStart.y-r.top;
+      if(G.mapMode==='resources'&&window._resOverlayHitRects){
+        const hit=window._resOverlayHitRects.find(h=>sx>=h.x&&sx<=h.x+h.w&&sy>=h.y&&sy<=h.y+h.h);
+        if(hit){window.RES_FILTER[hit.k]=!window.RES_FILTER[hit.k];_pan.active=false;scheduleDraw();return;}
+      }
+      const[wx,wy]=toWorld(sx,sy);
       onCanvasClick(wx,wy);
     }
     _pan.active=false;
