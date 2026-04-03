@@ -16,6 +16,8 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .btn{padding:9px 20px;background:linear-gradient(180deg,#1e1408,#100a04);border:1px solid var(--gold);color:var(--gold);font-family:'Cinzel',serif;font-size:11px;letter-spacing:2px;cursor:pointer;transition:all .15s;text-transform:uppercase}
 .btn:hover{background:rgba(201,168,76,.1);box-shadow:0 0 16px rgba(201,168,76,.2)}
 .btn:active{transform:scale(.96)}
+.btn:disabled{opacity:.28;cursor:not-allowed;filter:grayscale(.6);box-shadow:none}
+.btn:disabled:hover{background:linear-gradient(180deg,#1e1408,#100a04);box-shadow:none}
 .btn.full{width:100%;text-align:center}
 .btn.red{border-color:#b03030;color:#ff7070}
 .btn.grn{border-color:#307830;color:#70e870}
@@ -609,6 +611,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
         <div id="nic-traits"></div>
       </div>
       <button class="btn full" id="startbtn" onclick="startGame()" disabled style="margin-top:auto;padding:clamp(9px,1.5vh,14px) 0;font-size:clamp(11px,1.4vw,13px);letter-spacing:3px">⚔ BEGIN CONQUEST</button>
+      <div id="startbtn-hint" style="text-align:center;font-family:Cinzel,serif;font-size:9px;letter-spacing:1.5px;color:rgba(201,168,76,.45);margin-top:5px;transition:opacity .3s">SELECT A NATION TO CONTINUE</div>
     </div>
   </div>
 </div>

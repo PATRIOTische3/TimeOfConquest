@@ -144,7 +144,12 @@ function initDiplo(){
 // SC (selected country index) and SI (selected ideology) are managed by the
 // setup screen script in index.html. We just declare the globals here.
 let SC=-1,SI='fascism';
-function chkSB(){const b=document.getElementById('startbtn');if(b)b.disabled=SC<0||!SI;}
+function chkSB(){
+  const b=document.getElementById('startbtn');
+  if(b) b.disabled=SC<0||!SI;
+  const hint=document.getElementById('startbtn-hint');
+  if(hint) hint.style.opacity=(SC<0||!SI)?'1':'0';
+}
 
 // ── SCREEN MANAGEMENT ─────────────────────────────────────
 function show(id){document.querySelectorAll('.scr').forEach(e=>e.classList.remove('on'));document.getElementById('s-'+id).classList.add('on');}
@@ -263,7 +268,16 @@ window.addEventListener('resize',()=>{
 function scheduleDraw(){
   if(_drawPending)return;
   _drawPending=true;
-  requestAnimationFrame(()=>{_drawPending=false;drawMap();});
+  requestAnimationFrame(()=>{
+    _drawPending=false;
+    drawMap();
+    // Keep animating if instab slide is in progress
+    if(G.mapMode==='instab'&&G.sel>=0&&window._instabAnimY&&window._instabAnimY[G.sel]!==undefined){
+      const target=PROVINCES[G.sel]&&!PROVINCES[G.sel].isCapital?1:0;
+      const cur=window._instabAnimY[G.sel];
+      if(Math.abs(cur-target)>0.05) scheduleDraw();
+    }
+  });
 }
 
 // ── HEX MATH ─────────────────────────────────────────────
@@ -374,6 +388,26 @@ function buildHexCache(){
   _provBorderHexes=Array.from({length:N},()=>[]);
   _provCentroid=Array.from({length:N},()=>({x:0,y:0,n:0}));
 
+  // Pre-compute border edge segments per province for clean outlines
+  // Each entry: {hx, hy, side} — the side index (0-5) of hex to draw as a line segment
+  window._provBorderEdges=Array.from({length:N},()=>[]);
+
+  // Pointy-top hex: side i goes from vertex i to vertex i+1
+  // Vertex angles: PI/6 + i*PI/3
+  function hexEdgeSeg(cx,cy,r,side){
+    const a0=Math.PI/6+Math.PI/3*side;
+    const a1=Math.PI/6+Math.PI/3*((side+1)%6);
+    return {x0:cx+Math.cos(a0)*r, y0:cy+Math.sin(a0)*r,
+            x1:cx+Math.cos(a1)*r, y1:cy+Math.sin(a1)*r};
+  }
+
+  // Neighbour direction → hex side that faces that direction (pointy-top, even row)
+  // Offsets from getNeighbours (even row): [[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]]
+  // Side 0=top-right, 1=right, 2=bottom-right, 3=bottom-left, 4=left, 5=top-left
+  // Neighbour dir index maps directly to side facing that neighbour
+  const EVEN_OFFS=[[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]];
+  const ODD_OFFS=[[-1,-1],[-1,0],[0,1],[1,0],[1,-1],[0,-1]];
+
   _hexCache.forEach((h,idx)=>{
     h.nbIdx=getNeighbours(h.r,h.c);
     if(h.sea||h.p<0)return;
@@ -381,7 +415,20 @@ function buildHexCache(){
     const c=_provCentroid[h.p];
     if(c){c.x+=h.x;c.y+=h.y;c.n++;}
     // Border check: any neighbour is sea, missing, or different province
-    const isBorder=h.nbIdx.length<6||h.nbIdx.some(ni=>{const nb=_hexCache[ni];return nb.sea||nb.p!==h.p;});
+    const offs=h.r%2===0?EVEN_OFFS:ODD_OFFS;
+    let isBorder=false;
+    for(let s=0;s<6;s++){
+      const [dr,dc]=offs[s];
+      const nr=h.r+dr, nc=h.c+dc;
+      const niLookup=(_hexByRC[nr]&&_hexByRC[nr][nc]!==undefined)?_hexByRC[nr][nc]:-1;
+      const nb=niLookup>=0?_hexCache[niLookup]:null;
+      const isExternal=!nb||nb.sea||nb.p!==h.p;
+      if(isExternal){
+        isBorder=true;
+        // Store this edge segment for the province outline
+        if(_provBorderEdges[h.p]) _provBorderEdges[h.p].push(hexEdgeSeg(h.x,h.y,R,s));
+      }
+    }
     h.isBorder=isBorder;
     if(isBorder&&_provBorderHexes[h.p]) _provBorderHexes[h.p].push(idx);
   });
@@ -543,7 +590,16 @@ function drawMap(){
   if(_hexCache&&_hexCache.length){
     const R=HEX_GRID.hexR,pad=R*3;
 
-    // PASS 1: Fill land hexes only (sea = transparent, shows ocean background)
+    // PASS 1a: Fill unowned land hexes (sea=0, p=-1) — neutral unclaimed territory
+    for(const h of _hexCache){
+      if(h.sea||h.p>=0)continue;
+      if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
+      hexPath(ctx,h.x,h.y,R+0.5/vp.scale);
+      ctx.fillStyle='#2e2a22';
+      ctx.fill();
+    }
+
+    // PASS 1b: Fill province land hexes
     for(const h of _hexCache){
       if(h.sea||h.p<0)continue;
       if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
@@ -552,46 +608,68 @@ function drawMap(){
       ctx.fill();
     }
 
-    // PASS 2: Draw borders — only on precomputed border hexes (O(borderHexes) not O(n²))
-    // Normal province borders
-    ctx.strokeStyle='rgba(6,8,14,.75)';
-    ctx.lineWidth=.7/vp.scale;
+    // PASS 1c: Terrain overlay on political map (subtle terrain tint)
+    if(G.mapMode==='political'){
+      const TC2={plains:'#7a8c5a',forest:'#3a6040',mountain:'#8a7a6a',hills:'#7a6a50',
+        desert:'#c8a860',jungle:'#2a7040',steppe:'#9aaa60',farmland:'#9aaa50',
+        highland:'#8a7060',tundra:'#8aA0a8',swamp:'#4a7050',savanna:'#b0963c',
+        marsh:'#5a7855',urban:'#8a8070',coast:'#5a7890'};
+      ctx.globalAlpha=0.13;
+      for(const h of _hexCache){
+        if(h.sea||h.p<0)continue;
+        if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
+        const tc=TC2[h.t]||'#7a8a60';
+        hexPath(ctx,h.x,h.y,R+0.5/vp.scale);
+        ctx.fillStyle=tc;
+        ctx.fill();
+      }
+      ctx.globalAlpha=1.0;
+    }
+
+    // PASS 2: Draw province outline edges — only the sides that face a different province/sea
     for(let pi=0;pi<PROVINCES.length;pi++){
-      const borders=_provBorderHexes&&_provBorderHexes[pi];
-      if(!borders||!borders.length)continue;
+      const edges=window._provBorderEdges&&window._provBorderEdges[pi];
+      if(!edges||!edges.length)continue;
       const o=G.owner[pi];
       const isSel=pi===G.sel;
       const isMov=G.moveMode&&G.moveFrom>=0&&isMoveTgt(pi);
       const isAtk=_atkSelectMode&&isAtkSrc(pi);
       const isNav=G.navalMode&&G.navalFrom>=0&&navalDests(G.navalFrom).includes(pi);
 
-      for(const idx of borders){
-        const h=_hexCache[idx];
-        if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
-
-        if(isSel||isMov||isAtk||isNav){
-          hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
-          if(isSel){ctx.strokeStyle='rgba(255,255,255,.95)';ctx.lineWidth=2/vp.scale;}
-          else if(isMov){ctx.strokeStyle='rgba(80,255,80,.9)';ctx.lineWidth=1.6/vp.scale;}
-          else if(isAtk){ctx.strokeStyle='rgba(255,80,80,.9)';ctx.lineWidth=1.8/vp.scale;}
-          else{ctx.strokeStyle='rgba(80,200,255,.9)';ctx.lineWidth=1.6/vp.scale;}
-          ctx.stroke();
-        } else {
-          hexPath(ctx,h.x,h.y,R+0.2/vp.scale);
-          if(o<0&&G.mapMode==='political'){
-            ctx.save();ctx.setLineDash([2.5/vp.scale,2/vp.scale]);
-            ctx.strokeStyle='rgba(200,100,30,.7)';ctx.lineWidth=1.2/vp.scale;ctx.stroke();
-            ctx.setLineDash([]);ctx.restore();
-          } else if(o===G.playerNation&&G.mapMode==='political'){
-            // Check for rebel neighbour
-            const hasRebel=h.nbIdx.some(ni=>{const nb=_hexCache[ni];return nb.p>=0&&G.owner[nb.p]<0;});
-            if(hasRebel){ctx.save();ctx.setLineDash([3/vp.scale,2/vp.scale]);ctx.strokeStyle='rgba(60,200,60,.85)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();ctx.setLineDash([]);ctx.restore();}
-            else{ctx.strokeStyle='rgba(6,8,14,.75)';ctx.lineWidth=.7/vp.scale;ctx.stroke();}
-          } else {
-            ctx.strokeStyle='rgba(6,8,14,.75)';ctx.lineWidth=.7/vp.scale;ctx.stroke();
-          }
-        }
+      ctx.save();
+      if(isSel){
+        ctx.strokeStyle='rgba(255,255,255,.95)';ctx.lineWidth=2.2/vp.scale;
+      } else if(isMov){
+        ctx.strokeStyle='rgba(80,255,80,.9)';ctx.lineWidth=1.8/vp.scale;
+      } else if(isAtk){
+        ctx.strokeStyle='rgba(255,80,80,.9)';ctx.lineWidth=2/vp.scale;
+      } else if(isNav){
+        ctx.strokeStyle='rgba(80,200,255,.9)';ctx.lineWidth=1.8/vp.scale;
+      } else if(o<0&&G.mapMode==='political'){
+        ctx.setLineDash([2.5/vp.scale,2/vp.scale]);
+        ctx.strokeStyle='rgba(200,100,30,.7)';ctx.lineWidth=1.2/vp.scale;
+      } else if(o===G.playerNation&&G.mapMode==='political'){
+        // Check if any border hex has rebel neighbour
+        const borders=_provBorderHexes&&_provBorderHexes[pi];
+        const hasRebel=borders&&borders.some(idx=>{
+          const h=_hexCache[idx];
+          return h.nbIdx.some(ni=>{const nb=_hexCache[ni];return nb.p>=0&&G.owner[nb.p]<0;});
+        });
+        if(hasRebel){ctx.setLineDash([3/vp.scale,2/vp.scale]);ctx.strokeStyle='rgba(60,200,60,.85)';ctx.lineWidth=1.6/vp.scale;}
+        else{ctx.strokeStyle='rgba(6,8,14,.8)';ctx.lineWidth=1.0/vp.scale;}
+      } else {
+        ctx.strokeStyle='rgba(6,8,14,.8)';ctx.lineWidth=1.0/vp.scale;
       }
+
+      ctx.beginPath();
+      for(const e of edges){
+        if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
+        if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
+        ctx.moveTo(e.x0,e.y0);
+        ctx.lineTo(e.x1,e.y1);
+      }
+      ctx.stroke();
+      ctx.restore();
     }
   }else{
   // ── Centroid mode (old map) ───────────────────────────────
@@ -660,13 +738,26 @@ function drawMap(){
       const labelR=_hexCache?HEX_GRID.hexR:scaledR(i);
       const fs=Math.max(3,Math.min(7,labelR*.42));
 
-      // Province name — capitals only
+      // Province name — capitals always, selected non-capitals also show name
       if(p.isCapital){
         ctx.font=`700 ${fs+1}px Cinzel,serif`;
         ctx.fillStyle='#f0d080';
         ctx.textAlign='center';ctx.textBaseline='middle';
         ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=4;
-        ctx.fillText(p.short.length>10?p.short.slice(0,10):p.short,px,py-(G.army[i]>0&&vp.scale>1.2?2:0));
+        // In instab mode: shift capital name up to make room for % below
+        const capShiftY=(G.mapMode==='instab'&&G.owner[i]===G.playerNation)?-fs*0.8:0;
+        ctx.fillText(p.short.length>10?p.short.slice(0,10):p.short,px,py-(G.army[i]>0&&vp.scale>1.2?2:0)+capShiftY);
+        ctx.shadowBlur=0;
+      } else if(i===G.sel&&vp.scale>0.7){
+        // Non-capital selected — show name
+        const nameStr=(p.name||p.short||'').slice(0,14);
+        ctx.font=`600 ${fs+0.5}px Cinzel,serif`;
+        ctx.fillStyle='rgba(240,210,120,.95)';
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.shadowColor='rgba(0,0,0,.98)';ctx.shadowBlur=5;
+        // In instab mode: shift name up to make room for % below
+        const selShiftY=(G.mapMode==='instab'&&G.owner[i]===G.playerNation)?-fs*0.8:0;
+        ctx.fillText(nameStr,px,py+selShiftY);
         ctx.shadowBlur=0;
       }
 
@@ -681,7 +772,27 @@ function drawMap(){
         ctx.font=`bold ${Math.max(4,fs)}px Cinzel,serif`;
         ctx.fillStyle=ins>70?'#ff8060':ins>40?'#ffcc60':ins>15?'#c0e860':'#80ff80';
         ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=3;
-        ctx.fillText(sat+'%',px,py);ctx.shadowBlur=0;
+        // For capitals: always show % below name. For selected non-capitals: also below name.
+        // Animate slide for selected province using _instabAnimY
+        let satY=py;
+        const isNameVisible=p.isCapital||(i===G.sel&&vp.scale>0.7);
+        if(isNameVisible){
+          // Base offset below the name
+          const baseOffset=fs*1.6;
+          if(i===G.sel&&!p.isCapital){
+            // Animated slide: use _instabAnimY[i] for smooth parabolic ease
+            if(!window._instabAnimY) window._instabAnimY={};
+            if(window._instabAnimY[i]===undefined) window._instabAnimY[i]=0;
+            const target=baseOffset;
+            const cur=window._instabAnimY[i];
+            // Parabolic ease: accelerate then decelerate
+            window._instabAnimY[i]=cur+(target-cur)*0.18;
+            satY=py-fs*0.8+window._instabAnimY[i];
+          } else {
+            satY=py-fs*0.8+fs*1.6;
+          }
+        }
+        ctx.fillText(sat+'%',px,satY);ctx.shadowBlur=0;
       }
 
       const _draftEntry=(G.draftQueue||[]).find(d=>d.prov===i&&d.nation===G.playerNation);
@@ -1225,11 +1336,17 @@ function showProvPopup(i, screenX, screenY){
   const ppH = pi.offsetHeight || 180;
   const wrap = document.getElementById('map-wrap');
   const wrapRect = wrap ? wrap.getBoundingClientRect() : {left:0,top:0,width:window.innerWidth,height:window.innerHeight};
-  let x = screenX - ppW/2;
-  let y = screenY - ppH - 14;
+  const canvasEl = document.getElementById('map-canvas');
+  const canvasRect = canvasEl ? canvasEl.getBoundingClientRect() : wrapRect;
+  // Adjust screenX/Y from canvas-space to map-wrap-space
+  const adjX = screenX + (canvasRect.left - wrapRect.left);
+  const adjY = screenY + (canvasRect.top - wrapRect.top);
+  let x = adjX - ppW/2;
+  let y = adjY - ppH - 14;
   if(x < 4) x = 4;
   if(x + ppW > wrapRect.width - 4) x = wrapRect.width - ppW - 4;
-  if(y < 4) y = screenY + 22;
+  if(y < 4) y = adjY + 22;
+  if(y + ppH > wrapRect.height - 4) y = wrapRect.height - ppH - 4;
   pp.style.left = x + 'px';
   pp.style.top = y + 'px';
 }
@@ -1276,15 +1393,18 @@ function onCanvasClick(wx,wy){
 
   // Always select for side panel
   G.sel=i; scheduleDraw(); updateSP(i); chkBtns();
+  // Reset instab slide animation for newly selected province
+  if(window._instabAnimY) window._instabAnimY[i]=undefined;
   if(window.innerWidth<=700) switchTab('info');
+
+  // Show popup using the actual click screen position (stored before pan)
+  const [sx,sy] = provScreenPos(i);
+  const hexR = _hexCache ? HEX_GRID.hexR : HEX_R;
+  // Show popup immediately at current screen position
+  showProvPopup(i, sx, sy - hexR*vp.scale);
 
   // Smoothly pan camera so selected province is visible and centred
   panToProvince(i);
-
-  // Show popup with province info + action buttons
-  const [sx,sy] = provScreenPos(i);
-  const hexR = _hexCache ? HEX_GRID.hexR : HEX_R;
-  showProvPopup(i, sx, sy - hexR*vp.scale);
 }
 
 // ── SMOOTH PAN TO PROVINCE ────────────────────────────────
