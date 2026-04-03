@@ -1061,78 +1061,83 @@ window.refreshWorldsList=function(){
   let hilite=-1;
   let _setupHexes=null,_setupBnds=null;
 
+  // ── LOADING OVERLAY ───────────────────────────────────────
+  function _showLoading(msg){
+    let ov=document.getElementById('scen-loading-overlay');
+    if(!ov){
+      ov=document.createElement('div');ov.id='scen-loading-overlay';
+      ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(6,8,14,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);transition:opacity .3s';
+      ov.innerHTML=`<div style="width:44px;height:44px;border:3px solid rgba(201,168,76,.2);border-top-color:var(--gold,#c9a84c);border-radius:50%;animation:_ldSpin .7s linear infinite"></div>
+        <div id="scen-loading-msg" style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold,#c9a84c);letter-spacing:2px;text-transform:uppercase"></div>`;
+      if(!document.getElementById('_ldSpinStyle')){
+        const s=document.createElement('style');s.id='_ldSpinStyle';
+        s.textContent='@keyframes _ldSpin{to{transform:rotate(360deg)}}';
+        document.head.appendChild(s);
+      }
+      document.body.appendChild(ov);
+    }
+    const m=document.getElementById('scen-loading-msg');if(m)m.textContent=msg||'Loading…';
+    ov.style.display='flex';ov.style.opacity='1';
+  }
+  function _hideLoading(){
+    const ov=document.getElementById('scen-loading-overlay');
+    if(!ov)return;
+    ov.style.opacity='0';
+    setTimeout(()=>{ov.style.display='none';},320);
+  }
+
   // ── SCENARIO STORAGE & SYSTEM ─────────────────────────────
   const SCEN_KEY='toc_scenarios_v1';
-  const SERVER_MAP_NAMES=['map_europe.js','map_ww2.js','map_ancient.js','map_cold_war.js','map_1914.js','map_asia.js','map_africa.js','map_1800.js'];
-  // Secret that must be present in map.js files to load in-game
-  // Format: export const TOC_MAP_KEY = 'TOC-XXXX-XXXX'; (any string starting with TOC-)
+  const SERVER_MAP_NAMES=[];
   const MAP_KEY_PREFIX='TOC-';
-  // The default map.js is always trusted (already loaded)
 
   let _activeScenario=null;
-  let _scenView='list'; // 'list' | 'tile' | 'carousel'
+  let _scenView='list';
   let _eraIdx=0;
 
   function getAllUserMaps(){try{return JSON.parse(localStorage.getItem(SCEN_KEY)||'[]');}catch{return[];}}
   function saveUserMaps(arr){try{localStorage.setItem(SCEN_KEY,JSON.stringify(arr));}catch(e){showToast('Storage full!');}}
 
   // ── MAP KEY DECODE & VERIFY ────────────────────────────────
-  // Must match the encoding in the editor exactly.
-  const _KEY_SALT  = 0x4F4354;   // 'TOC' in hex
+  const _KEY_SALT  = 0x4F4354;
   const _KEY_PRIME = 1_000_003;
-  const _KEY_MOD   = 36 ** 5;    // 60,466,176
+  const _KEY_MOD   = 36 ** 5;
 
   function _encodeVal(n){
-    const mixed = ((n * _KEY_SALT + n * n + 7) % _KEY_PRIME + _KEY_PRIME) % _KEY_PRIME;
-    return (mixed % _KEY_MOD).toString(36).toUpperCase().padStart(5,'0');
+    const mixed=((n*_KEY_SALT+n*n+7)%_KEY_PRIME+_KEY_PRIME)%_KEY_PRIME;
+    return(mixed%_KEY_MOD).toString(36).toUpperCase().padStart(5,'0');
   }
-
   function _decodeKey(key){
-    // Format: TOC-PPPPP-NNNNN-HHHHH
     const m=key&&key.match(/^TOC-([0-9A-Z]{5})-([0-9A-Z]{5})-([0-9A-Z]{5})$/i);
     if(!m)return null;
     return{pEnc:m[1].toUpperCase(),nEnc:m[2].toUpperCase(),hEnc:m[3].toUpperCase()};
   }
-
   function _validateMapKey(data){
-    // Step 1: Key must be present
     const keyMatch=data.match(/TOC_MAP_KEY\s*=\s*['"`](TOC-[^'"`]+)['"`]/);
     if(!keyMatch)return{ok:false,reason:'Missing TOC_MAP_KEY'};
     const key=keyMatch[1];
     const parts=_decodeKey(key);
     if(!parts)return{ok:false,reason:'Malformed key: '+key};
-    // Step 2: Extract actual counts from the data to verify
-    // Province count: length of PROVINCES array (count top-level objects)
     const provMatch=data.match(/const PROVINCES\s*=\s*(\[[\s\S]*?\]);/);
     const natMatch =data.match(/const NATIONS\s*=\s*(\[[\s\S]*?\]);/);
     const hexMatch =data.match(/const HEX_GRID\s*=\s*(\{[\s\S]*?\});/);
     if(!provMatch||!natMatch||!hexMatch)return{ok:false,reason:'Missing required arrays'};
     let provCount,natCount,landHexCount;
     try{
-      // Parse arrays safely — count "id": N entries for provinces/nations
       provCount=(provMatch[1].match(/"id"\s*:/g)||[]).length;
       natCount =(natMatch[1].match(/"id"\s*:/g)||[]).length;
-      // Count land hexes: "sea":0 entries
       landHexCount=(hexMatch[1].match(/"sea"\s*:\s*0/g)||[]).length;
     }catch(e){return{ok:false,reason:'Parse error: '+e.message};}
-    // Step 3: Re-encode actual values and compare
-    const expP=_encodeVal(provCount);
-    const expN=_encodeVal(natCount);
-    const expH=_encodeVal(landHexCount);
-    if(parts.pEnc!==expP)return{ok:false,reason:`Province count mismatch (key:${parts.pEnc} expected:${expP})`};
-    if(parts.nEnc!==expN)return{ok:false,reason:`Nation count mismatch (key:${parts.nEnc} expected:${expN})`};
-    if(parts.hEnc!==expH)return{ok:false,reason:`Hex count mismatch (key:${parts.hEnc} expected:${expH})`};
+    const expP=_encodeVal(provCount),expN=_encodeVal(natCount),expH=_encodeVal(landHexCount);
+    if(parts.pEnc!==expP)return{ok:false,reason:`Province count mismatch`};
+    if(parts.nEnc!==expN)return{ok:false,reason:`Nation count mismatch`};
+    if(parts.hEnc!==expH)return{ok:false,reason:`Hex count mismatch`};
     return{ok:true};
   }
-
   function _extractMapMeta(data){
-    // Try to read TOC_MAP_NAME and TOC_MAP_DESC from the file
     const nameM=data.match(/TOC_MAP_NAME\s*=\s*['"`]([^'"`]+)['"`]/);
     const descM=data.match(/TOC_MAP_DESC\s*=\s*['"`]([^'"`]+)['"`]/);
-    return{
-      name:nameM?nameM[1]:null,
-      desc:descM?descM[1]:null,
-    };
+    return{name:nameM?nameM[1]:null,desc:descM?descM[1]:null};
   }
 
   async function probeServerMaps(){
@@ -1141,13 +1146,12 @@ window.refreshWorldsList=function(){
     const probes=SERVER_MAP_NAMES.map(async filename=>{
       try{
         const r=await fetch(filename,{method:'HEAD'});
-        if(r.ok) found.push({id:filename,name:_filenameToName(filename),sub:'Server map',source:'server',filename,loaded:false,trusted:true});
+        if(r.ok)found.push({id:filename,name:_filenameToName(filename),sub:'Server map',source:'server',filename,loaded:false,trusted:true});
       }catch{}
     });
     await Promise.allSettled(probes);
     return found;
   }
-
   function _filenameToName(fn){return fn.replace(/^map_?/,'').replace(/\.js$/,'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())||'Map';}
   function _getDefaultMapName(){
     if(typeof NATIONS!=='undefined'&&NATIONS.length){
@@ -1159,9 +1163,8 @@ window.refreshWorldsList=function(){
   }
 
   let _serverMaps=null;
-
   async function getScenarioList(){
-    if(!_serverMaps) _serverMaps=await probeServerMaps();
+    if(!_serverMaps)_serverMaps=await probeServerMaps();
     const userMaps=getAllUserMaps().map(u=>({
       id:'user_'+u.id,name:u.name,sub:`👤 Uploaded · ${u.size||'?'}`,source:'user',data:u.data,loaded:false,trusted:true
     }));
@@ -1169,75 +1172,82 @@ window.refreshWorldsList=function(){
   }
 
   // ── GLOBAL MINI-MAP REFRESH ────────────────────────────────
-  // Called after loading a new scenario to refresh all background maps
   function _refreshAllMiniMaps(){
-    _setupHexes=null;_setupBnds=null; // invalidate setup cache
-    // Dispatch event so intro/worlds canvases reset their hex cache too
+    _setupHexes=null;_setupBnds=null;
     window.dispatchEvent(new CustomEvent('toc-map-changed'));
   }
 
-  // ── LOAD SCENARIO ─────────────────────────────────────────
+  // ── LOAD SCENARIO (with full game engine reinit) ───────────
   function loadScenario(scen,cb){
     if(scen.id==='default'||scen.loaded){
       _activeScenario=scen;
       _refreshAllMiniMaps();
+      _reinitGameGlobals();
       cb&&cb(true);return;
     }
     if(scen.source==='user'&&scen.data){
       const check=_validateMapKey(scen.data);
-      if(!check.ok){
-        showToast('❌ Key error: '+check.reason);cb&&cb(false);return;
-      }
+      if(!check.ok){_hideLoading();showToast('❌ Key error: '+check.reason);cb&&cb(false);return;}
       try{
-        // Patch const/let/var declarations for key globals so they land on window
-        const globals=['PROVINCES','NATIONS','NB','HEX_GRID','SEA_ZONES','LAND','INIT_ALLIANCES','IDEOLOGIES','TERRAIN'];
+        // Assign all map globals to window so game.js can see them
+        const globals=['PROVINCES','NATIONS','NB','HEX_GRID','SEA_ZONES','LAND','INIT_ALLIANCES','IDEOLOGIES','TERRAIN','TOC_MAP_KEY','TOC_MAP_NAME','TOC_MAP_DESC'];
         let patched=scen.data;
         globals.forEach(g=>{
           patched=patched.replace(
-            new RegExp('(^|\\n)[ \\t]*(const|let|var)[ \\t]+'+g+'[ \\t]*=','g'),
-            (_,pre)=>pre+'window.'+g+' ='
+            new RegExp('(^|\\n)([ \\t]*)(const|let|var)([ \\t]+)'+g+'([ \\t]*=)','g'),
+            (_,pre,indent,_kw,sp,eq)=>pre+indent+'window.'+g+eq
           );
         });
-        new Function(patched)();
+        // Execute in global scope
+        // eslint-disable-next-line no-new-func
+        Function(patched)();
         _activeScenario={...scen,loaded:true};
         _refreshAllMiniMaps();
+        _reinitGameGlobals();
         cb&&cb(true);
       }catch(e){
+        _hideLoading();
         showToast('Map error: '+e.message);
+        console.error('Map load error:',e);
         _loadFallback(cb);
       }
       return;
     }
     if(scen.source==='server'){
-      // Fetch to validate key before executing
       fetch(scen.filename+'?_='+Date.now())
         .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text();})
         .then(data=>{
           const check=_validateMapKey(data);
-          if(!check.ok){
-            showToast('❌ Key error: '+check.reason);_loadFallback(cb);return;
-          }
+          if(!check.ok){_hideLoading();showToast('❌ Key error: '+check.reason);_loadFallback(cb);return;}
           const existing=document.getElementById('dyn-map-script');
           if(existing)existing.remove();
           const s=document.createElement('script');
-          s.id='dyn-map-script';
-          s.textContent=data;
+          s.id='dyn-map-script';s.textContent=data;
           document.head.appendChild(s);
           _activeScenario={...scen,loaded:true};
           _refreshAllMiniMaps();
+          _reinitGameGlobals();
           cb&&cb(true);
         })
-        .catch(e=>{showToast('Failed: '+e.message);_loadFallback(cb);});
+        .catch(e=>{_hideLoading();showToast('Failed: '+e.message);_loadFallback(cb);});
       return;
     }
-    cb&&cb(false);
+    _hideLoading();cb&&cb(false);
+  }
+
+  // Rebuild game engine caches after map data changes
+  function _reinitGameGlobals(){
+    try{
+      if(typeof buildHexCache==='function')buildHexCache();
+      if(typeof computeHexRadius==='function')computeHexRadius();
+    }catch(e){console.warn('reinit:',e);}
   }
 
   function _loadFallback(cb){
     showToast('↩ Falling back to default map');
     const def=_serverMaps&&_serverMaps[0];
-    if(def){_activeScenario=def;_refreshAllMiniMaps();cb&&cb(false);}
-    else cb&&cb(false);
+    if(def){_activeScenario=def;_refreshAllMiniMaps();_reinitGameGlobals();cb&&cb(false);}
+    else{_hideLoading();cb&&cb(false);}
   }
 
   // ── SCENARIO UI ───────────────────────────────────────────
@@ -1278,16 +1288,17 @@ window.refreshWorldsList=function(){
       const isActive=scen.id===_selectedScenId;
       const isUser=scen.source==='user';
       const isLocked=scen.locked;
+      const isLoading=scen.id===_loadingScenId;
       const div=document.createElement('div');
-      div.className='scen-card'+(isActive?' active':'')+(isUser?' user-map':'')+(isLocked?' locked':'');
+      div.className='scen-card'+(isActive?' active':'')+(isUser?' user-map':'')+(isLocked?' locked':'')+(isLoading?' loading':'');
       div.innerHTML=`
-        <div class="scen-icon">${isLocked?'🔒':isUser?'👤':'🗺'}</div>
+        <div class="scen-icon">${isLoading?'⏳':isLocked?'🔒':isUser?'👤':'🗺'}</div>
         <div class="scen-info">
           <div class="scen-name">${scen.name}</div>
           <div class="scen-sub">${scen.sub||''}</div>
         </div>
-        ${isUser?`<button class="scen-del" onclick="event.stopPropagation();deleteUserMap('${scen.id}')" title="Delete">✕</button>`:''}`;
-      if(!isLocked) div.onclick=()=>selectScenario(scen.id);
+        ${isUser&&!isLoading?`<button class="scen-del" onclick="event.stopPropagation();deleteUserMap('${scen.id}')" title="Delete">✕</button>`:''}`;
+      if(!isLocked&&!isLoading)div.onclick=()=>selectScenario(scen.id);
       list.appendChild(div);
     });
   }
@@ -1298,7 +1309,7 @@ window.refreshWorldsList=function(){
     _currentScenarios.forEach((scen,i)=>{
       const isLocked=scen.locked;
       const d=document.createElement('div');
-      d.className='era-slide'+(isLocked?' locked':'');
+      d.className='era-slide'+(isLocked?' locked':'')+(scen.id===_selectedScenId?' active':'');
       d.id='era-sc'+i;
       d.innerHTML=`<div class="era-scen-icon">${isLocked?'🔒':scen.source==='user'?'👤':'🗺'}</div>
         <div class="era-scen-name">${scen.name}</div>
@@ -1331,40 +1342,50 @@ window.refreshWorldsList=function(){
     const n=_eraIdx+dir;
     if(n<0||n>=_currentScenarios.length)return;
     _eraIdx=n;posCarousel(true);
-    // Auto-select on carousel step
     const scen=_currentScenarios[n];
     if(scen&&!scen.locked)selectScenario(scen.id);
   };
 
+  let _loadingScenId=null;
+
   function selectScenario(id){
+    if(_loadingScenId)return; // prevent double-click during load
     const scen=_currentScenarios.find(s=>s.id===id);
     if(!scen||scen.locked)return;
+
+    // If already selected & loaded, just deselect
+    if(_selectedScenId===id&&scen.loaded&&id!=='default'){
+      // no-op — clicking same card again doesn't reload
+    }
+
     _selectedScenId=id;
-    // Mark active in all views
-    document.querySelectorAll('.scen-card').forEach(r=>{
-      r.classList.toggle('active',r.onclick&&r.onclick.toString().includes(`'${id}'`));
-    });
-    document.querySelectorAll('.era-slide').forEach((sl,i)=>{
-      if(_currentScenarios[i]){
-        sl.classList.toggle('active',_currentScenarios[i].id===id);
-        sl.classList.toggle('side',Math.abs(i-_eraIdx)===1&&_currentScenarios[i].id!==id);
-      }
-    });
-    // Rebuild list to reflect active state properly
+    _loadingScenId=id;
     renderScenList();
     if(_scenView==='carousel')buildCarousel();
-    // Loading indicator
-    showToast('⏳ Loading '+scen.name+'…',1200);
+
+    // Show loading overlay for non-default maps
+    if(id!=='default'&&scen.source==='user'){
+      _showLoading('Loading '+scen.name+'…');
+    }
+
     loadScenario(scen,ok=>{
+      _loadingScenId=null;
+      _hideLoading();
       if(ok){
         SC=-1;SI='fascism';
         _setupHexes=null;_setupBnds=null;
+        // Update nations list from new map data
         buildNations();
+        _zoomReset(); // reset camera to show full new map
         hilite=-1;drawMap(-1);
-        document.getElementById('nation-info-card').style.display='none';
+        const nc=document.getElementById('nation-info-card');if(nc)nc.style.display='none';
         chkSB();
         renderScenList();
         if(_scenView==='carousel')buildCarousel();
+        showToast('✓ '+scen.name+' loaded',1800);
+      }else{
+        _selectedScenId='default';
+        renderScenList();
       }
     });
   }
@@ -1379,9 +1400,11 @@ window.refreshWorldsList=function(){
     const inp=document.createElement('input');inp.type='file';inp.accept='.js';
     inp.onchange=e=>{
       const f=e.target.files[0];if(!f)return;
+      _showLoading('Validating '+f.name+'…');
       const reader=new FileReader();
       reader.onload=ev=>{
         const data=ev.target.result;
+        _hideLoading();
         if(!data.includes('PROVINCES')||!data.includes('NATIONS')){
           showToast('❌ Invalid map — needs PROVINCES & NATIONS');return;
         }
@@ -1407,11 +1430,11 @@ window.refreshWorldsList=function(){
     const rawId=scenId.replace(/^user_/,'');
     saveUserMaps(getAllUserMaps().filter(m=>m.id!==rawId));
     _serverMaps=null;
-    if(_selectedScenId===scenId)_selectedScenId='default';
-    buildScenarios();
+    if(_selectedScenId===scenId){_selectedScenId='default';selectScenario('default');}
+    else buildScenarios();
   };
 
-  // ── MAP RENDER ─────────────────────────────────────────────
+  // ── SETUP MAP RENDER (animated panning + nation zoom) ──────
   function _getSetupHexes(){
     if(_setupHexes)return{hexes:_setupHexes,bnds:_setupBnds};
     _setupHexes=_buildMiniMapHexes();
@@ -1423,11 +1446,112 @@ window.refreshWorldsList=function(){
   function bright(hex,f){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);r=Math.min(255,Math.round(r*f+40));g=Math.min(255,Math.round(g*f+30));b=Math.min(255,Math.round(b*f+20));return`#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;}
   function dark(hex){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return`#${Math.round(r*.35).toString(16).padStart(2,'0')}${Math.round(g*.35).toString(16).padStart(2,'0')}${Math.round(b*.35).toString(16).padStart(2,'0')}`;}
 
+  // Viewport for the setup map: pan offset + zoom
+  let _vp={x:0,y:0,sc:1}; // world offset (in hex coords)
+  let _panX=0,_panDir=1;  // slow pan state
+  let _panFrozen=false;   // true when nation selected → camera locked
+  let _raf=null;
+
+  function _zoomReset(){
+    const {hexes,bnds}=_getSetupHexes();
+    const cv=document.getElementById('setup-map-canvas');if(!cv)return;
+    const cw=cv.width||cv.offsetWidth,ch=cv.height||cv.offsetHeight;
+    if(!cw||!ch)return;
+    const W=bnds.maxX-bnds.minX,H=bnds.maxY-bnds.minY;
+    _vp.sc=Math.max(ch/H*1.06,cw/W*1.06);
+    _vp.x=(cw-W*_vp.sc)/2-bnds.minX*_vp.sc;
+    _vp.y=(ch-H*_vp.sc)/2-bnds.minY*_vp.sc;
+    _panX=0;_panDir=1;_panFrozen=false;
+  }
+
+  // Smoothly zoom to a nation's capital province
+  function _zoomToNation(natIdx){
+    if(natIdx<0){
+      // Deselect — resume pan from current position
+      _panFrozen=false;
+      return;
+    }
+    // Find capital province of nation
+    const cap=PROVINCES.find(p=>p.nation===natIdx&&p.isCapital)||PROVINCES.find(p=>p.nation===natIdx);
+    if(!cap)return;
+
+    const {hexes,bnds}=_getSetupHexes();
+    const cv=document.getElementById('setup-map-canvas');if(!cv)return;
+    const cw=cv.width||cv.offsetWidth,ch=cv.height||cv.offsetHeight;
+    if(!cw||!ch)return;
+
+    // Find hex centroid for this province
+    let cx=cap.cx,cy=cap.cy;
+    // If HEX_GRID, find average position of hexes belonging to this province
+    if(typeof HEX_GRID!=='undefined'&&HEX_GRID&&HEX_GRID.hexes){
+      const hR=HEX_GRID.hexR,W2=Math.sqrt(3)*hR,H2=2*hR;
+      const capIdx=PROVINCES.indexOf(cap);
+      const pHexes=hexes.filter(h=>h.p===capIdx);
+      if(pHexes.length){
+        cx=pHexes.reduce((s,h)=>s+h.x,0)/pHexes.length;
+        cy=pHexes.reduce((s,h)=>s+h.y,0)/pHexes.length;
+      }
+    }
+
+    const W=bnds.maxX-bnds.minX,H=bnds.maxY-bnds.minY;
+    const baseSc=Math.max(ch/H*1.06,cw/W*1.06);
+    const targetSc=baseSc*2.2; // zoom in 2.2x
+    const targetX=cw/2-cx*targetSc;
+    const targetY=ch*0.42-cy*targetSc;
+
+    _panFrozen=true; // stop auto-pan
+
+    // Animate zoom
+    const startX=_vp.x,startY=_vp.y,startSc=_vp.sc;
+    const dur=600,t0=performance.now();
+    function ease(t){return t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}
+    function animZoom(now){
+      const t=Math.min((now-t0)/dur,1),e=ease(t);
+      _vp.x=startX+(targetX-startX)*e;
+      _vp.y=startY+(targetY-startY)*e;
+      _vp.sc=startSc+(targetSc-startSc)*e;
+      drawMap(hilite);
+      if(t<1)requestAnimationFrame(animZoom);
+    }
+    requestAnimationFrame(animZoom);
+  }
+
   function rsz(){
     const cv=document.getElementById('setup-map-canvas');if(!cv)return;
     const bg=document.getElementById('setup-map-bg');if(!bg)return;
     cv.width=bg.offsetWidth;cv.height=bg.offsetHeight;
+    _zoomReset();
     drawMap(hilite);
+    if(!_raf)_startRender();
+  }
+
+  function _startRender(){
+    if(_raf)cancelAnimationFrame(_raf);
+    function frame(){
+      if(!document.getElementById('s-setup')?.classList.contains('on')){_raf=null;return;}
+      // Auto-pan when not frozen
+      if(!_panFrozen){
+        const {bnds}=_getSetupHexes();
+        const cv=document.getElementById('setup-map-canvas');
+        if(cv){
+          const cw=cv.width,W=bnds.maxX-bnds.minX;
+          const sw=W*_vp.sc,mp=Math.max(0,sw-cw);
+          _panX+=.18*_panDir;
+          if(_panX>=mp){_panX=mp;_panDir=-1;}
+          if(_panX<=0){_panX=0;_panDir=1;}
+          // Apply pan as offset from reset position
+          const {bnds:b2}=_getSetupHexes();
+          const ch=cv.height,H=b2.maxY-b2.minY;
+          const baseSc=Math.max(ch/H*1.06,cw/W*1.06);
+          _vp.x=(cw-W*baseSc)/2-b2.minX*baseSc-(mp>0?_panX:0);
+          _vp.y=(ch-H*baseSc)/2-b2.minY*baseSc;
+          _vp.sc=baseSc;
+        }
+        drawMap(hilite);
+      }
+      _raf=requestAnimationFrame(frame);
+    }
+    _raf=requestAnimationFrame(frame);
   }
 
   function drawMap(hl){
@@ -1435,20 +1559,17 @@ window.refreshWorldsList=function(){
     const ctx=cv.getContext('2d'),cw=cv.width,ch=cv.height;
     if(!cw||!ch)return;
     const {hexes,bnds}=_getSetupHexes();
-    const W=bnds.maxX-bnds.minX,H=bnds.maxY-bnds.minY;
-    const sc=Math.max(ch/H*1.08,cw/W*1.08);
-    const ox=(cw-W*sc)/2-bnds.minX*sc,oy=(ch-H*sc)/2-bnds.minY*sc;
     ctx.clearRect(0,0,cw,ch);
     ctx.fillStyle='#0a0f1a';ctx.fillRect(0,0,cw,ch);
-    ctx.save();ctx.translate(ox,oy);ctx.scale(sc,sc);
+    ctx.save();ctx.translate(_vp.x,_vp.y);ctx.scale(_vp.sc,_vp.sc);
     for(const h of hexes){
       const nat=PROVINCES[h.p]?.nation;
       const natColor=NATIONS[nat]?.color||'#1a1a2a';
       const isH=hl>=0&&nat===hl;
       hp(ctx,h.x,h.y,h.R);
-      ctx.fillStyle=isH?bright(NATIONS[hl].color,1.8):(hl>=0?dark(natColor):natColor);
+      ctx.fillStyle=isH?bright(NATIONS[hl]?.color||natColor,1.8):(hl>=0?dark(natColor):natColor);
       ctx.fill();
-      ctx.strokeStyle='rgba(0,0,0,.4)';ctx.lineWidth=.3/sc;ctx.stroke();
+      ctx.strokeStyle='rgba(0,0,0,.4)';ctx.lineWidth=.3/_vp.sc;ctx.stroke();
     }
     ctx.restore();
   }
@@ -1466,46 +1587,34 @@ window.refreshWorldsList=function(){
   }
 
   // ── FLAG RENDERING ────────────────────────────────────────
-  // Generates a mini SVG flag for a nation using its color + a simple pattern
-  // based on the ideology — crude but distinctive
   function makeFlagSvg(nat,ideo){
     const c=nat.color||'#334';
-    // Parse hex to rgb
     const rr=parseInt(c.slice(1,3),16)||50,gg=parseInt(c.slice(3,5),16)||50,bb=parseInt(c.slice(5,7),16)||80;
     const light=`rgb(${Math.min(255,rr+60)},${Math.min(255,gg+60)},${Math.min(255,bb+60)})`;
     const dark2=`rgb(${Math.max(0,rr-30)},${Math.max(0,gg-30)},${Math.max(0,bb-30)})`;
     const ik=nat.ideology||'';
     let pat='';
     if(/nazism|fascism|militarism/.test(ik)){
-      // Horizontal triband
-      pat=`<rect width="22" height="5" y="0" fill="${dark2}"/>
-           <rect width="22" height="5" y="5" fill="${c}"/>
-           <rect width="22" height="5" y="10" fill="${light}"/>`;
+      pat=`<rect width="22" height="5" y="0" fill="${dark2}"/><rect width="22" height="5" y="5" fill="${c}"/><rect width="22" height="5" y="10" fill="${light}"/>`;
     }else if(/communism|stalinism/.test(ik)){
-      // Red with left stripe
-      pat=`<rect width="22" height="15" fill="${c}"/>
-           <rect width="5" height="15" fill="${dark2}"/>`;
+      pat=`<rect width="22" height="15" fill="${c}"/><rect width="5" height="15" fill="${dark2}"/>`;
     }else if(/democracy|liberalism/.test(ik)){
-      // Cross pattern
-      pat=`<rect width="22" height="15" fill="${c}"/>
-           <rect width="22" height="4" y="5.5" fill="${light}" opacity=".6"/>
-           <rect width="4" height="15" x="9" fill="${light}" opacity=".6"/>`;
+      pat=`<rect width="22" height="15" fill="${c}"/><rect width="22" height="4" y="5.5" fill="${light}" opacity=".6"/><rect width="4" height="15" x="9" fill="${light}" opacity=".6"/>`;
     }else if(/monarchy/.test(ik)){
-      // Diagonal bicolor
-      pat=`<rect width="22" height="15" fill="${c}"/>
-           <polygon points="0,0 11,0 0,15" fill="${dark2}" opacity=".7"/>`;
+      pat=`<rect width="22" height="15" fill="${c}"/><polygon points="0,0 11,0 0,15" fill="${dark2}" opacity=".7"/>`;
     }else{
-      // Plain with thin bottom stripe
-      pat=`<rect width="22" height="15" fill="${c}"/>
-           <rect width="22" height="3" y="12" fill="${dark2}" opacity=".6"/>`;
+      pat=`<rect width="22" height="15" fill="${c}"/><rect width="22" height="3" y="12" fill="${dark2}" opacity=".6"/>`;
     }
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="15" viewBox="0 0 22 15">${pat}</svg>`;
+    return`<svg xmlns="http://www.w3.org/2000/svg" width="22" height="15" viewBox="0 0 22 15">${pat}</svg>`;
   }
 
   // ── NATIONS ──────────────────────────────────────────────
   function buildNations(){
     const list=document.getElementById('nation-list');if(!list)return;
     list.innerHTML='';
+    if(typeof NATIONS==='undefined'||!NATIONS.length){
+      list.innerHTML='<div style="color:var(--dim);font-size:10px;padding:8px;font-style:italic">No nations in this map</div>';return;
+    }
     NATIONS.forEach((nat,i)=>{
       const ideo=IDEOLOGIES[nat.ideology];
       const flagSvg=makeFlagSvg(nat,ideo);
@@ -1515,12 +1624,31 @@ window.refreshWorldsList=function(){
         <div class="nat-flag">${flagSvg}</div>
         <div class="nat-name">${nat.name}</div>
         <div class="nat-ideo" style="color:${ideo?.color||'#888'};border-color:${ideo?.color||'#444'}">${ideo?.icon||''} ${nat.ideology}</div>`;
-      row.onmouseenter=()=>{hilite=i;drawMap(i);const l=document.getElementById('setup-map-label');if(l){l.textContent=nat.name;l.classList.add('vis');}};
-      row.onmouseleave=()=>{if(SC!==i){hilite=SC;drawMap(SC);const l=document.getElementById('setup-map-label');if(SC<0&&l)l.classList.remove('vis');}};
+      row.onmouseenter=()=>{
+        if(SC>=0)return; // don't override selection zoom on hover
+        hilite=i;drawMap(i);
+        const l=document.getElementById('setup-map-label');if(l){l.textContent=nat.name;l.classList.add('vis');}
+      };
+      row.onmouseleave=()=>{
+        if(SC>=0)return;
+        hilite=-1;drawMap(-1);
+        const l=document.getElementById('setup-map-label');if(l)l.classList.remove('vis');
+      };
       row.onclick=()=>{
-        if(SC===i){SC=-1;SI='fascism';row.classList.remove('pick');hilite=-1;drawMap(-1);const c=document.getElementById('nation-info-card');if(c)c.style.display='none';const l=document.getElementById('setup-map-label');if(l)l.classList.remove('vis');chkSB();return;}
+        if(SC===i){
+          // Deselect
+          SC=-1;SI='fascism';row.classList.remove('pick');hilite=-1;
+          drawMap(-1);
+          _zoomToNation(-1); // release camera, resume pan
+          const c=document.getElementById('nation-info-card');if(c)c.style.display='none';
+          const l=document.getElementById('setup-map-label');if(l)l.classList.remove('vis');
+          chkSB();return;
+        }
         document.querySelectorAll('.nat-row').forEach(x=>x.classList.remove('pick'));
-        row.classList.add('pick');SC=i;SI=nat.ideology;hilite=i;drawMap(i);showCard(i);chkSB();
+        row.classList.add('pick');SC=i;SI=nat.ideology;hilite=i;
+        drawMap(i);
+        _zoomToNation(i); // zoom camera to nation capital
+        showCard(i);chkSB();
         const l=document.getElementById('setup-map-label');if(l){l.textContent=nat.name;l.classList.add('vis');}
       };
       list.appendChild(row);
@@ -1528,6 +1656,7 @@ window.refreshWorldsList=function(){
   }
 
   function showCard(i){
+    if(typeof NATIONS==='undefined'||!NATIONS[i])return;
     const nat=NATIONS[i],ideo=IDEOLOGIES[nat.ideology],card=document.getElementById('nation-info-card');
     if(!card)return;card.style.display='flex';
     const flagEl=document.getElementById('nic-flag');
@@ -1535,7 +1664,7 @@ window.refreshWorldsList=function(){
     document.getElementById('nic-name').textContent=nat.name;
     document.getElementById('nic-ideo').innerHTML=`${ideo?.icon||''} ${ideo?.name||nat.ideology}`;
     document.getElementById('nic-ideo').style.color=ideo?.color||'#888';
-    const pc=PROVINCES.filter(p=>p.nation===i).length;
+    const pc=(typeof PROVINCES!=='undefined'?PROVINCES:[]).filter(p=>p.nation===i).length;
     const isD=['fascism','nazism','communism','stalinism','militarism'].includes(nat.ideology);
     document.getElementById('nic-stats').innerHTML=`
       <div class="nic-stat"><div class="nic-sl">Regions</div><div class="nic-sv">${pc}</div></div>
@@ -1557,8 +1686,7 @@ window.refreshWorldsList=function(){
     const inp=document.getElementById('camp-title-input');if(inp)inp.value='NEW CAMPAIGN';
   };
   window.selectYear=function(){};
-  // Keep backward compat stubs
-  window.eraStep=function(){};
+  window.eraStep=window.eraStep||function(){};
 
   const origShow=window.show;
   window.show=function(id){
@@ -1567,17 +1695,29 @@ window.refreshWorldsList=function(){
       setTimeout(()=>{
         rsz();
         buildNations();
-        hilite=-1;drawMap(-1);
-        document.getElementById('nation-info-card').style.display='none';
+        _setupHexes=null;_setupBnds=null;
+        _zoomReset();
+        drawMap(-1);
+        _startRender();
+        const nc=document.getElementById('nation-info-card');if(nc)nc.style.display='none';
         buildScenarios();
         initTitle();
       },30);
+    }else{
+      // Stop render loop when leaving setup
+      if(_raf){cancelAnimationFrame(_raf);_raf=null;}
     }
     if(id==='worlds')refreshWorldsList();
     if(id==='mp')initMpScreen();
   };
-  window.addEventListener('resize',()=>{if(document.getElementById('s-setup')?.classList.contains('on'))rsz();});
+  window.addEventListener('resize',()=>{
+    if(document.getElementById('s-setup')?.classList.contains('on')){rsz();}
+  });
+  window.addEventListener('toc-map-changed',()=>{
+    _setupHexes=null;_setupBnds=null;
+  });
 })();
+
 
 // ════════════════════════════════════════════════════════════
 //  MULTIPLAYER LOBBY INIT
