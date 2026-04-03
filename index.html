@@ -129,6 +129,7 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .scen-card.active{border-color:var(--gold);background:rgba(201,168,76,.1)}
 .scen-card.locked{opacity:.42;cursor:not-allowed}
 .scen-card.user-map{border-color:rgba(100,160,255,.3)}
+.scen-card.editor-map{border-color:rgba(255,215,0,.35);color:#FFD700}
 .scen-card.loading::after{content:'';position:absolute;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
 .scen-icon{font-size:15px;flex-shrink:0;width:20px;text-align:center}
 .scen-info{flex:1;min-width:0}
@@ -794,7 +795,29 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 
 <div id="mo" onclick="moOut(event)"><div id="mb"><div class="mt" id="mo-t">—</div><div id="mo-b"></div><div class="mbtns" id="mo-btns"></div></div></div>
 <div id="popup"></div>
-<script src="map.js"></script>
+<script>
+// Load map.js synchronously via XHR and patch const→var so scenario switching works
+(function(){
+  try{
+    const xhr=new XMLHttpRequest();
+    xhr.open('GET','map.js',false); // synchronous
+    xhr.send();
+    if(xhr.status===0||xhr.status===200){
+      const MAP_GLOBALS=['PROVINCES','NATIONS','NB','HEX_GRID','SEA_ZONES','LAND','INIT_ALLIANCES','IDEOLOGIES','TERRAIN','TOC_MAP_KEY','TOC_MAP_NAME','TOC_MAP_DESC'];
+      let src=xhr.responseText;
+      MAP_GLOBALS.forEach(g=>{
+        src=src.replace(new RegExp('(^|\n)([ \t]*)(const|let)([ \t]+)'+g+'([ \t]*=)','g'),
+          (_,pre,indent,_kw,sp,eq)=>pre+indent+'var '+g+eq);
+      });
+      // eslint-disable-next-line no-new-func
+      const s=document.createElement('script');s.textContent=src;document.head.appendChild(s);
+    }
+  }catch(e){
+    // Fallback: load normally (var reassignment won't work but default map will)
+    document.write('<scr'+'ipt src="map.js"><\/scr'+'ipt>');
+  }
+})();
+</script>
 <script src="game.js"></script>
 <script src="multiplayer.js"></script>
 <script>
@@ -1112,9 +1135,9 @@ window.refreshWorldsList=function(){
     const key=keyMatch[1];
     const parts=_decodeKey(key);
     if(!parts)return{ok:false,reason:'Malformed key: '+key};
-    const provMatch=data.match(/const PROVINCES\s*=\s*(\[[\s\S]*?\]);/);
-    const natMatch =data.match(/const NATIONS\s*=\s*(\[[\s\S]*?\]);/);
-    const hexMatch =data.match(/const HEX_GRID\s*=\s*(\{[\s\S]*?\});/);
+    const provMatch=data.match(/(?:const|var) PROVINCES\s*=\s*(\[[\s\S]*?\]);/);
+    const natMatch =data.match(/(?:const|var) NATIONS\s*=\s*(\[[\s\S]*?\]);/);
+    const hexMatch =data.match(/(?:const|var) HEX_GRID\s*=\s*(\{[\s\S]*?\});/);
     if(!provMatch||!natMatch||!hexMatch)return{ok:false,reason:'Missing required arrays'};
     let provCount,natCount,landHexCount;
     try{
@@ -1160,7 +1183,9 @@ window.refreshWorldsList=function(){
   async function getScenarioList(){
     if(!_serverMaps)_serverMaps=await probeServerMaps();
     const userMaps=getAllUserMaps().map(u=>({
-      id:'user_'+u.id,name:u.name,sub:`👤 Uploaded · ${u.size||'?'}`,source:'user',data:u.data,loaded:false,trusted:true
+      id:'user_'+u.id,name:u.name,
+      sub:u.id.startsWith('ed_')?`⚙ Editor · ${u.size||'?'}`:`👤 Uploaded · ${u.size||'?'}`,
+      source:'user',editor:u.id.startsWith('ed_'),data:u.data,loaded:false,trusted:true
     }));
     return[..._serverMaps,...userMaps,{id:'__mystery',name:'???',sub:'Coming soon…',source:'locked',locked:true}];
   }
@@ -1324,9 +1349,10 @@ window.refreshWorldsList=function(){
       const isLocked=scen.locked;
       const isLoading=scen.id===_loadingScenId;
       const div=document.createElement('div');
-      div.className='scen-card'+(isActive?' active':'')+(isUser?' user-map':'')+(isLocked?' locked':'')+(isLoading?' loading':'');
+      const isEditor=scen.editor||false;
+      div.className='scen-card'+(isActive?' active':'')+(isUser?' user-map':'')+(isEditor?' editor-map':'')+(isLocked?' locked':'')+(isLoading?' loading':'');
       div.innerHTML=`
-        <div class="scen-icon">${isLoading?'⏳':isLocked?'🔒':isUser?'👤':'🗺'}</div>
+        <div class="scen-icon">${isLoading?'⏳':isLocked?'🔒':isEditor?'⚙':isUser?'👤':'🗺'}</div>
         <div class="scen-info">
           <div class="scen-name">${scen.name}</div>
           <div class="scen-sub">${scen.sub||''}</div>
