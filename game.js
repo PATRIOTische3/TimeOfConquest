@@ -147,14 +147,20 @@ let SC=-1,SI='fascism';
 function chkSB(){
   const b=document.getElementById('startbtn');
   if(b) b.disabled=SC<0||!SI;
-  const hint=document.getElementById('startbtn-hint');
-  if(hint) hint.style.opacity=(SC<0||!SI)?'1':'0';
 }
 
 // ── SCREEN MANAGEMENT ─────────────────────────────────────
 function show(id){document.querySelectorAll('.scr').forEach(e=>e.classList.remove('on'));document.getElementById('s-'+id).classList.add('on');}
 function switchTab(id){document.querySelectorAll('.tab,.tpane').forEach(e=>e.classList.remove('on'));document.getElementById('tab-'+id).classList.add('on');document.getElementById('pane-'+id).classList.add('on');hideProvPopup();}
-function setMapMode(mode){G.mapMode=mode;document.querySelectorAll('.mmbtn').forEach(b=>b.classList.remove('on'));document.getElementById('mm-'+mode).classList.add('on');updateResFilterPanel();scheduleDraw();}
+function setMapMode(mode){
+  // Reset instab slide animations when entering instab mode so % slides in fresh
+  if(mode==='instab') window._instabAnimY={};
+  G.mapMode=mode;
+  document.querySelectorAll('.mmbtn').forEach(b=>b.classList.remove('on'));
+  document.getElementById('mm-'+mode).classList.add('on');
+  updateResFilterPanel();
+  scheduleDraw();
+}
 function updateResFilterPanel(){} // no-op, overlay is canvas-only now
 function updateResCountsInPanel(){} // no-op
 
@@ -271,11 +277,10 @@ function scheduleDraw(){
   requestAnimationFrame(()=>{
     _drawPending=false;
     drawMap();
-    // Keep animating if instab slide is in progress
-    if(G.mapMode==='instab'&&G.sel>=0&&window._instabAnimY&&window._instabAnimY[G.sel]!==undefined){
-      const target=PROVINCES[G.sel]&&!PROVINCES[G.sel].isCapital?1:0;
-      const cur=window._instabAnimY[G.sel];
-      if(Math.abs(cur-target)>0.05) scheduleDraw();
+    // Keep animating if any instab slide is still in progress
+    if(G.mapMode==='instab'&&window._instabAnimY){
+      const animating=Object.values(window._instabAnimY).some(v=>v!==undefined&&Math.abs(v)<5);
+      if(animating) scheduleDraw();
     }
   });
 }
@@ -388,12 +393,15 @@ function buildHexCache(){
   _provBorderHexes=Array.from({length:N},()=>[]);
   _provCentroid=Array.from({length:N},()=>({x:0,y:0,n:0}));
 
-  // Pre-compute border edge segments per province for clean outlines
-  // Each entry: {hx, hy, side} — the side index (0-5) of hex to draw as a line segment
+  // Pre-compute border edge segments per province for clean outlines.
+  // For each land hex, find sides that face a different province/sea/outside
+  // and record those exact line segments.
   window._provBorderEdges=Array.from({length:N},()=>[]);
 
-  // Pointy-top hex: side i goes from vertex i to vertex i+1
-  // Vertex angles: PI/6 + i*PI/3
+  // Pointy-top hex vertices: angle = PI/6 + i*PI/3  (i=0..5)
+  // Side s connects vertex s → vertex (s+1)%6
+  // Vertex 0 = top-right (30°), 1 = right (90°), 2 = bottom-right (150°),
+  // 3 = bottom-left (210°), 4 = left (270°), 5 = top-left (330°)
   function hexEdgeSeg(cx,cy,r,side){
     const a0=Math.PI/6+Math.PI/3*side;
     const a1=Math.PI/6+Math.PI/3*((side+1)%6);
@@ -401,12 +409,11 @@ function buildHexCache(){
             x1:cx+Math.cos(a1)*r, y1:cy+Math.sin(a1)*r};
   }
 
-  // Neighbour direction → hex side that faces that direction (pointy-top, even row)
-  // Offsets from getNeighbours (even row): [[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]]
-  // Side 0=top-right, 1=right, 2=bottom-right, 3=bottom-left, 4=left, 5=top-left
-  // Neighbour dir index maps directly to side facing that neighbour
+  // Neighbour offsets for even/odd rows (pointy-top, offset coords)
+  // Order: [NW, NE, E, SE, SW, W]  → faces sides [5, 0, 1, 2, 3, 4]
   const EVEN_OFFS=[[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]];
-  const ODD_OFFS=[[-1,-1],[-1,0],[0,1],[1,0],[1,-1],[0,-1]];
+  const ODD_OFFS =[[-1,-1],[-1,0],[0,1],[1,0],[1,-1],[0,-1]];
+  const DIR_TO_SIDE=[5,0,1,2,3,4]; // dir index → side index that faces that neighbour
 
   _hexCache.forEach((h,idx)=>{
     h.nbIdx=getNeighbours(h.r,h.c);
@@ -414,19 +421,20 @@ function buildHexCache(){
     // Accumulate centroid
     const c=_provCentroid[h.p];
     if(c){c.x+=h.x;c.y+=h.y;c.n++;}
-    // Border check: any neighbour is sea, missing, or different province
+    // For each of the 6 directions, check if the neighbour is external
     const offs=h.r%2===0?EVEN_OFFS:ODD_OFFS;
     let isBorder=false;
-    for(let s=0;s<6;s++){
-      const [dr,dc]=offs[s];
+    for(let d=0;d<6;d++){
+      const [dr,dc]=offs[d];
       const nr=h.r+dr, nc=h.c+dc;
-      const niLookup=(_hexByRC[nr]&&_hexByRC[nr][nc]!==undefined)?_hexByRC[nr][nc]:-1;
-      const nb=niLookup>=0?_hexCache[niLookup]:null;
+      const niIdx=(_hexByRC[nr]&&_hexByRC[nr][nc]!==undefined)?_hexByRC[nr][nc]:-1;
+      const nb=niIdx>=0?_hexCache[niIdx]:null;
+      // External = outside grid, or sea, or different province (including unowned land p=-1)
       const isExternal=!nb||nb.sea||nb.p!==h.p;
       if(isExternal){
         isBorder=true;
-        // Store this edge segment for the province outline
-        if(_provBorderEdges[h.p]) _provBorderEdges[h.p].push(hexEdgeSeg(h.x,h.y,R,s));
+        const side=DIR_TO_SIDE[d];
+        if(window._provBorderEdges[h.p]) window._provBorderEdges[h.p].push(hexEdgeSeg(h.x,h.y,R,side));
       }
     }
     h.isBorder=isBorder;
@@ -590,14 +598,16 @@ function drawMap(){
   if(_hexCache&&_hexCache.length){
     const R=HEX_GRID.hexR,pad=R*3;
 
-    // PASS 1a: Fill unowned land hexes (sea=0, p=-1) — neutral unclaimed territory
+    // PASS 1a: Fill unowned land hexes (sea=0, p=-1) — show terrain at 50% opacity in all modes
+    ctx.globalAlpha=0.5;
     for(const h of _hexCache){
       if(h.sea||h.p>=0)continue;
       if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
       hexPath(ctx,h.x,h.y,R+0.5/vp.scale);
-      ctx.fillStyle='#2e2a22';
+      ctx.fillStyle=TC[h.t]||'#3a3828';
       ctx.fill();
     }
+    ctx.globalAlpha=1.0;
 
     // PASS 1b: Fill province land hexes
     for(const h of _hexCache){
@@ -744,20 +754,17 @@ function drawMap(){
         ctx.fillStyle='#f0d080';
         ctx.textAlign='center';ctx.textBaseline='middle';
         ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=4;
-        // In instab mode: shift capital name up to make room for % below
-        const capShiftY=(G.mapMode==='instab'&&G.owner[i]===G.playerNation)?-fs*0.8:0;
-        ctx.fillText(p.short.length>10?p.short.slice(0,10):p.short,px,py-(G.army[i]>0&&vp.scale>1.2?2:0)+capShiftY);
+        // Capital name NEVER moves — stays at center
+        ctx.fillText(p.short.length>10?p.short.slice(0,10):p.short,px,py-(G.army[i]>0&&vp.scale>1.2?2:0));
         ctx.shadowBlur=0;
       } else if(i===G.sel&&vp.scale>0.7){
-        // Non-capital selected — show name
+        // Non-capital selected — show name at center, no shift
         const nameStr=(p.name||p.short||'').slice(0,14);
         ctx.font=`600 ${fs+0.5}px Cinzel,serif`;
         ctx.fillStyle='rgba(240,210,120,.95)';
         ctx.textAlign='center';ctx.textBaseline='middle';
         ctx.shadowColor='rgba(0,0,0,.98)';ctx.shadowBlur=5;
-        // In instab mode: shift name up to make room for % below
-        const selShiftY=(G.mapMode==='instab'&&G.owner[i]===G.playerNation)?-fs*0.8:0;
-        ctx.fillText(nameStr,px,py+selShiftY);
+        ctx.fillText(nameStr,px,py);
         ctx.shadowBlur=0;
       }
 
@@ -772,27 +779,17 @@ function drawMap(){
         ctx.font=`bold ${Math.max(4,fs)}px Cinzel,serif`;
         ctx.fillStyle=ins>70?'#ff8060':ins>40?'#ffcc60':ins>15?'#c0e860':'#80ff80';
         ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=3;
-        // For capitals: always show % below name. For selected non-capitals: also below name.
-        // Animate slide for selected province using _instabAnimY
-        let satY=py;
-        const isNameVisible=p.isCapital||(i===G.sel&&vp.scale>0.7);
-        if(isNameVisible){
-          // Base offset below the name
-          const baseOffset=fs*1.6;
-          if(i===G.sel&&!p.isCapital){
-            // Animated slide: use _instabAnimY[i] for smooth parabolic ease
-            if(!window._instabAnimY) window._instabAnimY={};
-            if(window._instabAnimY[i]===undefined) window._instabAnimY[i]=0;
-            const target=baseOffset;
-            const cur=window._instabAnimY[i];
-            // Parabolic ease: accelerate then decelerate
-            window._instabAnimY[i]=cur+(target-cur)*0.18;
-            satY=py-fs*0.8+window._instabAnimY[i];
-          } else {
-            satY=py-fs*0.8+fs*1.6;
-          }
-        }
-        ctx.fillText(sat+'%',px,satY);ctx.shadowBlur=0;
+        // % slides down from center when entering instab mode or selecting a province with name
+        // For capitals: always slides below center (name stays at center)
+        // For selected non-capitals: same slide
+        // For others (no name): stays at center (offset=0)
+        const hasName=p.isCapital||(i===G.sel&&vp.scale>0.7);
+        const targetOffY=hasName?fs*1.55:0;
+        if(!window._instabAnimY) window._instabAnimY={};
+        if(window._instabAnimY[i]===undefined) window._instabAnimY[i]=0;
+        const cur=window._instabAnimY[i];
+        window._instabAnimY[i]=cur+(targetOffY-cur)*0.2;
+        ctx.fillText(sat+'%',px,py+window._instabAnimY[i]);ctx.shadowBlur=0;
       }
 
       const _draftEntry=(G.draftQueue||[]).find(d=>d.prov===i&&d.nation===G.playerNation);
