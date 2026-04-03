@@ -1105,7 +1105,8 @@ window.refreshWorldsList=function(){
 
   // ── SCENARIO STORAGE & SYSTEM ─────────────────────────────
   const SCEN_KEY='toc_scenarios_v1';
-  const SERVER_MAP_NAMES=['map_e.js'];
+  // List of server maps — edit maps.json on the server to add/remove maps without touching index.html
+  // Fallback hardcoded list is used if maps.json is not found
   const MAP_KEY_PREFIX='TOC-';
 
   let _activeScenario=null;
@@ -1160,10 +1161,29 @@ window.refreshWorldsList=function(){
   async function probeServerMaps(){
     const found=[];
     found.push({id:'default',name:_getDefaultMapName(),sub:'Built-in · Default',source:'server',filename:'map.js',loaded:true,trusted:true});
-    const probes=SERVER_MAP_NAMES.map(async filename=>{
+
+    // Try to load maps.json — a simple list of map filenames on the server
+    // This way you just edit maps.json to add/remove maps, no need to touch index.html
+    let serverMapNames=[];
+    try{
+      const r=await fetch('maps.json?_='+Date.now(),{cache:'no-store'});
+      if(r.ok){
+        const json=await r.json();
+        // Accept either ["map_e.js","map_other.js"] or {"maps":["map_e.js",...]}
+        serverMapNames=Array.isArray(json)?json:(json.maps||[]);
+      }
+    }catch{}
+
+    // Probe each map file — bypass cache to avoid stale 404s
+    const probes=serverMapNames.map(async filename=>{
       try{
-        const r=await fetch(filename,{method:'HEAD'});
-        if(r.ok)found.push({id:filename,name:_filenameToName(filename),sub:'Server map',source:'server',filename,loaded:false,trusted:true});
+        const r=await fetch(filename+'?_='+Date.now(),{method:'HEAD',cache:'no-store'});
+        if(r.ok)found.push({
+          id:filename,
+          name:_filenameToName(filename),
+          sub:'Server map',
+          source:'server',filename,loaded:false,trusted:true
+        });
       }catch{}
     });
     await Promise.allSettled(probes);
