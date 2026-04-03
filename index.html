@@ -196,7 +196,6 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .mmbtn{padding:clamp(3px,.4vh,6px) clamp(8px,.9vw,14px);background:rgba(0,0,0,.28);border:1px solid var(--border);color:var(--dim);font-family:'Cinzel',serif;font-size:clamp(8px,.8vw,12px);letter-spacing:1px;cursor:pointer;transition:all .12s;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
 .mmbtn:hover{border-color:var(--border2);color:var(--text)}
 .mmbtn.on{border-color:var(--gold);color:var(--gold);background:rgba(201,168,76,.07)}
-.rfp-count{font-family:'Cinzel',serif;font-size:7px;color:#7a6a40;margin-left:auto}
 #game-body{flex:1;display:flex;overflow:hidden;min-height:0}
 #map-wrap{flex:1;position:relative;overflow:hidden;min-height:0;min-width:0}
 #map-wrap.panning{cursor:grabbing}
@@ -1190,7 +1189,16 @@ window.refreshWorldsList=function(){
         showToast('❌ Key error: '+check.reason);cb&&cb(false);return;
       }
       try{
-        new Function(scen.data)(); // execute map script
+        // Patch const/let/var declarations for key globals so they land on window
+        const globals=['PROVINCES','NATIONS','NB','HEX_GRID','SEA_ZONES','LAND','INIT_ALLIANCES','IDEOLOGIES','TERRAIN'];
+        let patched=scen.data;
+        globals.forEach(g=>{
+          patched=patched.replace(
+            new RegExp('(^|\\n)[ \\t]*(const|let|var)[ \\t]+'+g+'[ \\t]*=','g'),
+            (_,pre)=>pre+'window.'+g+' ='
+          );
+        });
+        new Function(patched)();
         _activeScenario={...scen,loaded:true};
         _refreshAllMiniMaps();
         cb&&cb(true);

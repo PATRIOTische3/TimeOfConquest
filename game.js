@@ -1278,10 +1278,50 @@ function onCanvasClick(wx,wy){
   G.sel=i; scheduleDraw(); updateSP(i); chkBtns();
   if(window.innerWidth<=700) switchTab('info');
 
+  // Smoothly pan camera so selected province is visible and centred
+  panToProvince(i);
+
   // Show popup with province info + action buttons
   const [sx,sy] = provScreenPos(i);
   const hexR = _hexCache ? HEX_GRID.hexR : HEX_R;
   showProvPopup(i, sx, sy - hexR*vp.scale);
+}
+
+// ── SMOOTH PAN TO PROVINCE ────────────────────────────────
+// Only pans if the province centroid is outside the comfortable "safe zone"
+// (inner 55% of the canvas). If it's already visible, does nothing.
+let _panAnim=null;
+function panToProvince(i){
+  const p=PROVINCES[i];if(!p)return;
+  const wx=_provCentroid?_provCentroid[i]?.x??p.cx:p.cx;
+  const wy=_provCentroid?_provCentroid[i]?.y??p.cy:p.cy;
+  const[sx,sy]=toScreen(wx,wy);
+  // Safe zone: 25% padding on each side
+  const padX=CW*0.25, padY=CH*0.25;
+  const inView=sx>=padX&&sx<=CW-padX&&sy>=padY&&sy<=CH-padY;
+  if(inView)return; // already comfortably visible
+  // Target: province centroid at screen centre
+  const targetTx=CW/2-wx*vp.scale;
+  const targetTy=CH/2-wy*vp.scale;
+  // Clamp to map bounds first
+  const {minX,maxX,minY,maxY}=_mapBounds;
+  const margin=Math.min(CW,CH)*0.15;
+  const clampedTx=Math.max(CW-margin-maxX*vp.scale,Math.min(margin-minX*vp.scale,targetTx));
+  const clampedTy=Math.max(CH-margin-maxY*vp.scale,Math.min(margin-minY*vp.scale,targetTy));
+  // Animate
+  if(_panAnim)cancelAnimationFrame(_panAnim);
+  const startTx=vp.tx,startTy=vp.ty;
+  const dur=320,start=performance.now();
+  function step(now){
+    const t=Math.min(1,(now-start)/dur);
+    const ease=1-Math.pow(1-t,3); // cubic ease-out
+    vp.tx=startTx+(clampedTx-startTx)*ease;
+    vp.ty=startTy+(clampedTy-startTy)*ease;
+    scheduleDraw();
+    if(t<1)_panAnim=requestAnimationFrame(step);
+    else _panAnim=null;
+  }
+  _panAnim=requestAnimationFrame(step);
 }
 
 // ── POINTER EVENTS (unified mouse+touch) ──────────────────
