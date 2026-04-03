@@ -1172,29 +1172,64 @@ window.refreshWorldsList=function(){
   }
 
   // ── LOAD SCENARIO (with full game engine reinit) ───────────
+  // Globals that map files declare and game.js reads
+  const _MAP_GLOBALS=['PROVINCES','NATIONS','NB','HEX_GRID','SEA_ZONES','LAND','INIT_ALLIANCES','IDEOLOGIES','TERRAIN','TOC_MAP_KEY','TOC_MAP_NAME','TOC_MAP_DESC'];
+
+  // Patch map source: rewrite `const/let/var FOO =` → `window.FOO =`
+  function _patchMapData(src){
+    let out=src;
+    _MAP_GLOBALS.forEach(g=>{
+      out=out.replace(
+        new RegExp('(^|\\n)([ \\t]*)(const|let|var)([ \\t]+)'+g+'([ \\t]*=)','g'),
+        (_,pre,indent,_kw,_sp,eq)=>pre+indent+'window.'+g+eq
+      );
+    });
+    return out;
+  }
+
+  // Execute patched map source in global scope
+  function _execMapData(src){
+    // eslint-disable-next-line no-new-func
+    Function(src)();
+  }
+
+  // Reset to default map globals (the originals embedded in game.js / map.js)
+  function _restoreDefaultGlobals(){
+    // If a backup of originals was saved, restore them; otherwise globals are already correct
+    if(window._TOC_DEFAULT_GLOBALS){
+      _MAP_GLOBALS.forEach(g=>{
+        if(g in window._TOC_DEFAULT_GLOBALS) window[g]=window._TOC_DEFAULT_GLOBALS[g];
+      });
+    }
+  }
+
+  // Save default globals on first load (called once after map.js is ready)
+  function _saveDefaultGlobals(){
+    if(window._TOC_DEFAULT_GLOBALS)return;
+    const snap={};
+    _MAP_GLOBALS.forEach(g=>{ if(typeof window[g]!=='undefined') snap[g]=window[g]; });
+    window._TOC_DEFAULT_GLOBALS=snap;
+  }
+
   function loadScenario(scen,cb){
-    if(scen.id==='default'||scen.loaded){
+    // Save defaults on first call
+    _saveDefaultGlobals();
+
+    // Default map — restore originals
+    if(scen.id==='default'){
+      _restoreDefaultGlobals();
       _activeScenario=scen;
       _refreshAllMiniMaps();
       _reinitGameGlobals();
       cb&&cb(true);return;
     }
+
+    // User-uploaded map
     if(scen.source==='user'&&scen.data){
       const check=_validateMapKey(scen.data);
       if(!check.ok){_hideLoading();showToast('❌ Key error: '+check.reason);cb&&cb(false);return;}
       try{
-        // Assign all map globals to window so game.js can see them
-        const globals=['PROVINCES','NATIONS','NB','HEX_GRID','SEA_ZONES','LAND','INIT_ALLIANCES','IDEOLOGIES','TERRAIN','TOC_MAP_KEY','TOC_MAP_NAME','TOC_MAP_DESC'];
-        let patched=scen.data;
-        globals.forEach(g=>{
-          patched=patched.replace(
-            new RegExp('(^|\\n)([ \\t]*)(const|let|var)([ \\t]+)'+g+'([ \\t]*=)','g'),
-            (_,pre,indent,_kw,sp,eq)=>pre+indent+'window.'+g+eq
-          );
-        });
-        // Execute in global scope
-        // eslint-disable-next-line no-new-func
-        Function(patched)();
+        _execMapData(_patchMapData(scen.data));
         _activeScenario={...scen,loaded:true};
         _refreshAllMiniMaps();
         _reinitGameGlobals();
@@ -1207,17 +1242,22 @@ window.refreshWorldsList=function(){
       }
       return;
     }
+
+    // Server map — fetch text, patch globals, execute
     if(scen.source==='server'){
       fetch(scen.filename+'?_='+Date.now())
         .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text();})
         .then(data=>{
           const check=_validateMapKey(data);
           if(!check.ok){_hideLoading();showToast('❌ Key error: '+check.reason);_loadFallback(cb);return;}
-          const existing=document.getElementById('dyn-map-script');
-          if(existing)existing.remove();
-          const s=document.createElement('script');
-          s.id='dyn-map-script';s.textContent=data;
-          document.head.appendChild(s);
+          try{
+            _execMapData(_patchMapData(data));
+          }catch(e){
+            _hideLoading();
+            showToast('Map error: '+e.message);
+            console.error('Server map exec error:',e);
+            _loadFallback(cb);return;
+          }
           _activeScenario={...scen,loaded:true};
           _refreshAllMiniMaps();
           _reinitGameGlobals();
@@ -1226,6 +1266,7 @@ window.refreshWorldsList=function(){
         .catch(e=>{_hideLoading();showToast('Failed: '+e.message);_loadFallback(cb);});
       return;
     }
+
     _hideLoading();cb&&cb(false);
   }
 
