@@ -1300,7 +1300,24 @@ canvas.addEventListener('mousedown',e=>{
   wrap.style.cursor='grabbing';
   hideProvPopup();
 });
-window.addEventListener('mousemove',e=>{\n  if(_pan.active){\n    const dx=e.clientX-_pan.lx,dy=e.clientY-_pan.ly;\n    if(Math.abs(dx)>3||Math.abs(dy)>3){_moved=true;hideProvPopup();}\n    vp.tx+=dx;vp.ty+=dy;_pan.lx=e.clientX;_pan.ly=e.clientY;\n    clampViewport();\n    scheduleDraw();\n    return;\n  }\n  // Hover cursor for resource overlay rows\n  if(G.mapMode==='resources'&&window._resOverlayHitRects&&e.target===canvas){\n    const r=canvas.getBoundingClientRect();\n    const sx=e.clientX-r.left,sy=e.clientY-r.top;\n    const hit=window._resOverlayHitRects.find(h=>sx>=h.x&&sx<=h.x+h.w&&sy>=h.y&&sy<=h.y+h.h);\n    canvas.style.cursor=hit?'pointer':'';\n  } else if(!_pan.active){\n    canvas.style.cursor='';\n  }\n});
+window.addEventListener('mousemove',e=>{
+  if(_pan.active){
+    const dx=e.clientX-_pan.lx,dy=e.clientY-_pan.ly;
+    if(Math.abs(dx)>3||Math.abs(dy)>3){_moved=true;hideProvPopup();}
+    vp.tx+=dx;vp.ty+=dy;_pan.lx=e.clientX;_pan.ly=e.clientY;
+    clampViewport();
+    scheduleDraw();
+    return;
+  }
+  if(G.mapMode==='resources'&&window._resOverlayHitRects&&e.target===canvas){
+    const r=canvas.getBoundingClientRect();
+    const sx=e.clientX-r.left,sy=e.clientY-r.top;
+    const hit=window._resOverlayHitRects.find(h=>sx>=h.x&&sx<=h.x+h.w&&sy>=h.y&&sy<=h.y+h.h);
+    canvas.style.cursor=hit?'pointer':'';
+  } else {
+    canvas.style.cursor='';
+  }
+});
 window.addEventListener('mouseup',e=>{
   if(!_pan.active)return;
   _pan.active=false;wrap.style.cursor='';
