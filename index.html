@@ -796,26 +796,37 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 <div id="mo" onclick="moOut(event)"><div id="mb"><div class="mt" id="mo-t">—</div><div id="mo-b"></div><div class="mbtns" id="mo-btns"></div></div></div>
 <div id="popup"></div>
 <script>
-// Load map.js synchronously via XHR and patch const→var so scenario switching works
+// Load the first map from maps.json synchronously via XHR and patch const→var so scenario switching works
 (function(){
-  try{
-    const xhr=new XMLHttpRequest();
-    xhr.open('GET','map.js',false); // synchronous
-    xhr.send();
-    if(xhr.status===0||xhr.status===200){
-      const MAP_GLOBALS=['PROVINCES','NATIONS','NB','HEX_GRID','SEA_ZONES','LAND','INIT_ALLIANCES','IDEOLOGIES','TERRAIN','TOC_MAP_KEY','TOC_MAP_NAME','TOC_MAP_DESC'];
-      let src=xhr.responseText;
-      MAP_GLOBALS.forEach(g=>{
-        src=src.replace(new RegExp('(^|\n)([ \t]*)(const|let)([ \t]+)'+g+'([ \t]*=)','g'),
-          (_,pre,indent,_kw,sp,eq)=>pre+indent+'var '+g+eq);
-      });
-      // eslint-disable-next-line no-new-func
-      const s=document.createElement('script');s.textContent=src;document.head.appendChild(s);
-    }
-  }catch(e){
-    // Fallback: load normally (var reassignment won't work but default map will)
-    document.write('<scr'+'ipt src="map.js"><\/scr'+'ipt>');
+  const MAP_GLOBALS=['PROVINCES','NATIONS','NB','HEX_GRID','SEA_ZONES','LAND','INIT_ALLIANCES','IDEOLOGIES','TERRAIN','TOC_MAP_KEY','TOC_MAP_NAME','TOC_MAP_DESC'];
+  function patchAndExec(src){
+    MAP_GLOBALS.forEach(g=>{
+      src=src.replace(new RegExp('(^|\n)([ \t]*)(const|let)([ \t]+)'+g+'([ \t]*=)','g'),
+        (_,pre,indent,_kw,sp,eq)=>pre+indent+'var '+g+eq);
+    });
+    const s=document.createElement('script');s.textContent=src;document.head.appendChild(s);
   }
+  try{
+    // Read maps.json to find the first (default) map filename
+    const mxhr=new XMLHttpRequest();
+    mxhr.open('GET','maps.json',false);
+    mxhr.send();
+    let firstMap=null;
+    if(mxhr.status===0||mxhr.status===200){
+      try{
+        const json=JSON.parse(mxhr.responseText);
+        const list=Array.isArray(json)?json:(json.maps||[]);
+        if(list.length)firstMap=list[0];
+      }catch{}
+    }
+    if(firstMap){
+      window._TOC_DEFAULT_MAP=firstMap; // remember for scenario system
+      const xhr=new XMLHttpRequest();
+      xhr.open('GET',firstMap,false);
+      xhr.send();
+      if(xhr.status===0||xhr.status===200)patchAndExec(xhr.responseText);
+    }
+  }catch(e){}
 })();
 </script>
 <script src="game.js"></script>
@@ -1160,7 +1171,6 @@ window.refreshWorldsList=function(){
 
   async function probeServerMaps(){
     const found=[];
-    found.push({id:'default',name:_getDefaultMapName(),sub:'Built-in · Default',source:'server',filename:'map.js',loaded:true,trusted:true});
 
     // Try to load maps.json — a simple list of map filenames on the server
     // This way you just edit maps.json to add/remove maps, no need to touch index.html
@@ -1175,27 +1185,37 @@ window.refreshWorldsList=function(){
     }catch{}
 
     // Probe each map file — bypass cache to avoid stale 404s
-    const probes=serverMapNames.map(async filename=>{
+    // The FIRST map in the list is treated as the default (already loaded at page start)
+    const probes=serverMapNames.map(async (filename,idx)=>{
       try{
         const r=await fetch(filename+'?_='+Date.now(),{method:'HEAD',cache:'no-store'});
-        if(r.ok)found.push({
-          id:filename,
-          name:_filenameToName(filename),
-          sub:'Server map',
-          source:'server',filename,loaded:false,trusted:true
-        });
+        if(r.ok){
+          const isDefault=idx===0;
+          found.push({
+            id:isDefault?'default':filename,
+            name:isDefault?_getDefaultMapName():_filenameToName(filename),
+            sub:isDefault?'Built-in · Default':'Server map',
+            source:'server',filename,
+            loaded:isDefault,trusted:true
+          });
+        }
       }catch{}
     });
     await Promise.allSettled(probes);
+    // Keep original order from maps.json
+    found.sort((a,b)=>{
+      const ai=serverMapNames.indexOf(a.filename),bi=serverMapNames.indexOf(b.filename);
+      return ai-bi;
+    });
     return found;
   }
-  function _filenameToName(fn){return fn.replace(/^map_?/,'').replace(/\.js$/,'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())||'Map';}
+  function _filenameToName(fn){
+    // Extract year or name from filename, e.g. map_1936.js → "1936", map_europe.js → "Europe"
+    return fn.replace(/^map_?/,'').replace(/\.js$/,'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())||'Map';
+  }
   function _getDefaultMapName(){
-    if(typeof NATIONS!=='undefined'&&NATIONS.length){
-      if(NATIONS.some(n=>/reich|germany|german/i.test(n.name||'')))return'Europe 1936';
-      if(typeof TOC_MAP_NAME!=='undefined')return TOC_MAP_NAME;
-      return'Default Map';
-    }
+    if(typeof TOC_MAP_NAME!=='undefined'&&TOC_MAP_NAME)return TOC_MAP_NAME;
+    if(typeof NATIONS!=='undefined'&&NATIONS.length)return'Map';
     return'Map';
   }
 
@@ -1248,26 +1268,6 @@ window.refreshWorldsList=function(){
   }
 
   function loadScenario(scen,cb){
-    // Default map — re-fetch and re-execute map.js so var declarations overwrite scenario globals
-    if(scen.id==='default'){
-      fetch('map.js?_='+Date.now())
-        .then(r=>r.text())
-        .then(data=>{
-          const ex=document.getElementById('dyn-map-script');if(ex)ex.remove();
-          const s=document.createElement('script');
-          s.id='dyn-map-script';s.textContent=_patchMapData(data);
-          document.head.appendChild(s);
-          _activeScenario=scen;_refreshAllMiniMaps();_reinitGameGlobals();
-          cb&&cb(true);
-        })
-        .catch(()=>{
-          // map.js already loaded at page load — just reinit caches
-          _activeScenario=scen;_refreshAllMiniMaps();_reinitGameGlobals();
-          cb&&cb(true);
-        });
-      return;
-    }
-
     // User-uploaded map
     if(scen.source==='user'&&scen.data){
       const check=_validateMapKey(scen.data);
@@ -1440,10 +1440,8 @@ window.refreshWorldsList=function(){
     renderScenList();
     if(_scenView==='carousel')buildCarousel();
 
-    // Show loading overlay for non-default maps
-    if(id!=='default'&&(scen.source==='user'||scen.source==='server')){
-      _showLoading('Loading '+scen.name+'…');
-    }
+    // Show loading overlay
+    _showLoading('Loading '+scen.name+'…');
 
     loadScenario(scen,ok=>{
       _loadingScenId=null;
@@ -1460,7 +1458,7 @@ window.refreshWorldsList=function(){
         if(_scenView==='carousel')buildCarousel();
         showToast('✓ '+scen.name+' loaded',1800);
       }else{
-        _selectedScenId='default';
+        _selectedScenId=(_currentScenarios[0]&&_currentScenarios[0].id)||'default';
         renderScenList();
       }
     });
@@ -1506,7 +1504,7 @@ window.refreshWorldsList=function(){
     const rawId=scenId.replace(/^user_/,'');
     saveUserMaps(getAllUserMaps().filter(m=>m.id!==rawId));
     _serverMaps=null;
-    if(_selectedScenId===scenId){_selectedScenId='default';selectScenario('default');}
+    if(_selectedScenId===scenId){const fb=(_currentScenarios[0]&&_currentScenarios[0].id)||'default';_selectedScenId=fb;selectScenario(fb);}
     else buildScenarios();
   };
 
