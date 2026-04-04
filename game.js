@@ -1,8 +1,6 @@
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MONTH_DAYS=[31,28,31,30,31,30,31,31,30,31,30,31]; // non-leap
 const WEEK_NAMES=['I','II','III','IV'];
-// Declare early to avoid TDZ errors if popup() is called during init
-var _popT;
 
 function isLeapYear(y){ return (y%4===0&&y%100!==0)||(y%400===0); }
 function daysInMonth(m,y){ return m===1&&isLeapYear(y)?29:MONTH_DAYS[m]; }
@@ -351,31 +349,6 @@ if(typeof TERRAIN==='undefined'){
     coast:  {name:'Coast',   defB:.95, incM:1.05},
   };
 }
-if(typeof MAX_BLD_CAP==='undefined') window.MAX_BLD_CAP=4;
-if(typeof MAX_BLD_NORM==='undefined') window.MAX_BLD_NORM=2;
-if(typeof BUILD_TURNS==='undefined'){
-  window.BUILD_TURNS={
-    fort:8, factory:12, port:10, farm:6, mine:6,
-    barracks:6, railroad:10, hospital:8, arsenal:10,
-    fortification:8, airfield:10, naval_base:12,
-  };
-}
-if(typeof BUILDINGS==='undefined'){
-  window.BUILDINGS={
-    fort:       {name:'Fort',          icon:'🏰',desc:'Doubles terrain defense bonus',           cost:400, capitalOnly:false},
-    factory:    {name:'Factory',       icon:'🏭',desc:'Increases province income ×1.8',           cost:600, capitalOnly:false},
-    port:       {name:'Port',          icon:'⚓',desc:'Enables naval transport from this province',cost:500, capitalOnly:false, needsCoast:true},
-    farm:       {name:'Farm',          icon:'🌾',desc:'Reduces instability & disease spread',      cost:250, capitalOnly:false},
-    mine:       {name:'Mine',          icon:'⛏', desc:'Boosts coal/iron/oil resource output',     cost:350, capitalOnly:false},
-    barracks:   {name:'Barracks',      icon:'🪖',desc:'Conscription 25% faster & cheaper',        cost:300, capitalOnly:false},
-    hospital:   {name:'Hospital',      icon:'🏥',desc:'Reduces disease severity in province',      cost:350, capitalOnly:false},
-    arsenal:    {name:'Arsenal',       icon:'⚙️', desc:'Increases army attack strength',           cost:500, capitalOnly:false},
-    railroad:   {name:'Railroad',      icon:'🚂',desc:'Faster troop movement through province',   cost:450, capitalOnly:false},
-    airfield:   {name:'Airfield',      icon:'✈️', desc:'Extends attack range by 1 hex',            cost:700, capitalOnly:true},
-    naval_base: {name:'Naval Base',    icon:'🚢',desc:'Increases fleet capacity',                 cost:600, capitalOnly:false, needsCoast:true},
-    fortification:{name:'Fortification',icon:'🧱',desc:'Permanent +20% defense in province',     cost:550, capitalOnly:false},
-  };
-}
 
 // ── HEX_GRID support ──────────────────────────────────────
 let _hexCache=null;
@@ -437,13 +410,10 @@ function buildHexCache(){
   }
 
   // Neighbour offsets for even/odd rows (pointy-top, offset coords)
+  // Order: [NW, NE, E, SE, SW, W]  → faces sides [5, 0, 1, 2, 3, 4]
   const EVEN_OFFS=[[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]];
   const ODD_OFFS =[[-1,-1],[-1,0],[0,1],[1,0],[1,-1],[0,-1]];
-  // Correct DIR_TO_SIDE verified by angle calculation (canvas y-down, vertices at PI/6+PI/3*i):
-  // Even row: d0(-60°)→4, d1(-30°)→5, d2(0°)→5, d3(30°)→0, d4(60°)→0, d5(180°)→2
-  // Odd row:  d0(-150°)→3, d1(-120°)→3, d2(0°)→5, d3(120°)→1, d4(150°)→2, d5(180°)→2
-  const EVEN_DIR_SIDE=[4,5,5,0,0,2];
-  const ODD_DIR_SIDE =[3,3,5,1,2,2];
+  const DIR_TO_SIDE=[5,0,1,2,3,4]; // dir index → side index that faces that neighbour
 
   _hexCache.forEach((h,idx)=>{
     h.nbIdx=getNeighbours(h.r,h.c);
@@ -453,7 +423,6 @@ function buildHexCache(){
     if(c){c.x+=h.x;c.y+=h.y;c.n++;}
     // For each of the 6 directions, check if the neighbour is external
     const offs=h.r%2===0?EVEN_OFFS:ODD_OFFS;
-    const dirSide=h.r%2===0?EVEN_DIR_SIDE:ODD_DIR_SIDE;
     let isBorder=false;
     for(let d=0;d<6;d++){
       const [dr,dc]=offs[d];
@@ -464,7 +433,7 @@ function buildHexCache(){
       const isExternal=!nb||nb.sea||nb.p!==h.p;
       if(isExternal){
         isBorder=true;
-        const side=dirSide[d];
+        const side=DIR_TO_SIDE[d];
         if(window._provBorderEdges[h.p]) window._provBorderEdges[h.p].push(hexEdgeSeg(h.x,h.y,R,side));
       }
     }
@@ -1764,7 +1733,8 @@ function openModal(title,body,btnsHtml){
 }
 function closeModal(){closeMo();}
 
-function popup(msg,dur=2600){const p=document.getElementById('popup');if(!p)return;p.textContent=msg;p.classList.add('on');clearTimeout(_popT);_popT=setTimeout(()=>p.classList.remove('on'),dur);}
+let _popT;
+function popup(msg,dur=2600){const p=document.getElementById('popup');p.textContent=msg;p.classList.add('on');clearTimeout(_popT);_popT=setTimeout(()=>p.classList.remove('on'),dur);}
 function addLog(msg,type='info'){
   const entryHtml=`<div class="le le-new"><span class="lt">${dateStr()}</span><span class="lm ${type}">${msg}</span></div>`;
   ['log','mob-log'].forEach(id=>{
