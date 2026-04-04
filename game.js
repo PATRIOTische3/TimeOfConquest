@@ -1,6 +1,8 @@
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MONTH_DAYS=[31,28,31,30,31,30,31,31,30,31,30,31]; // non-leap
 const WEEK_NAMES=['I','II','III','IV'];
+// Declare early to avoid TDZ errors if popup() is called during init
+var _popT;
 
 function isLeapYear(y){ return (y%4===0&&y%100!==0)||(y%400===0); }
 function daysInMonth(m,y){ return m===1&&isLeapYear(y)?29:MONTH_DAYS[m]; }
@@ -108,9 +110,6 @@ function computeHexRadius(){
 // All hexes same size — no capital scaling (causes gap artifacts)
 const scaledR=(i)=>HEX_R;
 
-
-const MAX_BLD_CAP=5;  // max building slots for capital provinces
-const MAX_BLD_NORM=3; // max building slots for normal provinces
 
 const ri=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
 const rf=(a,b)=>Math.random()*(b-a)+a;
@@ -238,7 +237,6 @@ function startGame(){
     zoomReset();
     updateHUD();updateIdeoHUD();updateSeasonUI();updateResCountsInPanel();
     addLog(`${dateStr()}: ${G.leaderName} rises to power.`,'event');
-    // Log starting alliances
     G.alliance.forEach(al=>{addLog(`🤝 ${al.name} alliance active: ${al.members.map(m=>NATIONS[m]?.short).join(', ')}`, 'diplo');});
   },80);
 }
@@ -280,7 +278,11 @@ function scheduleDraw(){
   requestAnimationFrame(()=>{
     _drawPending=false;
     drawMap();
-    // Keep animating if any instab slide is still in progress
+    // Keep animating for pulse effect when province selected or mode active
+    if(G.sel>=0||G.moveMode||G.navalMode||_atkSelectMode){
+      scheduleDraw();
+    }
+    // Keep animating instab slides
     if(G.mapMode==='instab'&&window._instabAnimY){
       const animating=Object.values(window._instabAnimY).some(v=>v!==undefined&&Math.abs(v)<5);
       if(animating) scheduleDraw();
@@ -352,6 +354,31 @@ if(typeof TERRAIN==='undefined'){
     coast:  {name:'Coast',   defB:.95, incM:1.05},
   };
 }
+if(typeof MAX_BLD_CAP==='undefined') window.MAX_BLD_CAP=4;
+if(typeof MAX_BLD_NORM==='undefined') window.MAX_BLD_NORM=2;
+if(typeof BUILD_TURNS==='undefined'){
+  window.BUILD_TURNS={
+    fort:8, factory:12, port:10, farm:6, mine:6,
+    barracks:6, railroad:10, hospital:8, arsenal:10,
+    fortification:8, airfield:10, naval_base:12,
+  };
+}
+if(typeof BUILDINGS==='undefined'){
+  window.BUILDINGS={
+    fort:       {name:'Fort',          icon:'🏰',desc:'Doubles terrain defense bonus',           cost:400, capitalOnly:false},
+    factory:    {name:'Factory',       icon:'🏭',desc:'Increases province income ×1.8',           cost:600, capitalOnly:false},
+    port:       {name:'Port',          icon:'⚓',desc:'Enables naval transport from this province',cost:500, capitalOnly:false, needsCoast:true},
+    farm:       {name:'Farm',          icon:'🌾',desc:'Reduces instability & disease spread',      cost:250, capitalOnly:false},
+    mine:       {name:'Mine',          icon:'⛏', desc:'Boosts coal/iron/oil resource output',     cost:350, capitalOnly:false},
+    barracks:   {name:'Barracks',      icon:'🪖',desc:'Conscription 25% faster & cheaper',        cost:300, capitalOnly:false},
+    hospital:   {name:'Hospital',      icon:'🏥',desc:'Reduces disease severity in province',      cost:350, capitalOnly:false},
+    arsenal:    {name:'Arsenal',       icon:'⚙️', desc:'Increases army attack strength',           cost:500, capitalOnly:false},
+    railroad:   {name:'Railroad',      icon:'🚂',desc:'Faster troop movement through province',   cost:450, capitalOnly:false},
+    airfield:   {name:'Airfield',      icon:'✈️', desc:'Extends attack range by 1 hex',            cost:700, capitalOnly:true},
+    naval_base: {name:'Naval Base',    icon:'🚢',desc:'Increases fleet capacity',                 cost:600, capitalOnly:false, needsCoast:true},
+    fortification:{name:'Fortification',icon:'🧱',desc:'Permanent +20% defense in province',     cost:550, capitalOnly:false},
+  };
+}
 
 // ── HEX_GRID support ──────────────────────────────────────
 let _hexCache=null;
@@ -413,10 +440,13 @@ function buildHexCache(){
   }
 
   // Neighbour offsets for even/odd rows (pointy-top, offset coords)
-  // Order: [NW, NE, E, SE, SW, W]  → faces sides [5, 0, 1, 2, 3, 4]
   const EVEN_OFFS=[[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]];
   const ODD_OFFS =[[-1,-1],[-1,0],[0,1],[1,0],[1,-1],[0,-1]];
-  const DIR_TO_SIDE=[5,0,1,2,3,4]; // dir index → side index that faces that neighbour
+  // Correct DIR_TO_SIDE verified by angle calculation (canvas y-down, vertices at PI/6+PI/3*i):
+  // Even row: d0(-60°)→4, d1(-30°)→5, d2(0°)→5, d3(30°)→0, d4(60°)→0, d5(180°)→2
+  // Odd row:  d0(-150°)→3, d1(-120°)→3, d2(0°)→5, d3(120°)→1, d4(150°)→2, d5(180°)→2
+  const EVEN_DIR_SIDE=[4,5,5,0,0,2];
+  const ODD_DIR_SIDE =[3,3,5,1,2,2];
 
   _hexCache.forEach((h,idx)=>{
     h.nbIdx=getNeighbours(h.r,h.c);
@@ -426,6 +456,7 @@ function buildHexCache(){
     if(c){c.x+=h.x;c.y+=h.y;c.n++;}
     // For each of the 6 directions, check if the neighbour is external
     const offs=h.r%2===0?EVEN_OFFS:ODD_OFFS;
+    const dirSide=h.r%2===0?EVEN_DIR_SIDE:ODD_DIR_SIDE;
     let isBorder=false;
     for(let d=0;d<6;d++){
       const [dr,dc]=offs[d];
@@ -436,7 +467,7 @@ function buildHexCache(){
       const isExternal=!nb||nb.sea||nb.p!==h.p;
       if(isExternal){
         isBorder=true;
-        const side=DIR_TO_SIDE[d];
+        const side=dirSide[d];
         if(window._provBorderEdges[h.p]) window._provBorderEdges[h.p].push(hexEdgeSeg(h.x,h.y,R,side));
       }
     }
@@ -601,198 +632,113 @@ function drawMap(){
   if(_hexCache&&_hexCache.length){
     const R=HEX_GRID.hexR,pad=R*3;
 
-    // PASS 1a: Fill unowned land hexes (sea=0, p=-1) — show terrain at 50% opacity in all modes
+    // PASS 1: Unowned land (sea=0, p=-1) — terrain color at 50% opacity
     ctx.globalAlpha=0.5;
     for(const h of _hexCache){
       if(h.sea||h.p>=0)continue;
       if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
-      hexPath(ctx,h.x,h.y,R);
+      hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
       ctx.fillStyle=TC[h.t]||'#3a3828';
       ctx.fill();
     }
     ctx.globalAlpha=1.0;
 
-    // PASS 1b: Fill province land hexes
+    // PASS 2: Province hexes — base color
     for(const h of _hexCache){
       if(h.sea||h.p<0)continue;
       if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
-      hexPath(ctx,h.x,h.y,R);
+      hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
       ctx.fillStyle=provColor(h.p);
       ctx.fill();
     }
 
-    // PASS 1c: Terrain overlay on political map (subtle terrain tint)
+    // PASS 3: Subtle terrain tint on political map
     if(G.mapMode==='political'){
       const TC2={plains:'#7a8c5a',forest:'#3a6040',mountain:'#8a7a6a',hills:'#7a6a50',
         desert:'#c8a860',jungle:'#2a7040',steppe:'#9aaa60',farmland:'#9aaa50',
         highland:'#8a7060',tundra:'#8aA0a8',swamp:'#4a7050',savanna:'#b0963c',
         marsh:'#5a7855',urban:'#8a8070',coast:'#5a7890'};
-      ctx.globalAlpha=0.13;
+      ctx.globalAlpha=0.12;
       for(const h of _hexCache){
         if(h.sea||h.p<0)continue;
         if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
-        const tc=TC2[h.t]||'#7a8a60';
-        hexPath(ctx,h.x,h.y,R);
-        ctx.fillStyle=tc;
+        hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
+        ctx.fillStyle=TC2[h.t]||'#7a8a60';
         ctx.fill();
       }
       ctx.globalAlpha=1.0;
     }
 
-    // PASS 2: Draw province borders as overlay — grouped by type for clean rendering.
-    // Sub-pass 2a: nation/province boundary lines (dark, drawn for every province border edge)
-    // These are pre-computed edges that face a DIFFERENT province or sea, so they
-    // represent true boundaries. Drawn after all fills so they are never painted over.
-    {
-      // Group provinces by border style to batch draw calls
-      // Batch 1: standard dark province borders
-      ctx.save();
-      ctx.strokeStyle='rgba(6,8,14,0.82)';
-      ctx.lineWidth=1.5/vp.scale;
-      ctx.beginPath();
-      for(let pi=0;pi<PROVINCES.length;pi++){
-        const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-        if(!edges||!edges.length)continue;
-        const o=G.owner[pi];
-        // Skip special-state provinces in this pass (handled below)
-        if(pi===G.sel)continue;
-        if(G.moveMode&&G.moveFrom>=0&&isMoveTgt(pi))continue;
-        if(_atkSelectMode&&isAtkSrc(pi))continue;
-        if(G.navalMode&&G.navalFrom>=0&&navalDests(G.navalFrom).includes(pi))continue;
-        for(const e of edges){
-          if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-          if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-          ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
-        }
-      }
-      ctx.stroke();
-      ctx.restore();
-
-      // Batch 2: rebel province borders (dashed orange)
-      ctx.save();
-      ctx.setLineDash([2.5/vp.scale,2/vp.scale]);
-      ctx.strokeStyle='rgba(200,100,30,.8)';
-      ctx.lineWidth=1.4/vp.scale;
-      ctx.beginPath();
-      for(let pi=0;pi<PROVINCES.length;pi++){
-        const o=G.owner[pi];
-        if(o>=0||G.mapMode!=='political')continue;
-        const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-        if(!edges||!edges.length)continue;
-        for(const e of edges){
-          if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-          if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-          ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
-        }
-      }
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-
-      // Batch 3: player province rebel-neighbour borders (dashed green)
-      ctx.save();
-      ctx.setLineDash([3/vp.scale,2/vp.scale]);
-      ctx.strokeStyle='rgba(60,200,60,.88)';
-      ctx.lineWidth=1.8/vp.scale;
-      ctx.beginPath();
-      for(let pi=0;pi<PROVINCES.length;pi++){
-        const o=G.owner[pi];
-        if(o!==G.playerNation||G.mapMode!=='political')continue;
-        const borders=_provBorderHexes&&_provBorderHexes[pi];
-        const hasRebel=borders&&borders.some(idx=>{
-          const h=_hexCache[idx];
-          return h.nbIdx.some(ni=>{const nb=_hexCache[ni];return nb&&nb.p>=0&&G.owner[nb.p]<0;});
-        });
-        if(!hasRebel)continue;
-        const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-        if(!edges||!edges.length)continue;
-        for(const e of edges){
-          if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-          if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-          ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
-        }
-      }
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-    }
-
-    // PASS 2b: Selection / interaction highlights drawn on top of borders
+    // PASS 4: Dark thin gap between ALL adjacent hexes of different provinces/sea
+    // Draw a 1px dark border only on the boundary sides using the precomputed edge list
+    ctx.strokeStyle='rgba(0,0,0,0.55)';
+    ctx.lineWidth=0.9/vp.scale;
+    ctx.beginPath();
     for(let pi=0;pi<PROVINCES.length;pi++){
-      const isSel=pi===G.sel;
-      const isMov=G.moveMode&&G.moveFrom>=0&&isMoveTgt(pi);
-      const isAtk=_atkSelectMode&&isAtkSrc(pi);
-      const isNav=G.navalMode&&G.navalFrom>=0&&navalDests(G.navalFrom).includes(pi);
-      if(!isSel&&!isMov&&!isAtk&&!isNav)continue;
       const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-      if(!edges||!edges.length)continue;
-      ctx.save();
-      if(isSel){ctx.strokeStyle='rgba(255,255,255,.97)';ctx.lineWidth=2.4/vp.scale;}
-      else if(isMov){ctx.strokeStyle='rgba(80,255,80,.92)';ctx.lineWidth=2.0/vp.scale;}
-      else if(isAtk){ctx.strokeStyle='rgba(255,80,80,.92)';ctx.lineWidth=2.2/vp.scale;}
-      else if(isNav){ctx.strokeStyle='rgba(80,200,255,.92)';ctx.lineWidth=2.0/vp.scale;}
-      ctx.beginPath();
+      if(!edges)continue;
       for(const e of edges){
         if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
         if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-        ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
+        ctx.moveTo(e.x0,e.y0);
+        ctx.lineTo(e.x1,e.y1);
       }
-      ctx.stroke();
-      ctx.restore();
     }
+    ctx.stroke();
+
+    // PASS 5: Selected province — pulsing white fill overlay
+    if(G.sel>=0){
+      const pulse=0.18+0.12*Math.sin(Date.now()/220);
+      // Selected province hexes
+      for(const h of _hexCache){
+        if(h.sea||h.p!==G.sel)continue;
+        if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
+        hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
+        ctx.fillStyle=`rgba(255,255,255,${pulse})`;
+        ctx.fill();
+      }
+    }
+
+    // PASS 6: Move/attack/naval targets — colored pulse overlay
+    const isMov=G.moveMode&&G.moveFrom>=0;
+    const isNav=G.navalMode&&G.navalFrom>=0;
+    if(isMov||isNav||_atkSelectMode){
+      const pulse2=0.15+0.1*Math.sin(Date.now()/180);
+      for(let pi=0;pi<PROVINCES.length;pi++){
+        let col=null;
+        if(isMov&&isMoveTgt(pi)) col=`rgba(80,255,80,${pulse2})`;
+        else if(_atkSelectMode&&isAtkSrc(pi)) col=`rgba(255,80,80,${pulse2})`;
+        else if(isNav&&navalDests(G.navalFrom).includes(pi)) col=`rgba(80,200,255,${pulse2})`;
+        if(!col)continue;
+        for(const h of _hexCache){
+          if(h.sea||h.p!==pi)continue;
+          if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
+          hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
+          ctx.fillStyle=col;
+          ctx.fill();
+        }
+      }
+    }
+
   }else{
-  // ── Centroid mode (old map) ───────────────────────────────
+  // ── Centroid mode (old map, no HEX_GRID) ─────────────────
   PROVINCES.forEach((p,i)=>{
     if(p.cx<wx0-30||p.cx>wx1+30||p.cy<wy0-30||p.cy>wy1+30)return;
     const r=scaledR(i);
-    hexPath(ctx,p.cx,p.cy,r+0.6/vp.scale);
+    hexPath(ctx,p.cx,p.cy,r+0.4/vp.scale);
     ctx.fillStyle=provColor(i);ctx.fill();
   });
-
-  // Borders — only draw on selected/target hexes + nation boundaries (skip internal same-nation borders)
+  // Borders between different owners only
   PROVINCES.forEach((p,i)=>{
     if(p.cx<wx0-30||p.cx>wx1+30||p.cy<wy0-30||p.cy>wy1+30)return;
     const r=scaledR(i);
     const o=G.owner[i];
-    // Always stroke selected/move targets
+    const hasBorder=(NB[i]||[]).some(nb=>G.owner[nb]!==o);
+    if(hasBorder){hexPath(ctx,p.cx,p.cy,r);ctx.strokeStyle='rgba(0,0,0,.5)';ctx.lineWidth=.6/vp.scale;ctx.stroke();}
+    // Selection pulse
     if(i===G.sel){
-      hexPath(ctx,p.cx,p.cy,r);ctx.strokeStyle='rgba(255,255,255,.95)';ctx.lineWidth=2/vp.scale;ctx.stroke();
-    } else if(G.moveMode&&G.moveFrom>=0&&isMoveTgt(i)){
-      hexPath(ctx,p.cx,p.cy,r);ctx.strokeStyle='rgba(80,255,80,.9)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();
-    } else if(_atkSelectMode&&isAtkSrc(i)){
-      hexPath(ctx,p.cx,p.cy,r);ctx.strokeStyle='rgba(255,80,80,.9)';ctx.lineWidth=1.8/vp.scale;ctx.stroke();
-    } else if(G.navalMode&&G.navalFrom>=0&&navalDests(G.navalFrom).includes(i)){
-      hexPath(ctx,p.cx,p.cy,r);ctx.strokeStyle='rgba(80,200,255,.9)';ctx.lineWidth=1.6/vp.scale;ctx.stroke();
-    } else {
-      // Only draw thin dark border if any neighbor has a DIFFERENT owner
-      const hasBorder=(NB[i]||[]).some(nb=>G.owner[nb]!==o);
-      if(hasBorder){
-        hexPath(ctx,p.cx,p.cy,r);
-        if(o<0 && !PROVINCES[i]?.isSea && G.mapMode==='political'){
-          // Rebel province — subtle orange fill border
-          ctx.save();
-          ctx.setLineDash([2.5/vp.scale,2/vp.scale]);
-          ctx.strokeStyle='rgba(200,100,30,.7)';ctx.lineWidth=1.2/vp.scale;
-          ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.restore();
-        } else if(o===G.playerNation && G.mapMode==='political'){
-          // Player province — check if any neighbor is a rebel; if so draw dashed green border
-          const hasRebelNeighbor=(NB[i]||[]).some(nb=>G.owner[nb]<0&&!PROVINCES[nb]?.isSea);
-          if(hasRebelNeighbor){
-            ctx.save();
-            ctx.setLineDash([3/vp.scale,2/vp.scale]);
-            ctx.strokeStyle='rgba(60,200,60,.85)';ctx.lineWidth=1.6/vp.scale;
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.restore();
-          } else {
-            ctx.strokeStyle='rgba(6,8,14,.65)';ctx.lineWidth=.5/vp.scale;ctx.stroke();
-          }
-        } else {
-          ctx.strokeStyle='rgba(6,8,14,.65)';ctx.lineWidth=.5/vp.scale;ctx.stroke();
-        }
-      }
+      const pulse=0.18+0.12*Math.sin(Date.now()/220);
+      hexPath(ctx,p.cx,p.cy,r);ctx.fillStyle=`rgba(255,255,255,${pulse})`;ctx.fill();
     }
   });
   } // end centroid mode
@@ -1420,7 +1366,7 @@ function hexToRgb(hex){
 
 function onCanvasClick(wx,wy){
   const i=hitProv(wx,wy);
-  if(i<0){hideProvPopup();return;}
+  if(i<0){G.sel=-1;scheduleDraw();chkBtns();return;}
 
   if(G.navalMode&&G.navalFrom>=0){
     if(navalDests(G.navalFrom).includes(i))openNavalDialog(G.navalFrom,i);
@@ -1434,32 +1380,23 @@ function onCanvasClick(wx,wy){
     else cancelMove();
     return;
   }
-
-  // Attack source selection mode
-  if(_atkSelectMode && _atkTarget>=0){
-    if(isAtkSrc(i)){
-      const tgt=_atkTarget;
-      cancelAtkSelect();
-      showAttackDialog(i, tgt);
-    } else {
-      cancelAtkSelect();
-    }
+  if(_atkSelectMode&&_atkTarget>=0){
+    if(isAtkSrc(i)){const tgt=_atkTarget;cancelAtkSelect();showAttackDialog(i,tgt);}
+    else cancelAtkSelect();
     return;
   }
 
-  // Always select for side panel
-  G.sel=i; scheduleDraw(); updateSP(i); chkBtns();
-  // Reset instab slide animation for newly selected province
+  // Select province — update side panel and pulse animation
+  G.sel=i;
   if(window._instabAnimY) window._instabAnimY[i]=undefined;
-  if(window.innerWidth<=700) switchTab('info');
+  scheduleDraw();
+  updateSP(i);
+  chkBtns();
 
-  // Show popup using the actual click screen position (stored before pan)
-  const [sx,sy] = provScreenPos(i);
-  const hexR = _hexCache ? HEX_GRID.hexR : HEX_R;
-  // Show popup immediately at current screen position
-  showProvPopup(i, sx, sy - hexR*vp.scale);
+  // On mobile: switch to info tab so user sees the data
+  if(window.innerWidth<=900) switchTab('info');
 
-  // Smoothly pan camera so selected province is visible and centred
+  // Pan camera to province if not visible
   panToProvince(i);
 }
 
@@ -1792,8 +1729,7 @@ function openModal(title,body,btnsHtml){
 }
 function closeModal(){closeMo();}
 
-let _popT;
-function popup(msg,dur=2600){const p=document.getElementById('popup');p.textContent=msg;p.classList.add('on');clearTimeout(_popT);_popT=setTimeout(()=>p.classList.remove('on'),dur);}
+function popup(msg,dur=2600){const p=document.getElementById('popup');if(!p)return;p.textContent=msg;p.classList.add('on');clearTimeout(_popT);_popT=setTimeout(()=>p.classList.remove('on'),dur);}
 function addLog(msg,type='info'){
   const entryHtml=`<div class="le le-new"><span class="lt">${dateStr()}</span><span class="lm ${type}">${msg}</span></div>`;
   ['log','mob-log'].forEach(id=>{
