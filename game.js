@@ -1,6 +1,8 @@
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MONTH_DAYS=[31,28,31,30,31,30,31,31,30,31,30,31]; // non-leap
 const WEEK_NAMES=['I','II','III','IV'];
+// Declare early to avoid TDZ errors if popup() is called during init
+var _popT;
 
 function isLeapYear(y){ return (y%4===0&&y%100!==0)||(y%400===0); }
 function daysInMonth(m,y){ return m===1&&isLeapYear(y)?29:MONTH_DAYS[m]; }
@@ -1762,8 +1764,7 @@ function openModal(title,body,btnsHtml){
 }
 function closeModal(){closeMo();}
 
-let _popT;
-function popup(msg,dur=2600){const p=document.getElementById('popup');p.textContent=msg;p.classList.add('on');clearTimeout(_popT);_popT=setTimeout(()=>p.classList.remove('on'),dur);}
+function popup(msg,dur=2600){const p=document.getElementById('popup');if(!p)return;p.textContent=msg;p.classList.add('on');clearTimeout(_popT);_popT=setTimeout(()=>p.classList.remove('on'),dur);}
 function addLog(msg,type='info'){
   const entryHtml=`<div class="le le-new"><span class="lt">${dateStr()}</span><span class="lm ${type}">${msg}</span></div>`;
   ['log','mob-log'].forEach(id=>{
