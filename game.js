@@ -498,15 +498,16 @@ function buildHexCache(){
 
   // 6. Assign each sea hex to its nearest sea zone, then build sea zone border edges.
   //    A sea zone border edge is any side of a sea hex that faces land (non-sea) or outside grid.
+  //    IMPORTANT: only hexes with sea===1 are sea — p===-1 with sea===0 is unowned land, not sea.
   _hexSeaZone=new Array(_hexCache.length).fill(-1);
   _seaZoneBorderEdges=null;
   if(typeof SEA_ZONES!=='undefined'&&SEA_ZONES?.length){
     const SZ=SEA_ZONES;
     const nz=SZ.length;
     _seaZoneBorderEdges=Array.from({length:nz},()=>[]);
-    // Assign each sea hex to closest sea zone centroid
+    // Assign each sea hex (sea===1 strictly) to closest sea zone centroid
     _hexCache.forEach((h,idx)=>{
-      if(!h.sea&&h.p>=0)return; // land province hex
+      if(!h.sea)return; // land hex (province or unowned) — skip
       let best=-1,bestD=Infinity;
       for(let zi=0;zi<nz;zi++){
         const dx=h.x-SZ[zi].cx,dy=h.y-SZ[zi].cy;
@@ -515,7 +516,7 @@ function buildHexCache(){
       }
       _hexSeaZone[idx]=best;
     });
-    // Build border edges: for each sea hex, check each of 6 sides
+    // Build border edges: for each sea hex, find sides that face land or outside grid
     _hexCache.forEach((h,idx)=>{
       const zi=_hexSeaZone[idx];
       if(zi<0)return;
@@ -526,8 +527,8 @@ function buildHexCache(){
         const nr=h.r+dr,nc=h.c+dc;
         const niIdx=(_hexByRC[nr]&&_hexByRC[nr][nc]!==undefined)?_hexByRC[nr][nc]:-1;
         const nb=niIdx>=0?_hexCache[niIdx]:null;
-        // Border: neighbour is outside grid, or is a land province hex (not sea)
-        const isBorderSide=!nb||(!nb.sea&&nb.p>=0);
+        // Border: neighbour is outside grid, OR is a land province hex (not sea)
+        const isBorderSide=!nb||!nb.sea;
         if(isBorderSide){
           const side=dirSide[d];
           _seaZoneBorderEdges[zi].push(hexEdgeSeg(h.x,h.y,R,side));
@@ -721,11 +722,11 @@ function drawMap(){
       ctx.globalAlpha=1.0;
     }
 
-    // PASS 4a: Sea zone border outlines — always visible (editor-style edges at land/sea boundary)
+    // PASS 4a: Sea zone border outlines — gold lines at land/sea boundary
     if(_seaZoneBorderEdges){
-      // Draw all sea zone borders as thin gold lines
-      ctx.strokeStyle='rgba(180,150,60,0.28)';
-      ctx.lineWidth=0.8/vp.scale;
+      ctx.strokeStyle='rgba(180,150,60,0.35)';
+      ctx.lineWidth=0.85/vp.scale;
+      ctx.lineJoin='round';ctx.lineCap='round';
       ctx.beginPath();
       for(let zi=0;zi<_seaZoneBorderEdges.length;zi++){
         for(const e of _seaZoneBorderEdges[zi]){
@@ -735,11 +736,11 @@ function drawMap(){
         }
       }
       ctx.stroke();
-      // Selected sea zone — brighter pulsing outline
+      // Selected sea zone — bright pulsing outline
       if(G_selSeaZone>=0&&_seaZoneBorderEdges[G_selSeaZone]){
         const pulse=0.55+0.3*Math.sin(Date.now()/260);
         ctx.strokeStyle=`rgba(100,200,255,${pulse})`;
-        ctx.lineWidth=1.8/vp.scale;
+        ctx.lineWidth=2.0/vp.scale;
         ctx.beginPath();
         for(const e of _seaZoneBorderEdges[G_selSeaZone]){
           if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
@@ -750,25 +751,12 @@ function drawMap(){
       }
     }
 
-    // PASS 4b: Province border outlines — always visible gold edges at province boundaries
-    // First pass: dark inner line (separates hexes cleanly)
-    ctx.strokeStyle='rgba(0,0,0,0.55)';
-    ctx.lineWidth=0.9/vp.scale;
-    ctx.beginPath();
-    for(let pi=0;pi<PROVINCES.length;pi++){
-      const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-      if(!edges)continue;
-      for(const e of edges){
-        if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-        if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-        ctx.moveTo(e.x0,e.y0);
-        ctx.lineTo(e.x1,e.y1);
-      }
-    }
-    ctx.stroke();
-    // Second pass: gold province outline (always shown, like editor)
-    ctx.strokeStyle='rgba(201,168,76,0.45)';
-    ctx.lineWidth=1.1/vp.scale;
+    // PASS 4b: Province border outlines — single clean gold stroke at province perimeter
+    // Each edge here already only appears on sides facing a different province/sea/outside
+    ctx.strokeStyle='rgba(201,168,76,0.7)';
+    ctx.lineWidth=0.85/vp.scale;
+    ctx.lineJoin='round';
+    ctx.lineCap='round';
     ctx.beginPath();
     for(let pi=0;pi<PROVINCES.length;pi++){
       const edges=window._provBorderEdges&&window._provBorderEdges[pi];
@@ -801,6 +789,7 @@ function drawMap(){
       for(let idx=0;idx<_hexCache.length;idx++){
         if(_hexSeaZone[idx]!==G_selSeaZone)continue;
         const h=_hexCache[idx];
+        if(!h.sea)continue; // strictly sea only
         if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
         hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
         ctx.fillStyle=`rgba(80,180,255,${pulse})`;
@@ -1526,7 +1515,7 @@ function onCanvasClick(wx,wy){
       let bestD=Infinity;
       for(let idx=0;idx<_hexCache.length;idx++){
         const h=_hexCache[idx];
-        if(!h.sea&&h.p>=0)continue; // land province — skip
+        if(!h.sea)continue; // only true sea hexes (sea===1), skip unowned land
         const zi=_hexSeaZone[idx];
         if(zi<0)continue;
         const dx=wx-h.x,dy=wy-h.y,d=dx*dx+dy*dy;
@@ -1615,13 +1604,14 @@ var _pan={active:false,lx:0,ly:0};
 var _pinch={active:false,dist:0};
 var _tapStart={x:0,y:0,t:0};
 var _moved=false;
+var wrap=document.getElementById('map-wrap'); // global ref for cursor changes
 
 // Mouse
 canvas.addEventListener('mousedown',e=>{
   if(e.button===1||(e.button===0&&e.ctrlKey)){e.preventDefault();}
   _pan.active=true;_pan.lx=e.clientX;_pan.ly=e.clientY;_moved=false;
   _tapStart={x:e.clientX,y:e.clientY,t:Date.now()};
-  wrap.style.cursor='grabbing';
+  if(wrap)wrap.style.cursor='grabbing';
   hideProvPopup();
 });
 window.addEventListener('mousemove',e=>{
@@ -1644,7 +1634,7 @@ window.addEventListener('mousemove',e=>{
 });
 window.addEventListener('mouseup',e=>{
   if(!_pan.active)return;
-  _pan.active=false;wrap.style.cursor='';
+  _pan.active=false;if(wrap)wrap.style.cursor='';
   // Only fire click if mouse was pressed AND released on the canvas itself
   if(!_moved&&Date.now()-_tapStart.t<400&&e.target===canvas){
     const r=canvas.getBoundingClientRect();
