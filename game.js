@@ -234,7 +234,9 @@ function startGame(){
     buildHexCache();
     computeHexRadius();
     buildCanvas();
-    zoomReset();
+    zoomReset(); // set initial zoom (whole map)
+    // Parabolic zoom-in animation to player capital
+    setTimeout(()=>{zoomToCapital(SC);},120);
     updateHUD();updateIdeoHUD();updateSeasonUI();updateResCountsInPanel();
     addLog(`${dateStr()}: ${G.leaderName} rises to power.`,'event');
     G.alliance.forEach(al=>{addLog(`🤝 ${al.name} alliance active: ${al.members.map(m=>NATIONS[m]?.short).join(', ')}`, 'diplo');});
@@ -278,8 +280,8 @@ function scheduleDraw(){
   requestAnimationFrame(()=>{
     _drawPending=false;
     drawMap();
-    // Keep animating for pulse effect when province selected or mode active
-    if(G.sel>=0||G.moveMode||G.navalMode||_atkSelectMode){
+    // Keep animating for pulse effect when province/sea selected or mode active
+    if(G.sel>=0||G_selSeaZone>=0||G.moveMode||G.navalMode||_atkSelectMode){
       scheduleDraw();
     }
     // Keep animating instab slides
@@ -391,6 +393,12 @@ var _provBorderHexes=null;
 var _provCentroid=null;
 // Sea zones converted to hex-grid space (cx,cy from editor are province-space, need recalculation)
 var _seaZonePositions=null;
+// Per-sea-zone: array of border edge segments (facing land or grid edge)
+var _seaZoneBorderEdges=null;
+// Per hex: which sea zone index it belongs to (-1 if none / land)
+var _hexSeaZone=null;
+// Currently selected sea zone index (-1 = none)
+var G_selSeaZone=-1;
 
 function buildHexCache(){
   if(typeof HEX_GRID==='undefined'||!HEX_GRID||!HEX_GRID.hexes){_hexCache=null;_hexByRC=null;_provBorderHexes=null;_provCentroid=null;return;}
@@ -486,6 +494,46 @@ function buildHexCache(){
     // SEA_ZONES cx,cy are already in the same coordinate space as PROVINCES cx,cy
     // which corresponds to hex-grid x,y space (the editor computes them the same way)
     _seaZonePositions=SEA_ZONES.map(z=>({t:z.name,x:z.cx,y:z.cy,fs:z.fontSize||7}));
+  }
+
+  // 6. Assign each sea hex to its nearest sea zone, then build sea zone border edges.
+  //    A sea zone border edge is any side of a sea hex that faces land (non-sea) or outside grid.
+  _hexSeaZone=new Array(_hexCache.length).fill(-1);
+  _seaZoneBorderEdges=null;
+  if(typeof SEA_ZONES!=='undefined'&&SEA_ZONES?.length){
+    const SZ=SEA_ZONES;
+    const nz=SZ.length;
+    _seaZoneBorderEdges=Array.from({length:nz},()=>[]);
+    // Assign each sea hex to closest sea zone centroid
+    _hexCache.forEach((h,idx)=>{
+      if(!h.sea&&h.p>=0)return; // land province hex
+      let best=-1,bestD=Infinity;
+      for(let zi=0;zi<nz;zi++){
+        const dx=h.x-SZ[zi].cx,dy=h.y-SZ[zi].cy;
+        const d=dx*dx+dy*dy;
+        if(d<bestD){bestD=d;best=zi;}
+      }
+      _hexSeaZone[idx]=best;
+    });
+    // Build border edges: for each sea hex, check each of 6 sides
+    _hexCache.forEach((h,idx)=>{
+      const zi=_hexSeaZone[idx];
+      if(zi<0)return;
+      const offs=h.r%2===0?EVEN_OFFS:ODD_OFFS;
+      const dirSide=h.r%2===0?EVEN_DIR_SIDE:ODD_DIR_SIDE;
+      for(let d=0;d<6;d++){
+        const[dr,dc]=offs[d];
+        const nr=h.r+dr,nc=h.c+dc;
+        const niIdx=(_hexByRC[nr]&&_hexByRC[nr][nc]!==undefined)?_hexByRC[nr][nc]:-1;
+        const nb=niIdx>=0?_hexCache[niIdx]:null;
+        // Border: neighbour is outside grid, or is a land province hex (not sea)
+        const isBorderSide=!nb||(!nb.sea&&nb.p>=0);
+        if(isBorderSide){
+          const side=dirSide[d];
+          _seaZoneBorderEdges[zi].push(hexEdgeSeg(h.x,h.y,R,side));
+        }
+      }
+    });
   }
 
   _computeMapBounds();
@@ -621,11 +669,15 @@ function drawMap(){
 
   // Sea labels — SEA_ZONES (new map) or legacy list
   ctx.textAlign='center';ctx.textBaseline='middle';
-  getSeaLabels().forEach(sl=>{
+  getSeaLabels().forEach((sl,zi)=>{
     if(sl.x<wx0-40||sl.x>wx1+40||sl.y<wy0-20||sl.y>wy1+20)return;
+    const isSelZ=(G_selSeaZone>=0&&zi===G_selSeaZone);
+    const alpha=isSelZ?1.0:0.65;
     ctx.font=`italic ${Math.max(5,Math.min(sl.fs||7,24))}px Cinzel,serif`;
-    ctx.fillStyle='rgba(100,170,230,.65)';
+    ctx.fillStyle=isSelZ?`rgba(140,210,255,${alpha})`:`rgba(100,170,230,${alpha})`;
+    if(isSelZ){ctx.shadowColor='rgba(80,180,255,0.7)';ctx.shadowBlur=8;}
     ctx.fillText(sl.t,sl.x,sl.y);
+    ctx.shadowBlur=0;
   });
 
   // ── HEX_GRID mode ─────────────────────────────────────────
@@ -669,10 +721,54 @@ function drawMap(){
       ctx.globalAlpha=1.0;
     }
 
-    // PASS 4: Dark thin gap between ALL adjacent hexes of different provinces/sea
-    // Draw a 1px dark border only on the boundary sides using the precomputed edge list
+    // PASS 4a: Sea zone border outlines — always visible (editor-style edges at land/sea boundary)
+    if(_seaZoneBorderEdges){
+      // Draw all sea zone borders as thin gold lines
+      ctx.strokeStyle='rgba(180,150,60,0.28)';
+      ctx.lineWidth=0.8/vp.scale;
+      ctx.beginPath();
+      for(let zi=0;zi<_seaZoneBorderEdges.length;zi++){
+        for(const e of _seaZoneBorderEdges[zi]){
+          if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
+          if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
+          ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
+        }
+      }
+      ctx.stroke();
+      // Selected sea zone — brighter pulsing outline
+      if(G_selSeaZone>=0&&_seaZoneBorderEdges[G_selSeaZone]){
+        const pulse=0.55+0.3*Math.sin(Date.now()/260);
+        ctx.strokeStyle=`rgba(100,200,255,${pulse})`;
+        ctx.lineWidth=1.8/vp.scale;
+        ctx.beginPath();
+        for(const e of _seaZoneBorderEdges[G_selSeaZone]){
+          if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
+          if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
+          ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
+        }
+        ctx.stroke();
+      }
+    }
+
+    // PASS 4b: Province border outlines — always visible gold edges at province boundaries
+    // First pass: dark inner line (separates hexes cleanly)
     ctx.strokeStyle='rgba(0,0,0,0.55)';
     ctx.lineWidth=0.9/vp.scale;
+    ctx.beginPath();
+    for(let pi=0;pi<PROVINCES.length;pi++){
+      const edges=window._provBorderEdges&&window._provBorderEdges[pi];
+      if(!edges)continue;
+      for(const e of edges){
+        if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
+        if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
+        ctx.moveTo(e.x0,e.y0);
+        ctx.lineTo(e.x1,e.y1);
+      }
+    }
+    ctx.stroke();
+    // Second pass: gold province outline (always shown, like editor)
+    ctx.strokeStyle='rgba(201,168,76,0.45)';
+    ctx.lineWidth=1.1/vp.scale;
     ctx.beginPath();
     for(let pi=0;pi<PROVINCES.length;pi++){
       const edges=window._provBorderEdges&&window._provBorderEdges[pi];
@@ -695,6 +791,19 @@ function drawMap(){
         if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
         hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
         ctx.fillStyle=`rgba(255,255,255,${pulse})`;
+        ctx.fill();
+      }
+    }
+
+    // PASS 5b: Selected sea zone — pulsing blue fill overlay
+    if(G_selSeaZone>=0&&_hexSeaZone){
+      const pulse=0.07+0.05*Math.sin(Date.now()/260);
+      for(let idx=0;idx<_hexCache.length;idx++){
+        if(_hexSeaZone[idx]!==G_selSeaZone)continue;
+        const h=_hexCache[idx];
+        if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
+        hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
+        ctx.fillStyle=`rgba(80,180,255,${pulse})`;
         ctx.fill();
       }
     }
@@ -1196,7 +1305,50 @@ function zoomReset(){
   scheduleDraw();
 }
 
-// Returns the province index hit by world-coord click, or -1
+// ── PARABOLIC INTRO ZOOM ──────────────────────────────────
+// Zooms from full-map view into the player's capital with a parabolic easing curve.
+// The "parabola" effect: scale follows a smooth arc (slow start → fast middle → gentle land).
+function zoomToCapital(nationIdx){
+  // Find capital province world position
+  const capProv=PROVINCES.find(p=>p.nation===nationIdx&&p.isCapital);
+  if(!capProv){scheduleDraw();return;}
+  const wx=(_provCentroid&&_provCentroid[PROVINCES.indexOf(capProv)]?.x)||capProv.cx;
+  const wy=(_provCentroid&&_provCentroid[PROVINCES.indexOf(capProv)]?.y)||capProv.cy;
+
+  // Start state: current zoom-reset viewport (whole map)
+  const startScale=vp.scale, startTx=vp.tx, startTy=vp.ty;
+
+  // Target state: zoom in to ~2.8× on capital, centered
+  const targetScale=Math.min(3.2, Math.max(2.0, startScale*4.5));
+  const targetTx=CW/2-wx*targetScale;
+  const targetTy=CH/2-wy*targetScale;
+
+  const dur=1800; // ms — slow enough to feel cinematic
+  const start=performance.now();
+  if(_panAnim)cancelAnimationFrame(_panAnim);
+
+  function step(now){
+    const t=Math.min(1,(now-start)/dur);
+    // Parabolic easing: ease-in-out with a slight overshoot feel at peak speed
+    // Uses smoothstep³ variant: slow→fast→slow
+    const t2=t*t*(3-2*t);       // smoothstep
+    const t3=t2*t2*(3-2*t2);    // smootherstep for the scale arc
+    // Scale arc: rises faster than position (parabolic feel)
+    const scaleEase=t2;         // scale "overshoots" the linear path
+    const posEase=t3;           // position follows more gently
+
+    vp.scale=startScale+(targetScale-startScale)*scaleEase;
+    vp.tx=startTx+(targetTx-startTx)*posEase;
+    vp.ty=startTy+(targetTy-startTy)*posEase;
+    clampViewport();
+    scheduleDraw();
+    if(t<1)_panAnim=requestAnimationFrame(step);
+    else{_panAnim=null;scheduleDraw();}
+  }
+  _panAnim=requestAnimationFrame(step);
+}
+
+
 function hitProv(wx,wy){
   if(_hexCache&&_hexCache.length){
     const R=HEX_GRID.hexR,W2=Math.sqrt(3)*R,H2=2*R;
@@ -1366,7 +1518,28 @@ function hexToRgb(hex){
 
 function onCanvasClick(wx,wy){
   const i=hitProv(wx,wy);
-  if(i<0){G.sel=-1;scheduleDraw();chkBtns();return;}
+  if(i<0){
+    // Check if clicked on a sea zone hex
+    if(_hexCache&&_hexSeaZone){
+      const R=HEX_GRID.hexR;
+      let hitZone=-1;
+      let bestD=Infinity;
+      for(let idx=0;idx<_hexCache.length;idx++){
+        const h=_hexCache[idx];
+        if(!h.sea&&h.p>=0)continue; // land province — skip
+        const zi=_hexSeaZone[idx];
+        if(zi<0)continue;
+        const dx=wx-h.x,dy=wy-h.y,d=dx*dx+dy*dy;
+        if(d<R*R*1.5&&d<bestD){bestD=d;hitZone=zi;}
+      }
+      if(hitZone>=0){
+        G_selSeaZone=(G_selSeaZone===hitZone)?-1:hitZone;
+        G.sel=-1;scheduleDraw();chkBtns();return;
+      }
+    }
+    G_selSeaZone=-1;G.sel=-1;scheduleDraw();chkBtns();return;
+  }
+  G_selSeaZone=-1; // deselect sea zone when clicking land province
 
   if(G.navalMode&&G.navalFrom>=0){
     if(navalDests(G.navalFrom).includes(i))openNavalDialog(G.navalFrom,i);
