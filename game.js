@@ -108,18 +108,18 @@ function computeHexRadius(){
   }
 }
 // All hexes same size — no capital scaling (causes gap artifacts)
-const scaledR=(i)=>HEX_R;
+var scaledR=(i)=>HEX_R;
 
 
-const ri=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
-const rf=(a,b)=>Math.random()*(b-a)+a;
-const fm=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(0)+'k':''+Math.round(n);
-const fa=n=>Math.round(n).toLocaleString('en');
-const ideol=()=>IDEOLOGIES[G.ideology];
-const regsOf=n=>PROVINCES.map((_,i)=>i).filter(i=>G.owner[i]===n);
-const ownerName=n=>n<0?'Rebels':NATIONS[n]?.short||`#${n}`;
-const natColor=n=>NATIONS[n]?.color||'#181620';
-const season=()=>getSeason(G.month);
+var ri=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
+var rf=(a,b)=>Math.random()*(b-a)+a;
+var fm=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(0)+'k':''+Math.round(n);
+var fa=n=>Math.round(n).toLocaleString('en');
+var ideol=()=>IDEOLOGIES[G.ideology];
+var regsOf=n=>PROVINCES.map((_,i)=>i).filter(i=>G.owner[i]===n);
+var ownerName=n=>n<0?'Rebels':NATIONS[n]?.short||`#${n}`;
+var natColor=n=>NATIONS[n]?.color||'#181620';
+var season=()=>getSeason(G.month);
 
 function aliveNations(){const s=new Set();PROVINCES.forEach((_,i)=>{const o=G.owner[i];if(o>=0&&o!==G.playerNation)s.add(o);});return[...s];}
 function areAllies(a,b){return G.allianceOf[a]>=0&&G.allianceOf[a]===G.allianceOf[b];}
@@ -245,14 +245,14 @@ function startGame(){
 // ══════════════════════════════════════════════════════════
 //  CANVAS RENDERER — replaces SVG for performance
 // ══════════════════════════════════════════════════════════
-const canvas=document.getElementById('map-canvas');
-const ctx=canvas.getContext('2d');
-let CW=0,CH=0;
-let vp={scale:1,tx:0,ty:0};
-let _drawPending=false;
+var canvas=document.getElementById('map-canvas');
+var ctx=canvas.getContext('2d');
+var CW=0,CH=0;
+var vp={scale:1,tx:0,ty:0};
+var _drawPending=false;
 
 function buildCanvas(){
-  const wrap=document.getElementById('map-wrap');
+  var wrap=document.getElementById('map-wrap');
   CW=wrap.clientWidth||window.innerWidth;
   CH=wrap.clientHeight||Math.floor(window.innerHeight*.55);
   if(CW<10||CH<10){setTimeout(buildCanvas,60);return;}
@@ -381,16 +381,16 @@ if(typeof BUILDINGS==='undefined'){
 }
 
 // ── HEX_GRID support ──────────────────────────────────────
-let _hexCache=null;
+var _hexCache=null;
 // Precomputed per-hex: isBorder (borders different-province hex or sea), isEdge (borders sea/outside grid)
 // Lookup: _hexByRC[r][c] = hex index in _hexCache
-let _hexByRC=null;
+var _hexByRC=null;
 // Per-province: array of hex indices that are on the outer border
-let _provBorderHexes=null;
+var _provBorderHexes=null;
 // Per-province: centroid {x,y}
-let _provCentroid=null;
+var _provCentroid=null;
 // Sea zones converted to hex-grid space (cx,cy from editor are province-space, need recalculation)
-let _seaZonePositions=null;
+var _seaZonePositions=null;
 
 function buildHexCache(){
   if(typeof HEX_GRID==='undefined'||!HEX_GRID||!HEX_GRID.hexes){_hexCache=null;_hexByRC=null;_provBorderHexes=null;_provCentroid=null;return;}
@@ -1136,7 +1136,7 @@ function drawMapOverlay(){
   }
 }
 // ── MAP BOUNDS (computed once, used for clamping) ────────
-let _mapBounds={minX:0,maxX:100,minY:0,maxY:100};
+var _mapBounds={minX:0,maxX:100,minY:0,maxY:100};
 function _computeMapBounds(){
   if(_hexCache&&_hexCache.length){
     const R=HEX_GRID.hexR;
@@ -1243,7 +1243,7 @@ function provScreenPos(i){
 }
 
 // ── PROVINCE POPUP ────────────────────────────────────────
-let _ppProvince = -1;
+var _ppProvince = -1;
 
 function showProvPopup(i, screenX, screenY){
   const p=PROVINCES[i], o=G.owner[i], PN=G.playerNation;
@@ -1403,7 +1403,7 @@ function onCanvasClick(wx,wy){
 // ── SMOOTH PAN TO PROVINCE ────────────────────────────────
 // Only pans if the province centroid is outside the comfortable "safe zone"
 // (inner 55% of the canvas). If it's already visible, does nothing.
-let _panAnim=null;
+var _panAnim=null;
 function panToProvince(i){
   const p=PROVINCES[i];if(!p)return;
   const wx=_provCentroid?_provCentroid[i]?.x??p.cx:p.cx;
@@ -1438,12 +1438,10 @@ function panToProvince(i){
 }
 
 // ── POINTER EVENTS (unified mouse+touch) ──────────────────
-let _pan={active:false,lx:0,ly:0};
-let _pinch={active:false,dist:0};
-let _tapStart={x:0,y:0,t:0};
-let _moved=false;
-
-const wrap=document.getElementById('map-wrap');
+var _pan={active:false,lx:0,ly:0};
+var _pinch={active:false,dist:0};
+var _tapStart={x:0,y:0,t:0};
+var _moved=false;
 
 // Mouse
 canvas.addEventListener('mousedown',e=>{
@@ -1494,7 +1492,7 @@ canvas.addEventListener('wheel',e=>{
 },{passive:false});
 
 // Touch — single finger pan + two finger pinch
-const _touches={};
+var _touches={};
 canvas.addEventListener('touchstart',e=>{
   e.preventDefault();
   for(const t of e.changedTouches)_touches[t.identifier]={x:t.clientX,y:t.clientY};
@@ -1595,8 +1593,8 @@ function updateSeasonUI(){
   const sb=document.getElementById('season-banner');
   if(sb)sb.textContent=s.icon+' '+s.name+(s.moveMod<1?` — movement ×${s.moveMod}`:'');
 }
-const sEl=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
-const sHTML=(id,v)=>{const e=document.getElementById(id);if(e)e.innerHTML=v;};
+var sEl=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+var sHTML=(id,v)=>{const e=document.getElementById(id);if(e)e.innerHTML=v;};
 
 function isMoveTgt(i){
   if(!G.moveMode||G.moveFrom<0||i===G.moveFrom)return false;
@@ -2079,7 +2077,7 @@ function processDraftQueue(){
 // Cost formula: paid upfront for chosen N weeks; early weeks more expensive
 //   weekCost(w, N) = baseRate * (1 + (N - w) / N * 1.8)  — first weeks ~2.8x last
 // Gentle: cheapest; Standard: most expensive total; Harsh ≈ Standard but brutal pop loss
-const ASSIM_DEFS = {
+var ASSIM_DEFS = {
   gentle:   {
     label:'🕊 Gentle', icon:'🕊',
     instabRate: 2,
@@ -2115,11 +2113,11 @@ function harshRate(weekIdx){ // weekIdx 0-based
 // Upfront cost for N weeks of type
 // Weekly cost curve: starts at 5g, divides by 1.05 each week, floors at 2g then slides to 1.75g
 // Type multipliers: gentle=1.0 (cheapest), standard=1.7 (most expensive), harsh=1.65
-const ASSIM_COST_MULT={gentle:1.0,standard:1.7,harsh:1.65};
+var ASSIM_COST_MULT={gentle:1.0,standard:1.7,harsh:1.65};
 
 // Base curve: week 0 = 5, each week / 1.05, floors at 2.0 then slides to 1.75
 // Sum of this curve over 48 weeks ≈ 86 (used as normalizer)
-const _ASSIM_BASE_48=(()=>{
+var _ASSIM_BASE_48=(()=>{
   let s=0;
   const startVal=5.0,divRate=1.05,floor=2.0,endVal=1.75,floorReached=Math.ceil(Math.log(startVal/floor)/Math.log(divRate));
   for(let w=0;w<48;w++){
@@ -2242,7 +2240,7 @@ function processAssimCosts(){ /* paid upfront */ }
 
 // ── ECONOMY ───────────────────────────────────────────────
 // Max tax rate per ideology
-const TAX_MAX={
+var TAX_MAX={
   nazism:90, fascism:80, stalinism:85, communism:75,
   militarism:70, nationalism:65, monarchy:60,
   socialdem:55, democracy:50, liberalism:45,
@@ -2384,7 +2382,7 @@ window.appeasePop=function(cost, scale){
 
 // ── BUILD ─────────────────────────────────────────────────
 // Base build turns per building type (modified by satisfaction)
-const BUILD_TURNS={factory:3,fortress:3,barracks:2,port:2,hospital:2,oilwell:2,mine:2,granary:1,palace:4,academy:4,arsenal:3};
+if(typeof BUILD_TURNS==='undefined')window.BUILD_TURNS={factory:3,fortress:3,barracks:2,port:2,hospital:2,oilwell:2,mine:2,granary:1,palace:4,academy:4,arsenal:3};
 
 function buildTurns(r, key){
   // Low satisfaction = longer construction
@@ -2621,8 +2619,8 @@ function processResistance(){
 // ── ATTACK / BATTLE ───────────────────────────────────────
 // ── ATTACK SOURCE SELECTION ───────────────────────────────
 // When player clicks Attack, if multiple border provinces → highlight them for selection
-let _atkSelectMode = false;
-let _atkTarget = -1;
+var _atkSelectMode = false;
+var _atkTarget = -1;
 
 function cancelAtkSelect(){
   _atkSelectMode = false;
@@ -2729,7 +2727,7 @@ function launchAtk(breakDiplo){
 
 // ── FAST MODE ─────────────────────────────────────────────
 // When active: battle/move overlays skip instantly, no zoom animation
-let _fastMode = false;
+var _fastMode = false;
 function toggleFastMode(){
   _fastMode = !_fastMode;
   const btn = document.getElementById('fast-mode-btn');
@@ -3189,7 +3187,7 @@ function makePuppet(ai){
 // ── GOVERNMENT REFORM ─────────────────────────────────────
 // Ideology "distance" matrix — how different two systems are
 // Higher = more expensive + longer transition + bigger satisfaction hit
-const IDEO_DISTANCE = {
+var IDEO_DISTANCE = {
   fascism:    {fascism:0,nazism:1,militarism:2,nationalism:2,monarchy:3,communism:5,stalinism:6,socialdem:5,democracy:5,liberalism:6},
   nazism:     {nazism:0,fascism:1,militarism:2,nationalism:2,monarchy:4,communism:6,stalinism:7,socialdem:6,democracy:6,liberalism:7},
   communism:  {communism:0,stalinism:1,socialdem:3,democracy:4,liberalism:5,nationalism:5,fascism:5,nazism:6,monarchy:5,militarism:4},
@@ -3535,7 +3533,7 @@ function spreadDisease(){
 // ════════════════════════════════════════════════════════════
 
 // Disease names and their base properties
-const DISEASE_TYPES=[
+var DISEASE_TYPES=[
   {name:'Plague',       lethality:.10, spreadRate:.65, satHit:22, armyHit:.28, icon:'☠',  duration:[10,22], seasonal:'winter'},
   {name:'Influenza',    lethality:.03, spreadRate:.80, satHit:12, armyHit:.12, icon:'🤧', duration:[5,14],  seasonal:'winter'},
   {name:'Cholera',      lethality:.08, spreadRate:.60, satHit:18, armyHit:.22, icon:'💧', duration:[7,16],  seasonal:'summer'},
@@ -3547,12 +3545,12 @@ const DISEASE_TYPES=[
 ];
 
 // Distinct epidemic colors for map rendering
-const EPIDEMIC_COLORS=[
+var EPIDEMIC_COLORS=[
   '#c83030','#c07820','#9030a8','#2878c0','#30a850',
   '#c03070','#787020','#2090a0','#8050c0','#c05020',
 ];
 
-let _epicIdCounter=0;
+var _epicIdCounter=0;
 
 function newEpidemic(originProv, type){
   if(!type) type=DISEASE_TYPES[Math.floor(Math.random()*DISEASE_TYPES.length)];
