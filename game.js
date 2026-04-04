@@ -109,6 +109,9 @@ function computeHexRadius(){
 const scaledR=(i)=>HEX_R;
 
 
+const MAX_BLD_CAP=5;  // max building slots for capital provinces
+const MAX_BLD_NORM=3; // max building slots for normal provinces
+
 const ri=(a,b)=>Math.floor(Math.random()*(b-a+1))+a;
 const rf=(a,b)=>Math.random()*(b-a)+a;
 const fm=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(0)+'k':''+Math.round(n);
@@ -603,7 +606,7 @@ function drawMap(){
     for(const h of _hexCache){
       if(h.sea||h.p>=0)continue;
       if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
-      hexPath(ctx,h.x,h.y,R+0.5/vp.scale);
+      hexPath(ctx,h.x,h.y,R);
       ctx.fillStyle=TC[h.t]||'#3a3828';
       ctx.fill();
     }
@@ -613,7 +616,7 @@ function drawMap(){
     for(const h of _hexCache){
       if(h.sea||h.p<0)continue;
       if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
-      hexPath(ctx,h.x,h.y,R+0.5/vp.scale);
+      hexPath(ctx,h.x,h.y,R);
       ctx.fillStyle=provColor(h.p);
       ctx.fill();
     }
@@ -629,54 +632,110 @@ function drawMap(){
         if(h.sea||h.p<0)continue;
         if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
         const tc=TC2[h.t]||'#7a8a60';
-        hexPath(ctx,h.x,h.y,R+0.5/vp.scale);
+        hexPath(ctx,h.x,h.y,R);
         ctx.fillStyle=tc;
         ctx.fill();
       }
       ctx.globalAlpha=1.0;
     }
 
-    // PASS 2: Draw province outline edges — only the sides that face a different province/sea
+    // PASS 2: Draw province borders as overlay — grouped by type for clean rendering.
+    // Sub-pass 2a: nation/province boundary lines (dark, drawn for every province border edge)
+    // These are pre-computed edges that face a DIFFERENT province or sea, so they
+    // represent true boundaries. Drawn after all fills so they are never painted over.
+    {
+      // Group provinces by border style to batch draw calls
+      // Batch 1: standard dark province borders
+      ctx.save();
+      ctx.strokeStyle='rgba(6,8,14,0.82)';
+      ctx.lineWidth=1.5/vp.scale;
+      ctx.beginPath();
+      for(let pi=0;pi<PROVINCES.length;pi++){
+        const edges=window._provBorderEdges&&window._provBorderEdges[pi];
+        if(!edges||!edges.length)continue;
+        const o=G.owner[pi];
+        // Skip special-state provinces in this pass (handled below)
+        if(pi===G.sel)continue;
+        if(G.moveMode&&G.moveFrom>=0&&isMoveTgt(pi))continue;
+        if(_atkSelectMode&&isAtkSrc(pi))continue;
+        if(G.navalMode&&G.navalFrom>=0&&navalDests(G.navalFrom).includes(pi))continue;
+        for(const e of edges){
+          if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
+          if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
+          ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
+        }
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // Batch 2: rebel province borders (dashed orange)
+      ctx.save();
+      ctx.setLineDash([2.5/vp.scale,2/vp.scale]);
+      ctx.strokeStyle='rgba(200,100,30,.8)';
+      ctx.lineWidth=1.4/vp.scale;
+      ctx.beginPath();
+      for(let pi=0;pi<PROVINCES.length;pi++){
+        const o=G.owner[pi];
+        if(o>=0||G.mapMode!=='political')continue;
+        const edges=window._provBorderEdges&&window._provBorderEdges[pi];
+        if(!edges||!edges.length)continue;
+        for(const e of edges){
+          if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
+          if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
+          ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
+        }
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // Batch 3: player province rebel-neighbour borders (dashed green)
+      ctx.save();
+      ctx.setLineDash([3/vp.scale,2/vp.scale]);
+      ctx.strokeStyle='rgba(60,200,60,.88)';
+      ctx.lineWidth=1.8/vp.scale;
+      ctx.beginPath();
+      for(let pi=0;pi<PROVINCES.length;pi++){
+        const o=G.owner[pi];
+        if(o!==G.playerNation||G.mapMode!=='political')continue;
+        const borders=_provBorderHexes&&_provBorderHexes[pi];
+        const hasRebel=borders&&borders.some(idx=>{
+          const h=_hexCache[idx];
+          return h.nbIdx.some(ni=>{const nb=_hexCache[ni];return nb&&nb.p>=0&&G.owner[nb.p]<0;});
+        });
+        if(!hasRebel)continue;
+        const edges=window._provBorderEdges&&window._provBorderEdges[pi];
+        if(!edges||!edges.length)continue;
+        for(const e of edges){
+          if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
+          if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
+          ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
+        }
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // PASS 2b: Selection / interaction highlights drawn on top of borders
     for(let pi=0;pi<PROVINCES.length;pi++){
-      const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-      if(!edges||!edges.length)continue;
-      const o=G.owner[pi];
       const isSel=pi===G.sel;
       const isMov=G.moveMode&&G.moveFrom>=0&&isMoveTgt(pi);
       const isAtk=_atkSelectMode&&isAtkSrc(pi);
       const isNav=G.navalMode&&G.navalFrom>=0&&navalDests(G.navalFrom).includes(pi);
-
+      if(!isSel&&!isMov&&!isAtk&&!isNav)continue;
+      const edges=window._provBorderEdges&&window._provBorderEdges[pi];
+      if(!edges||!edges.length)continue;
       ctx.save();
-      if(isSel){
-        ctx.strokeStyle='rgba(255,255,255,.95)';ctx.lineWidth=2.2/vp.scale;
-      } else if(isMov){
-        ctx.strokeStyle='rgba(80,255,80,.9)';ctx.lineWidth=1.8/vp.scale;
-      } else if(isAtk){
-        ctx.strokeStyle='rgba(255,80,80,.9)';ctx.lineWidth=2/vp.scale;
-      } else if(isNav){
-        ctx.strokeStyle='rgba(80,200,255,.9)';ctx.lineWidth=1.8/vp.scale;
-      } else if(o<0&&G.mapMode==='political'){
-        ctx.setLineDash([2.5/vp.scale,2/vp.scale]);
-        ctx.strokeStyle='rgba(200,100,30,.7)';ctx.lineWidth=1.2/vp.scale;
-      } else if(o===G.playerNation&&G.mapMode==='political'){
-        // Check if any border hex has rebel neighbour
-        const borders=_provBorderHexes&&_provBorderHexes[pi];
-        const hasRebel=borders&&borders.some(idx=>{
-          const h=_hexCache[idx];
-          return h.nbIdx.some(ni=>{const nb=_hexCache[ni];return nb.p>=0&&G.owner[nb.p]<0;});
-        });
-        if(hasRebel){ctx.setLineDash([3/vp.scale,2/vp.scale]);ctx.strokeStyle='rgba(60,200,60,.85)';ctx.lineWidth=1.6/vp.scale;}
-        else{ctx.strokeStyle='rgba(6,8,14,.8)';ctx.lineWidth=1.0/vp.scale;}
-      } else {
-        ctx.strokeStyle='rgba(6,8,14,.8)';ctx.lineWidth=1.0/vp.scale;
-      }
-
+      if(isSel){ctx.strokeStyle='rgba(255,255,255,.97)';ctx.lineWidth=2.4/vp.scale;}
+      else if(isMov){ctx.strokeStyle='rgba(80,255,80,.92)';ctx.lineWidth=2.0/vp.scale;}
+      else if(isAtk){ctx.strokeStyle='rgba(255,80,80,.92)';ctx.lineWidth=2.2/vp.scale;}
+      else if(isNav){ctx.strokeStyle='rgba(80,200,255,.92)';ctx.lineWidth=2.0/vp.scale;}
       ctx.beginPath();
       for(const e of edges){
         if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
         if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-        ctx.moveTo(e.x0,e.y0);
-        ctx.lineTo(e.x1,e.y1);
+        ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
       }
       ctx.stroke();
       ctx.restore();

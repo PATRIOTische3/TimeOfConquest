@@ -1767,6 +1767,7 @@ window.refreshWorldsList=function(){
         const nc=document.getElementById('nation-info-card');if(nc)nc.style.display='none';
         buildScenarios();
         initTitle();
+        SC=-1;SI='fascism';chkSB();
       },30);
     }else{
       // Stop render loop when leaving setup
