@@ -482,32 +482,39 @@ function buildHexCache(){
   // Finalize centroids
   _provCentroid=_provCentroid.map(c=>c.n>0?{x:c.x/c.n,y:c.y/c.n}:{x:0,y:0});
 
-  // 5. Compute sea zone label positions from actual sea hex positions.
-  //    Assign each sea hex to the nearest SEA_ZONE centroid (by cx/cy in hex-grid space),
-  //    then place the label at the mean position of all assigned hexes.
+  // 5. Compute sea zone label positions and assign hexIds from actual sea hex positions.
+  //    Each sea hex is assigned to the nearest SEA_ZONE centroid.
+  //    The centroid in the editor uses: x = sqrt(3)*R*(c + (r%2)*0.5) + R, y = 1.5*R*r + R
+  //    In game: x = sqrt(3)*R*(c + (r%2)*0.5), y = 2*R*0.75*r = 1.5*R*r
+  //    So editor coords = game coords + R offset on both axes. We compare in game space.
   _seaZonePositions=null;
   if(typeof SEA_ZONES!=='undefined'&&SEA_ZONES?.length){
     const seaHexes=_hexCache.filter(h=>h.sea);
-    if(seaHexes.length&&SEA_ZONES.length){
-      // Accumulate sum of hex positions per zone
-      const acc=SEA_ZONES.map(()=>({sx:0,sy:0,n:0}));
-      for(const h of seaHexes){
-        // Find nearest zone centroid
-        let bestZ=0,bestD=Infinity;
-        for(let z=0;z<SEA_ZONES.length;z++){
-          const dx=h.x-SEA_ZONES[z].cx, dy=h.y-SEA_ZONES[z].cy;
-          const d=dx*dx+dy*dy;
-          if(d<bestD){bestD=d;bestZ=z;}
-        }
-        acc[bestZ].sx+=h.x;acc[bestZ].sy+=h.y;acc[bestZ].n++;
+    // Build zone hexIds arrays (indices into _hexCache)
+    const zoneHexIds=SEA_ZONES.map(()=>[]);
+    // Convert editor cx/cy to game space: subtract the +R offset
+    const zoneGamePos=SEA_ZONES.map(z=>({x:z.cx-R, y:z.cy-R}));
+
+    for(let hi=0;hi<_hexCache.length;hi++){
+      const h=_hexCache[hi];
+      if(!h.sea) continue;
+      let bestZ=0,bestD=Infinity;
+      for(let z=0;z<SEA_ZONES.length;z++){
+        const dx=h.x-zoneGamePos[z].x, dy=h.y-zoneGamePos[z].y;
+        const d=dx*dx+dy*dy;
+        if(d<bestD){bestD=d;bestZ=z;}
       }
-      _seaZonePositions=SEA_ZONES.map((z,zi)=>{
-        const a=acc[zi];
-        return {t:z.name, x:a.n>0?a.sx/a.n:z.cx, y:a.n>0?a.sy/a.n:z.cy, fs:z.fontSize||7};
-      });
-    } else {
-      _seaZonePositions=SEA_ZONES.map(z=>({t:z.name,x:z.cx,y:z.cy,fs:z.fontSize||7}));
+      zoneHexIds[bestZ].push(hi);
     }
+
+    // Place label at centroid of assigned hexes
+    _seaZonePositions=SEA_ZONES.map((z,zi)=>{
+      const ids=zoneHexIds[zi];
+      if(!ids.length) return {t:z.name, x:zoneGamePos[zi].x, y:zoneGamePos[zi].y, fs:z.fontSize||7, hexIds:[]};
+      const sx=ids.reduce((s,i)=>s+_hexCache[i].x,0)/ids.length;
+      const sy=ids.reduce((s,i)=>s+_hexCache[i].y,0)/ids.length;
+      return {t:z.name, x:sx, y:sy, fs:z.fontSize||7, hexIds:ids};
+    });
   }
 
   _computeMapBounds();
@@ -641,14 +648,78 @@ function drawMap(){
   ctx.save();
   ctx.translate(vp.tx,vp.ty);ctx.scale(vp.scale,vp.scale);
 
-  // Sea labels — SEA_ZONES (new map) or legacy list
-  ctx.textAlign='center';ctx.textBaseline='middle';
-  getSeaLabels().forEach(sl=>{
-    if(sl.x<wx0-40||sl.x>wx1+40||sl.y<wy0-20||sl.y>wy1+20)return;
-    ctx.font=`italic ${Math.max(5,Math.min(sl.fs||7,24))}px Cinzel,serif`;
-    ctx.fillStyle='rgba(100,170,230,.65)';
-    ctx.fillText(sl.t,sl.x,sl.y);
-  });
+  // Sea labels + outer zone borders (algorithm from editor)
+  if(_hexCache&&_hexCache.length&&_seaZonePositions){
+    const R=HEX_GRID.hexR;
+    // Build set for fast lookup: hexCache index → zone index
+    const hexToZone=new Int16Array(_hexCache.length).fill(-1);
+    _seaZonePositions.forEach((z,zi)=>{
+      if(z.hexIds) z.hexIds.forEach(hi=>{hexToZone[hi]=zi;});
+    });
+
+    // Draw outer border of each sea zone (edges where neighbour is NOT same zone)
+    _seaZonePositions.forEach((z,zi)=>{
+      if(!z.hexIds||!z.hexIds.length)return;
+      ctx.strokeStyle='rgba(65,135,200,.35)';
+      ctx.lineWidth=1.2/vp.scale;
+      ctx.lineJoin='round';ctx.lineCap='round';
+      ctx.beginPath();
+      z.hexIds.forEach(hi=>{
+        const h=_hexCache[hi];
+        if(!h)return;
+        for(let e=0;e<6;e++){
+          const a1=Math.PI/6+Math.PI/3*e;
+          const a2=Math.PI/6+Math.PI/3*(e+1);
+          // Midpoint pushed outward to detect neighbour hex
+          const mx=h.x+(Math.cos(a1)+Math.cos(a2))*R*0.6;
+          const my=h.y+(Math.sin(a1)+Math.sin(a2))*R*0.6;
+          // Find hex at midpoint
+          const approxR=Math.round(my/(2*R*0.75));
+          const approxC=Math.round((mx-(approxR%2?R*Math.sqrt(3)/2:0))/(R*Math.sqrt(3)));
+          let nbInZone=false;
+          for(let dr=-1;dr<=1&&!nbInZone;dr++){
+            for(let dc=-1;dc<=1&&!nbInZone;dc++){
+              const nr=approxR+dr,nc=approxC+dc;
+              const ni=(_hexByRC[nr]&&_hexByRC[nr][nc]!==undefined)?_hexByRC[nr][nc]:-1;
+              if(ni>=0&&hexToZone[ni]===zi) nbInZone=true;
+            }
+          }
+          if(!nbInZone){
+            ctx.moveTo(h.x+Math.cos(a1)*R, h.y+Math.sin(a1)*R);
+            ctx.lineTo(h.x+Math.cos(a2)*R, h.y+Math.sin(a2)*R);
+          }
+        }
+      });
+      ctx.stroke();
+
+      // Sea zone name — spaced italic letters like editor
+      if(z.x<wx0-40||z.x>wx1+40||z.y<wy0-20||z.y>wy1+20)return;
+      const fs=Math.max(5,Math.min(z.fs||7,28));
+      ctx.font=`italic ${fs}px Cinzel,serif`;
+      ctx.fillStyle='rgba(65,135,200,.5)';
+      ctx.shadowColor='rgba(0,0,0,.8)';ctx.shadowBlur=4/vp.scale;
+      ctx.textAlign='left';ctx.textBaseline='middle';
+      const name=z.t||'';
+      const spacing=fs*0.28;
+      const widths=name.split('').map(ch=>ctx.measureText(ch).width+spacing);
+      const totalW=widths.reduce((s,w)=>s+w,0)-spacing;
+      let lx=z.x-totalW/2;
+      for(let li=0;li<name.length;li++){
+        ctx.fillText(name[li],lx,z.y);
+        lx+=widths[li];
+      }
+      ctx.shadowBlur=0;
+    });
+  } else {
+    // Fallback legacy labels
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    getSeaLabels().forEach(sl=>{
+      if(sl.x<wx0-40||sl.x>wx1+40||sl.y<wy0-20||sl.y>wy1+20)return;
+      ctx.font=`italic ${Math.max(5,Math.min(sl.fs||7,24))}px Cinzel,serif`;
+      ctx.fillStyle='rgba(100,170,230,.65)';
+      ctx.fillText(sl.t,sl.x,sl.y);
+    });
+  }
 
   // ── HEX_GRID mode ─────────────────────────────────────────
   if(_hexCache&&_hexCache.length){
@@ -1466,6 +1537,7 @@ var _tapStart={x:0,y:0,t:0};
 var _moved=false;
 
 // Mouse
+var wrap=document.getElementById('map-wrap');
 canvas.addEventListener('mousedown',e=>{
   if(e.button===1||(e.button===0&&e.ctrlKey)){e.preventDefault();}
   _pan.active=true;_pan.lx=e.clientX;_pan.ly=e.clientY;_moved=false;
