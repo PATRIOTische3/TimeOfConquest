@@ -131,25 +131,27 @@ function buildHexCache(){
   _provCentroid = _provCentroid.map(c => c.n > 0 ? {x: c.x/c.n, y: c.y/c.n} : {x:0, y:0});
 
   // ── Sea zone membership + label positions ─────────────────
-  // Each sea hex in HEX_GRID.hexes carries h.z = zone index (added in updated editor export).
-  // Fallback for old exports: assign by nearest cx/cy centroid (editor coords use +R offset).
+  // Primary: SEA_ZONES[zi].hexIds exported directly from editor (exact membership).
+  // Fallback for old maps without hexIds: proximity assignment from cx/cy centroid.
   _seaZonePositions = null;
   _seaZoneBorderEdges = null;
   if(typeof SEA_ZONES !== 'undefined' && SEA_ZONES?.length){
     const zoneHexIds = SEA_ZONES.map(() => []);
 
-    // Check if new export format (has z field on sea hexes)
-    const hasZField = _hexCache.some(h => h.sea && h.z !== undefined);
+    const hasExportedHexIds = SEA_ZONES.every(z => Array.isArray(z.hexIds) && z.hexIds.length > 0);
 
-    if(hasZField){
-      // New format: use h.z directly — exact, no guessing
-      for(let hi = 0; hi < _hexCache.length; hi++){
-        const h = _hexCache[hi];
-        if(h.sea && h.z >= 0 && h.z < SEA_ZONES.length) zoneHexIds[h.z].push(hi);
-      }
+    if(hasExportedHexIds){
+      // New format: hexIds in SEA_ZONES map directly to HEX_GRID.hexes indices
+      // which equal _hexCache indices (same array order)
+      SEA_ZONES.forEach((z, zi) => {
+        z.hexIds.forEach(hi => {
+          if(hi >= 0 && hi < _hexCache.length) zoneHexIds[zi].push(hi);
+        });
+      });
     } else {
-      // Old format fallback: assign by nearest centroid
-      // Editor coords: hcx = R*sqrt(3)*(c+r%2*0.5)+R, so game_x = editor_cx - R
+      // Legacy fallback: assign each sea hex to nearest zone centroid.
+      // Editor coords use hcx = R*√3*(c+r%2*0.5)+R (has +R origin offset).
+      // Game coords have no offset, so: game_coord = editor_coord - R
       const seedX = SEA_ZONES.map(z => z.cx - R);
       const seedY = SEA_ZONES.map(z => z.cy - R);
       for(let hi = 0; hi < _hexCache.length; hi++){
@@ -182,13 +184,13 @@ function buildHexCache(){
           const nr = h.r+dr, nc = h.c+dc;
           const niIdx = (_hexByRC[nr] && _hexByRC[nr][nc] !== undefined) ? _hexByRC[nr][nc] : -1;
           if(niIdx >= 0 && zSet.has(niIdx)) continue; // same zone — interior edge
-          // Outer boundary edge: store precomputed segment
+          // Outer boundary: store as {x0,y0,x1,y1} object for viewport culling
           const a1 = Math.PI/6 + Math.PI/3*d;
           const a2 = Math.PI/6 + Math.PI/3*((d+1)%6);
-          _seaZoneBorderEdges[zi].push(
-            h.x + Math.cos(a1)*R, h.y + Math.sin(a1)*R,
-            h.x + Math.cos(a2)*R, h.y + Math.sin(a2)*R
-          );
+          _seaZoneBorderEdges[zi].push({
+            x0: h.x + Math.cos(a1)*R, y0: h.y + Math.sin(a1)*R,
+            x1: h.x + Math.cos(a2)*R, y1: h.y + Math.sin(a2)*R,
+          });
         }
       }
     });
@@ -613,18 +615,17 @@ function drawMap(){
 
   if(_hexCache&&_hexCache.length&&_seaZonePositions&&seaBorderAlpha>0){
     _seaZonePositions.forEach((z,zi)=>{
-      // Outer boundary from flat float array [x0,y0,x1,y1, ...]
+      // Outer boundary from precomputed {x0,y0,x1,y1} edge objects
       const edges = _seaZoneBorderEdges&&_seaZoneBorderEdges[zi];
       if(edges&&edges.length){
         ctx.strokeStyle=`rgba(65,135,200,${(0.55*seaBorderAlpha).toFixed(2)})`;
         ctx.lineWidth=1.6/vp.scale;
         ctx.lineJoin='round'; ctx.lineCap='round';
         ctx.beginPath();
-        for(let ei=0; ei<edges.length; ei+=4){
-          const x0=edges[ei],y0=edges[ei+1],x1=edges[ei+2],y1=edges[ei+3];
-          if(x0<wx0-50&&x1<wx0-50) continue;
-          if(x0>wx1+50&&x1>wx1+50) continue;
-          ctx.moveTo(x0,y0); ctx.lineTo(x1,y1);
+        for(const e of edges){
+          if(e.x0<wx0-50&&e.x1<wx0-50) continue;
+          if(e.x0>wx1+50&&e.x1>wx1+50) continue;
+          ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
         }
         ctx.stroke();
       }
@@ -662,6 +663,27 @@ function drawMap(){
   if(_hexCache&&_hexCache.length){
     const R=HEX_GRID.hexR,pad=R*3;
 
+    // LOD: at very low zoom, hexes are < 2px — skip individual fills,
+    // just paint solid nation-color rectangles (massive perf gain on mobile)
+    const hexScreenR = R * vp.scale;
+    const useLOD = hexScreenR < 2.5; // each hex < 2.5px on screen
+
+    if(useLOD){
+      // Low zoom: draw one solid rect per province using bounding box
+      // No borders, no terrain — just nation color blobs
+      for(let pi = 0; pi < PROVINCES.length; pi++){
+        const c = _provCentroid[pi];
+        if(!c || !c.x) continue;
+        if(c.x < wx0-pad*2||c.x > wx1+pad*2) continue;
+        const col = provColor(pi);
+        const approxR = PROVINCES[pi].hexCount ? Math.sqrt(PROVINCES[pi].hexCount) * R * 1.1 : R*2;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, approxR, 0, Math.PI*2);
+        ctx.fill();
+      }
+    } else {
+
     // PASS 1: Unowned land (sea=0, p=-1) — terrain color at 50% opacity
     ctx.globalAlpha=0.5;
     for(const h of _hexCache){
@@ -683,7 +705,7 @@ function drawMap(){
     }
 
     // PASS 3: Subtle terrain tint on political map
-    if(G.mapMode==='political'){
+    if(G.mapMode==='political' && hexScreenR > 4){
       const TC2={plains:'#7a8c5a',forest:'#3a6040',mountain:'#8a7a6a',hills:'#7a6a50',
         desert:'#c8a860',jungle:'#2a7040',steppe:'#9aaa60',farmland:'#9aaa50',
         highland:'#8a7060',tundra:'#8aA0a8',swamp:'#4a7050',savanna:'#b0963c',
@@ -699,61 +721,50 @@ function drawMap(){
       ctx.globalAlpha=1.0;
     }
 
+    } // end normal zoom branch
+
     // Province borders fade at low zoom for performance + readability
-    const provBorderAlpha = Math.min(1, Math.max(0, (vp.scale - 0.18) / 0.12));
+    const provBorderAlpha = useLOD ? 0 : Math.min(1, Math.max(0, (vp.scale - 0.18) / 0.12));
 
     if(provBorderAlpha > 0){
-      // PASS 4A: Thin dark inner gap between adjacent different provinces
-      ctx.strokeStyle=`rgba(0,0,0,${(0.60*provBorderAlpha).toFixed(2)})`;
-      ctx.lineWidth=0.9/vp.scale;
-      ctx.beginPath();
-      for(let pi=0;pi<PROVINCES.length;pi++){
-        const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-        if(!edges)continue;
-        for(const e of edges){
-          if(!e.isProvBorder)continue;
-          if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-          if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-          ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
-        }
-      }
-      ctx.stroke();
+      // PASS 4: Border hexes rendered as full hexagons at 25% opacity
+      // (darker for province borders, bright for nation borders)
+      // This makes borders look like actual terrain rather than thin lines.
 
-      // PASS 4B: Outer province silhouette (province edge vs sea/unowned land)
-      ctx.strokeStyle=`rgba(255,255,255,${(0.18*provBorderAlpha).toFixed(2)})`;
-      ctx.lineWidth=1.0/vp.scale;
-      ctx.beginPath();
-      for(let pi=0;pi<PROVINCES.length;pi++){
-        const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-        if(!edges)continue;
-        for(const e of edges){
-          if(e.isProvBorder)continue;
-          if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-          if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-          ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
-        }
-      }
-      ctx.stroke();
+      // Collect border hexes per category
+      // We iterate _hexCache directly — each border hex knows its province (h.p)
+      // and whether each edge faces a different province (precomputed in _provBorderEdges).
+      // Simpler: for each border hex, find if its province has a different-nation neighbour
+      // using the precomputed nbProv on edges. Draw full hex fill.
 
-      // PASS 4C: Nation borders — thick bright line between different nations (political only)
-      if(G.mapMode==='political'){
-        ctx.strokeStyle=`rgba(255,255,255,${(0.38*provBorderAlpha).toFixed(2)})`;
-        ctx.lineWidth=1.8/vp.scale;
-        ctx.beginPath();
-        for(let pi=0;pi<PROVINCES.length;pi++){
-          const oA=G.owner[pi]; if(oA<0)continue;
-          const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-          if(!edges)continue;
+      const baseAlpha = 0.25 * provBorderAlpha;
+
+      for(const h of _hexCache){
+        if(h.sea || h.p < 0 || !h.isBorder) continue;
+        if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad) continue;
+
+        const oA = G.owner[h.p];
+        const edges = window._provBorderEdges && window._provBorderEdges[h.p];
+
+        // Check if any edge of this hex borders a different nation
+        let hasNationBorder = false;
+        if(G.mapMode==='political' && oA >= 0 && edges){
           for(const e of edges){
-            if(!e.isProvBorder)continue;
-            const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
-            if(oB<0||oA===oB)continue;
-            if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
+            if(!e.isProvBorder) continue;
+            const oB = e.nbProv >= 0 ? G.owner[e.nbProv] : -1;
+            if(oB >= 0 && oA !== oB){ hasNationBorder = true; break; }
           }
         }
-        ctx.stroke();
+
+        hexPath(ctx, h.x, h.y, R);
+        if(hasNationBorder){
+          // Nation border hex — bright white overlay
+          ctx.fillStyle = `rgba(255,255,255,${(baseAlpha * 1.5).toFixed(2)})`;
+        } else {
+          // Province border hex — dark overlay
+          ctx.fillStyle = `rgba(0,0,0,${baseAlpha.toFixed(2)})`;
+        }
+        ctx.fill();
       }
     }
 
