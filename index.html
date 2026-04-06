@@ -831,7 +831,20 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
   }catch(e){}
 })();
 </script>
-<script src="game.js"></script>
+<!-- ═══ ENGINE MODULES (replaces monolithic game.js) ═══ -->
+<script src="engine/utils.js"></script>
+<script src="engine/time.js"></script>
+<script src="engine/state.js"></script>
+<script src="engine/map.js"></script>
+<script src="engine/naval.js"></script>
+<script src="engine/military.js"></script>
+<script src="engine/assimilation.js"></script>
+<script src="engine/economy.js"></script>
+<script src="engine/diplomacy.js"></script>
+<script src="engine/events.js"></script>
+<script src="engine/ai.js"></script>
+<script src="engine/endturn.js"></script>
+<script src="engine/ui.js"></script>
 <script src="multiplayer.js"></script>
 <script>
 // ── SHARED MINI-MAP RENDERER (intro, worlds, setup) ──────────
@@ -973,7 +986,7 @@ function loadFromSlot(slot){
   if(!G.draftQueue) G.draftQueue=[];
   show('game');
   setTimeout(()=>{
-    computeHexRadius();buildCanvas();zoomReset();
+    buildHexCache();computeHexRadius();buildCanvas();zoomReset();
     updateHUD();updateIdeoHUD();updateSeasonUI();
     addLog(`${G.leaderName} returns to the throne.`,'event');
   },80);
@@ -997,19 +1010,7 @@ window.importSave=function(){
   const inp=document.createElement('input');inp.type='file';inp.accept='.json';
   inp.onchange=e=>{
     const f=e.target.files[0];if(!f)return;
-    new FileReader().addEventListener('load',ev=>{
-      try{
-        const entry=JSON.parse(ev.target.result);
-        if(!entry?.state)throw 0;
-        const saves=getAllSaves();
-        let slot=typeof entry.slot==='number'?entry.slot:saves.length;
-        if(saves.find(s=>s.slot===slot))slot=Math.max(...saves.map(s=>s.slot),-1)+1;
-        entry.slot=slot;
-        const idx=saves.findIndex(s=>s.slot===slot);
-        if(idx>=0)saves[idx]=entry;else saves.push(entry);
-        setSaves(saves);refreshWorldsList();showToast('✓ Imported');
-      }catch{showToast('Invalid save file');}
-    });
+    // (duplicate FileReader removed — fix applied)
     const fr=new FileReader();fr.onload=ev=>{
       try{
         const entry=JSON.parse(ev.target.result);
@@ -1962,7 +1963,7 @@ function _restoreSession(state){
     if(!G._enemyAttackQueue)G._enemyAttackQueue=[];
     show('game');
     setTimeout(()=>{
-      computeHexRadius();buildCanvas();zoomReset();
+      buildHexCache();computeHexRadius();buildCanvas();zoomReset();
       updateHUD();updateIdeoHUD();updateSeasonUI();
       addLog('↺ Session restored.','event');
     },80);
