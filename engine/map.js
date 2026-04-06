@@ -615,11 +615,17 @@ function drawMap(){
 
   if(_hexCache&&_hexCache.length&&_seaZonePositions&&seaBorderAlpha>0){
     _seaZonePositions.forEach((z,zi)=>{
-      // Outer boundary from precomputed {x0,y0,x1,y1} edge objects
       const edges = _seaZoneBorderEdges&&_seaZoneBorderEdges[zi];
       if(edges&&edges.length){
-        ctx.strokeStyle=`rgba(65,135,200,${(0.55*seaBorderAlpha).toFixed(2)})`;
-        ctx.lineWidth=1.6/vp.scale;
+        // Check if this zone contains the selected province (for gold highlight)
+        const isSelected = G.sel>=0 && z.hexIds && z.hexIds.length>0 &&
+          _hexCache[z.hexIds[0]]?.p === G.sel;
+        // Regular border: blue-ish; selected: gold
+        const borderColor = isSelected
+          ? `rgba(201,168,76,${(0.90*seaBorderAlpha).toFixed(2)})`
+          : `rgba(60,140,220,${(0.55*seaBorderAlpha).toFixed(2)})`;
+        ctx.strokeStyle = borderColor;
+        ctx.lineWidth = isSelected ? 2.2/vp.scale : 1.4/vp.scale;
         ctx.lineJoin='round'; ctx.lineCap='round';
         ctx.beginPath();
         for(const e of edges){
@@ -727,57 +733,70 @@ function drawMap(){
     const provBorderAlpha = useLOD ? 0 : Math.min(1, Math.max(0, (vp.scale - 0.18) / 0.12));
 
     if(provBorderAlpha > 0){
-      // PASS 4: Border hexes rendered as full hexagons at 25% opacity
-      // (darker for province borders, bright for nation borders)
-      // This makes borders look like actual terrain rather than thin lines.
+      // PASS 4A: Province inner borders — thin black line between different provinces
+      ctx.strokeStyle = `rgba(0,0,0,${(0.65*provBorderAlpha).toFixed(2)})`;
+      ctx.lineWidth = 1.0/vp.scale;
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.beginPath();
+      for(let pi=0; pi<PROVINCES.length; pi++){
+        const edges = window._provBorderEdges && window._provBorderEdges[pi];
+        if(!edges) continue;
+        for(const e of edges){
+          if(!e.isProvBorder) continue;
+          if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+          if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+          ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
+        }
+      }
+      ctx.stroke();
 
-      // Collect border hexes per category
-      // We iterate _hexCache directly — each border hex knows its province (h.p)
-      // and whether each edge faces a different province (precomputed in _provBorderEdges).
-      // Simpler: for each border hex, find if its province has a different-nation neighbour
-      // using the precomputed nbProv on edges. Draw full hex fill.
-
-      const baseAlpha = 0.25 * provBorderAlpha;
-
-      for(const h of _hexCache){
-        if(h.sea || h.p < 0 || !h.isBorder) continue;
-        if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad) continue;
-
-        const oA = G.owner[h.p];
-        const edges = window._provBorderEdges && window._provBorderEdges[h.p];
-
-        // Check if any edge of this hex borders a different nation
-        let hasNationBorder = false;
-        if(G.mapMode==='political' && oA >= 0 && edges){
+      // PASS 4B: Nation borders — slightly thicker/brighter on political map
+      if(G.mapMode==='political'){
+        ctx.strokeStyle = `rgba(0,0,0,${(0.88*provBorderAlpha).toFixed(2)})`;
+        ctx.lineWidth = 1.8/vp.scale;
+        ctx.beginPath();
+        for(let pi=0; pi<PROVINCES.length; pi++){
+          const oA = G.owner[pi];
+          const edges = window._provBorderEdges && window._provBorderEdges[pi];
+          if(!edges) continue;
           for(const e of edges){
             if(!e.isProvBorder) continue;
-            const oB = e.nbProv >= 0 ? G.owner[e.nbProv] : -1;
-            if(oB >= 0 && oA !== oB){ hasNationBorder = true; break; }
+            const oB = e.nbProv>=0 ? G.owner[e.nbProv] : -1;
+            if(oB<0 || oA===oB) continue;
+            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
           }
         }
-
-        hexPath(ctx, h.x, h.y, R);
-        if(hasNationBorder){
-          // Nation border hex — bright white overlay
-          ctx.fillStyle = `rgba(255,255,255,${(baseAlpha * 1.5).toFixed(2)})`;
-        } else {
-          // Province border hex — dark overlay
-          ctx.fillStyle = `rgba(0,0,0,${baseAlpha.toFixed(2)})`;
-        }
-        ctx.fill();
+        ctx.stroke();
       }
     }
 
-    // PASS 5: Selected province — pulsing white fill overlay
+    // PASS 5: Selected province — pulsing white fill + gold border outline
     if(G.sel>=0){
       const pulse=0.18+0.12*Math.sin(Date.now()/220);
-      // Selected province hexes
+      const pulseBorder=0.7+0.3*Math.sin(Date.now()/220);
+      // White fill pulse
       for(const h of _hexCache){
         if(h.sea||h.p!==G.sel)continue;
         if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
         hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
         ctx.fillStyle=`rgba(255,255,255,${pulse})`;
         ctx.fill();
+      }
+      // Gold border on outer edges of selected province
+      const selEdges = window._provBorderEdges && window._provBorderEdges[G.sel];
+      if(selEdges){
+        ctx.strokeStyle=`rgba(201,168,76,${pulseBorder.toFixed(2)})`;
+        ctx.lineWidth=2.0/vp.scale;
+        ctx.lineJoin='round'; ctx.lineCap='round';
+        ctx.beginPath();
+        for(const e of selEdges){
+          if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
+          if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
+          ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
+        }
+        ctx.stroke();
       }
     }
 
