@@ -1540,9 +1540,17 @@ function doExport(proj){
   });
 
   // ── HEXES — compact array (only non-default values) ──
+  // Build hex → zone index lookup
+  const hexZoneIdx=new Array(H.length).fill(-1);
+  (proj.seaZones||[]).forEach((z,zi)=>{
+    z.hexIds.forEach(hi=>{ hexZoneIdx[hi]=zi; });
+  });
   const hexesOut=H.map((h,i)=>{
     const pi=hexProvIdx[i];
-    return{r:h.r,c:h.c,t:h.t,sea:h.sea?1:0,p:pi};
+    const zi=hexZoneIdx[i];
+    const o={r:h.r,c:h.c,t:h.t,sea:h.sea?1:0,p:pi};
+    if(zi>=0) o.z=zi; // zone index — only for sea hexes
+    return o;
   });
 
   // ── Generate Map Key ─────────────────────────────────
