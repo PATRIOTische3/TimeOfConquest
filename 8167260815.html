@@ -304,8 +304,13 @@ html,body{height:100%;overflow:hidden;background:var(--dark);color:var(--text);f
     <div class="lpane" id="p-zone">
       <div class="sl">Sea Zones</div>
       <button class="mb g" style="width:100%;padding:6px;margin-bottom:6px" onclick="createNewZone()">+ New Zone</button>
-      <div class="tool on" id="tool-zone" onclick="setTool('zone')"><span class="ti2">🖌</span><div><div class="tn2">Paint Zone</div><div class="td">Paint sea hexes into active zone</div></div></div>
-      <div class="tool" id="tool-zone-erase" onclick="setTool('zone-erase')"><span class="ti2">✕</span><div><div class="tn2">Remove from Zone</div><div class="td">Click hex to remove from its zone</div></div></div>
+      <div class="tool on" id="tool-zone" onclick="setTool('zone')"><span class="ti2">🖌</span><div><div class="tn2">Paint Zone</div><div class="td">Drag to paint sea hexes into zone</div></div></div>
+      <div class="tool" id="tool-zone-erase" onclick="setTool('zone-erase')"><span class="ti2">✕</span><div><div class="tn2">Remove from Zone</div><div class="td">Drag to remove hexes from zone</div></div></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,.25);border:1px solid var(--border);margin-top:4px">
+        <span style="font-size:9px;color:var(--dim);white-space:nowrap">Brush</span>
+        <input type="range" id="br-zone-sl" min="1" max="8" value="1" style="flex:1;accent-color:var(--gold)" oninput="zoneBrushSize=+this.value;document.getElementById('br-zone-v').textContent=this.value">
+        <span id="br-zone-v" style="font-family:'Cinzel',serif;font-size:11px;color:var(--gold);min-width:14px;text-align:right">1</span>
+      </div>
       <div class="sl" style="margin-top:6px">Zones</div>
       <div id="zone-list"><div style="font-size:9px;color:var(--dim);font-style:italic;padding:8px 0;text-align:center">No sea zones yet.<br>Press + New Zone,<br>then paint sea hexes.</div></div>
     </div>
@@ -545,11 +550,12 @@ function hNbs(r,c){
     .map(([dr,dc])=>{const nr=r+dr,nc=c+dc;if(nr<0||nr>=P.rows||nc<0||nc>=P.cols)return null;return P.hexes[nr*P.cols+nc];}).filter(Boolean);
 }
 
-function brush(ci){
-  if(brushSize<=1)return[ci];
+function brush(ci, bSize){
+  bSize = bSize || brushSize;
+  if(bSize<=1)return[ci];
   const ch=P.hexes[ci];if(!ch)return[ci];
   const out=new Set([ci]);
-  P.hexes.forEach((_,i)=>{const h=P.hexes[i],dr=Math.abs(h.r-ch.r),dc=Math.abs(h.c-ch.c);if(Math.max(dr,dc,Math.abs(dr-dc))<brushSize)out.add(i);});
+  P.hexes.forEach((_,i)=>{const h=P.hexes[i],dr=Math.abs(h.r-ch.r),dc=Math.abs(h.c-ch.c);if(Math.max(dr,dc,Math.abs(dr-dc))<bSize)out.add(i);});
   return[...out];
 }
 
@@ -1050,7 +1056,7 @@ function zoomTrackHover(e){
 function zoomTrackLeave(){const tip=document.getElementById('zoom-tip');if(tip)tip.style.display='none';}
 
 // ── Tools ────────────────────────────────────────────
-let activeTool='land',activeTerrain='plains',activeProv=null,activeNat=null,brushSize=1;
+let activeTool='land',activeTerrain='plains',activeProv=null,activeNat=null,brushSize=1,zoneBrushSize=1;
 let opts={grid:true,names:true};
 let hexOpacity=0.75;
 let _pan={a:false,lx:0,ly:0},_pinch={a:false,d:0},_painting=false,_moved=false,_ts={x:0,y:0,t:0};
@@ -1094,14 +1100,16 @@ document.addEventListener('keydown',e=>{
 
 function applyToHex(idx){
   if(!P||idx<0)return;
-  const affected=brushSize>1?brush(idx):[idx];
+  // Zone tools use their own brush size
+  const isZoneTool = activeTool==='zone'||activeTool==='zone-erase';
+  const bSize = isZoneTool ? zoneBrushSize : brushSize;
+  const affected = bSize>1 ? brush(idx, bSize) : [idx];
   affected.forEach(i=>{
     const h=P.hexes[i];if(!h)return;
     if(activeTool==='land'){h.sea=false;h.t=activeTerrain;}
     else if(activeTool==='sea'){
       h.sea=true;h.t='plains';
       if(h.p!=null)unassign(i);
-      // Auto-create or merge into existing zone on single click (not drag)
     }
     else if(activeTool==='prov'){
       if(activeProv==null||h.sea)return;
@@ -1124,26 +1132,21 @@ function applyToHex(idx){
       if(!P.seaZones)P.seaZones=[];
       const existing=P.seaZones.find(z=>z.hexIds.includes(i));
       if(activeZone!=null){
-        // Always paint into active zone
         const az=P.seaZones.find(z=>z.id===activeZone);
         if(az){
-          // Remove from other zones first
           P.seaZones.forEach(z=>{if(z.id!==activeZone)z.hexIds=z.hexIds.filter(x=>x!==i);});
           if(!az.hexIds.includes(i))az.hexIds.push(i);
         } else {
-          activeZone=null; // zone was deleted
+          activeZone=null;
         }
       } else if(existing){
-        // No active zone — click selects existing zone
         activeZone=existing.id;
       }
-      // If no active zone and hex has no zone — do nothing (must use + New Zone button)
       renderZoneList();scheduleDraw();return;
     }
     else if(activeTool==='zone-erase'){
       if(!P.seaZones)return;
       P.seaZones.forEach(z=>{z.hexIds=z.hexIds.filter(x=>x!==i);});
-      P.seaZones=P.seaZones.filter(z=>z.hexIds.length>0);
       renderZoneList();scheduleDraw();return;
     }
   });
@@ -1162,7 +1165,7 @@ window.addEventListener('mousemove',e=>{
     // Move bg in world coordinates (divide screen delta by viewport scale)
     bgCfg.x+=dx/vp.s; bgCfg.y+=dy/vp.s;
     _bgSyncSliders(); scheduleDraw();
-  } else if(_moved&&_painting&&(activeTool==='land'||activeTool==='sea'||activeTool==='prov'||activeTool==='erase')){
+  } else if(_moved&&_painting&&(activeTool==='land'||activeTool==='sea'||activeTool==='prov'||activeTool==='erase'||activeTool==='zone'||activeTool==='zone-erase')){
     const r=canvas.getBoundingClientRect();const[wx,wy]=toW(e.clientX-r.left,e.clientY-r.top);applyToHex(hitHex(wx,wy));
   } else if(_moved&&activeTool!=='bgmove'){vp.x+=dx;vp.y+=dy;scheduleDraw();}
   _pan.lx=e.clientX;_pan.ly=e.clientY;
@@ -1204,7 +1207,7 @@ canvas.addEventListener('touchmove',e=>{
     const t=e.touches[0],r=canvas.getBoundingClientRect(),sx=t.clientX-r.left,sy=t.clientY-r.top;
     const dx=sx-_pan.lx,dy=sy-_pan.ly;
     if(Math.abs(dx)>4||Math.abs(dy)>4)_moved=true;
-    if(_moved&&_painting&&(activeTool==='land'||activeTool==='sea'||activeTool==='prov'||activeTool==='erase')){const[wx,wy]=toW(sx,sy);applyToHex(hitHex(wx,wy));}
+    if(_moved&&_painting&&(activeTool==='land'||activeTool==='sea'||activeTool==='prov'||activeTool==='erase'||activeTool==='zone'||activeTool==='zone-erase')){const[wx,wy]=toW(sx,sy);applyToHex(hitHex(wx,wy));}
     else{vp.x+=dx;vp.y+=dy;scheduleDraw();}
     _pan.lx=sx;_pan.ly=sy;
   } else if(e.touches.length===2&&_pinch.a){
@@ -1536,21 +1539,14 @@ function doExport(proj){
     const hs=z.hexIds.map(i=>H[i]).filter(Boolean);
     const cx=hs.length?Math.round(hs.reduce((s,h)=>s+hcx(h.c,h.r),0)/hs.length*10)/10:0;
     const cy=hs.length?Math.round(hs.reduce((s,h)=>s+hcy(h.r),0)/hs.length*10)/10:0;
-    return{id:idx,name:z.name,cx,cy,hexCount:z.hexIds.length,fontSize:z.fontSize||undefined};
+    // hexIds exported so the game can use exact zone membership without guessing
+    return{id:idx,name:z.name,cx,cy,hexCount:z.hexIds.length,fontSize:z.fontSize||undefined,hexIds:[...z.hexIds]};
   });
 
   // ── HEXES — compact array (only non-default values) ──
-  // Build hex → zone index lookup
-  const hexZoneIdx=new Array(H.length).fill(-1);
-  (proj.seaZones||[]).forEach((z,zi)=>{
-    z.hexIds.forEach(hi=>{ hexZoneIdx[hi]=zi; });
-  });
   const hexesOut=H.map((h,i)=>{
     const pi=hexProvIdx[i];
-    const zi=hexZoneIdx[i];
-    const o={r:h.r,c:h.c,t:h.t,sea:h.sea?1:0,p:pi};
-    if(zi>=0) o.z=zi; // zone index — only for sea hexes
-    return o;
+    return{r:h.r,c:h.c,t:h.t,sea:h.sea?1:0,p:pi};
   });
 
   // ── Generate Map Key ─────────────────────────────────
