@@ -7,7 +7,10 @@ var rf  = (a,b) => Math.random()*(b-a)+a;
 var fm  = n => n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(0)+'k':''+Math.round(n);
 var fa  = n => Math.round(n).toLocaleString('en');
 var ideol   = () => IDEOLOGIES[G.ideology];
+// regsOf: all provinces where this nation is the current controller (owner)
 var regsOf  = n => PROVINCES.map((_,i)=>i).filter(i=>G.owner[i]===n);
+// coreOf: provinces this nation controls and has NOT been occupied by an enemy
+var coreOf  = n => PROVINCES.map((_,i)=>i).filter(i=>G.owner[i]===n&&!(G.occupied&&G.occupied[i]));
 var ownerName = n => n<0?'Rebels':NATIONS[n]?.short||`#${n}`;
 var natColor  = n => NATIONS[n]?.color||'#181620';
 

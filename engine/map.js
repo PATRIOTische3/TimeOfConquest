@@ -277,6 +277,13 @@ function provColor(i){
   }
   // Political
   if(o < 0){ if(PROVINCES[i]?.isSea) return '#0a1828'; return REBEL_COLOR; }
+
+  // Occupied province — show original owner's color (occupier shown via dashed overlay)
+  if(G.occupied && G.occupied[i] && G.occupied[i].originalOwner >= 0){
+    const origO = G.occupied[i].originalOwner;
+    return natColor(origO);
+  }
+
   if(o === G.playerNation) return '#288820';
   if(atWar(G.playerNation, o)) return '#801818';
   if(G.pact[G.playerNation][o]) return '#706010';
@@ -722,6 +729,44 @@ function drawMap(){
       hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
       ctx.fillStyle=provColor(h.p);
       ctx.fill();
+    }
+
+    // PASS 2B: Occupation overlay — dashed border of occupier color on occupied provinces
+    if(G.occupied && Object.keys(G.occupied).length > 0 && !useLOD){
+      const occAlpha = Math.min(1, Math.max(0, (vp.scale - 0.18) / 0.12));
+      if(occAlpha > 0){
+        for(const [pidxStr, occ] of Object.entries(G.occupied)){
+          const pi = +pidxStr;
+          if(!occ || occ.by < 0) continue;
+          const occupierColor = natColor(occ.by);
+          // Draw dashed outline on all hexes of this province
+          ctx.save();
+          ctx.strokeStyle = occupierColor;
+          ctx.lineWidth = 1.6/vp.scale;
+          ctx.setLineDash([3/vp.scale, 2/vp.scale]);
+          ctx.globalAlpha = 0.75 * occAlpha;
+          ctx.lineJoin = 'round';
+          const edges = window._provBorderEdges && window._provBorderEdges[pi];
+          if(edges && edges.length){
+            ctx.beginPath();
+            for(const e of edges){
+              if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
+              if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
+              ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
+            }
+            ctx.stroke();
+          } else {
+            // Fallback — outline each hex individually
+            for(const h of _hexCache){
+              if(h.sea||h.p!==pi)continue;
+              if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
+              hexPath(ctx,h.x,h.y,R*0.9);
+              ctx.stroke();
+            }
+          }
+          ctx.restore();
+        }
+      }
     }
 
     // PASS 3: Subtle terrain tint on political map

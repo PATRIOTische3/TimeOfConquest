@@ -154,8 +154,10 @@ function openDraft(){
     const sat=G.satisfaction[r]??70;
     const satMod=sat<40?0.5:sat<60?0.75:1.0;
     const refMod=G.reforming?0.8:1.0;
+    // conscriptMod not defined in IDEOLOGIES — derive from atk (aggressive ideologies draft faster)
+    const conscriptMod=io.conscriptMod||(2.0-Math.min(io.atk||1,1.5));
     return Math.max(0,Math.min(
-      Math.floor(G.pop[r]*0.20*(hb?1.5:1)/io.conscriptMod*satMod*refMod),
+      Math.floor(G.pop[r]*0.20*(hb?1.5:1)/conscriptMod*satMod*refMod),
       G.gold[G.playerNation]
     ));
   }
@@ -260,7 +262,8 @@ function confirmDraft(){
   }
 
   // Immediate cost (pop + gold committed now)
-  G.pop[r]=Math.max(1000,G.pop[r]-v);
+  const minPop=Math.max(500, Math.floor(G.pop[r]*0.05)); // keep at least 5% pop
+  G.pop[r]=Math.max(minPop,G.pop[r]-v);
   G.gold[G.playerNation]-=v;
 
   // Add to draft queue
@@ -482,20 +485,16 @@ function executeBattleQueue(onAllDone){
 
   if(!playerQueue.length&&!enemyQueue.length){onAllDone();return;}
 
-  // Save viewport before any battle animations
   window._preBattleVP={scale:vp.scale,tx:vp.tx,ty:vp.ty};
-
   let pidx=0;
 
   function runPlayerNext(){
-    if(pidx>=playerQueue.length){
-      // Done with player battles — show enemy attacks
-      runEnemyQueue(onAllDone);
-      return;
-    }
+    if(pidx>=playerQueue.length){runEnemyQueue(onAllDone);return;}
     const {fr,to,force}=playerQueue[pidx++];
+    // Skip if attacker lost their province
     if(G.owner[fr]!==G.playerNation){runPlayerNext();return;}
-    if(G.owner[to]===G.playerNation){runPlayerNext();return;}
+    // Skip if target is already fully ours (could happen if two attacks queued at same target)
+    if(G.owner[to]===G.playerNation&&(!G.occupied||!G.occupied[to])){runPlayerNext();return;}
     const actualForce=Math.min(force,G.army[fr]);
     if(actualForce<1){runPlayerNext();return;}
     runBattle(fr,to,actualForce,G.playerNation,()=>{
@@ -505,11 +504,7 @@ function executeBattleQueue(onAllDone){
   }
 
   function runEnemyQueue(done){
-    if(!enemyQueue.length){
-      _restoreVP();
-      done();
-      return;
-    }
+    if(!enemyQueue.length){_restoreVP();done();return;}
     let eidx=0;
     function showNext(){
       if(eidx>=enemyQueue.length){_restoreVP();done();return;}
@@ -540,27 +535,43 @@ function runBattle(fr,to,atkF,atker,done){
   const effDef=Math.round(df*defM);
   const ap=effAtk/(effAtk+effDef)*100;
 
-  // Pre-compute outcome so skip works instantly
   const av=effAtk*rf(.78,1.25),dv=effDef*rf(.78,1.25),win=av>dv;
   const al=Math.min(atkF-1,Math.floor(atkF*rf(.13,.36))),dl=Math.min(df,Math.floor(df*rf(.15,.42)));
 
   function applyOutcome(){
+    // Init occupation map if needed
+    if(!G.occupied) G.occupied={};
+
     if(win){
       G.army[fr]-=atkF;G.army[to]=Math.max(50,atkF-al);
-      const prev=G.owner[to];G.owner[to]=atker;G.gold[atker]+=G.income[to]*3;
+      const prev=G.owner[to];
+
+      // ── OCCUPATION: attacker occupies, original owner stays as "occupied by" ──
+      if(prev>=0 && prev!==atker){
+        // Record occupation: who is occupying and who originally owned it
+        G.occupied[to]={by:atker, originalOwner:prev};
+      } else {
+        // Neutral or rebel — just take it
+        delete G.occupied[to];
+      }
+      G.owner[to]=atker;
+      G.gold[atker]+=G.income[to]*3;
+
       if(atker===G.playerNation){
-        const io3=ideol();
-        G.instab[to]=ri(82,95); // very high instability on conquest
-        G.satisfaction[to]=ri(8,18); // very low satisfaction
+        G.instab[to]=ri(82,95);
+        G.satisfaction[to]=ri(8,18);
         G.assim[to]=ri(5,22);
         if(!G.assimQueue)G.assimQueue=PROVINCES.map(()=>null);
-        G.assimQueue[to]=null; // clear any previous assimilation
+        G.assimQueue[to]=null;
         if(hasFort)G.buildings[to]=G.buildings[to].filter(b=>b!=='fortress');
         if(PROVINCES[to].isCapital&&prev>=0){G.capitalPenalty[atker]=3;addLog(`★ ${PROVINCES[to].name} captured!`,'war');}
         G.resistance[to]=ri(20,50);
       }
       if(isP)addLog(`✦ ${PROVINCES[to].name} taken! Lost ${fa(al)}.`,'vic');
-      if(prev>=0&&regsOf(prev).length===0){G.war[atker][prev]=G.war[prev][atker]=false;if(isP)addLog(`${ownerName(prev)} eliminated.`,'war');}
+      if(prev>=0&&regsOf(prev).length===0){
+        G.war[atker][prev]=G.war[prev][atker]=false;
+        if(isP)addLog(`${ownerName(prev)} eliminated.`,'war');
+      }
     }else{
       G.army[fr]=Math.max(0,G.army[fr]-al);G.army[to]=Math.max(50,df-dl);
       if(isP)addLog(`✗ ${PROVINCES[to].name} held. Lost ${fa(al)}.`,'war');
@@ -568,13 +579,135 @@ function runBattle(fr,to,atkF,atker,done){
   }
 
   if(!isP){
-    // AI battle — instant, no animation
     applyOutcome();
     done();
     return;
   }
 
-  // Player battle — show overlay on game map (no screen switch)
+  // Player battle — apply then show overlay
   applyOutcome();
-  showBattleOverlay(fr, to, win, atkF, al, done);
+  showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done);
+}
+
+// ── BATTLE OVERLAY ────────────────────────────────────────────
+// Shown inline over the game map — no screen switch needed.
+// The s-battle screen is kept for legacy but we use an overlay div instead.
+function showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done){
+  if(_fastMode){done();return;}
+
+  // Build or reuse overlay div
+  let ov=document.getElementById('_battle_overlay');
+  if(!ov){
+    ov=document.createElement('div');
+    ov.id='_battle_overlay';
+    ov.style.cssText=[
+      'position:fixed','inset:0','z-index:200',
+      'display:flex','align-items:center','justify-content:center',
+      'background:rgba(6,8,14,.72)',
+      'backdrop-filter:blur(3px)','-webkit-backdrop-filter:blur(3px)',
+      'animation:_bov_in .22s ease',
+    ].join(';');
+    if(!document.getElementById('_bov_style')){
+      const st=document.createElement('style');st.id='_bov_style';
+      st.textContent='@keyframes _bov_in{from{opacity:0}to{opacity:1}}'+
+        '@keyframes _bov_slide{from{transform:translateY(18px);opacity:0}to{transform:translateY(0);opacity:1}}';
+      document.head.appendChild(st);
+    }
+    document.body.appendChild(ov);
+  }
+
+  const frName=PROVINCES[fr]?.short||'?';
+  const toName=PROVINCES[to]?.name||'?';
+  const winColor=win?'#90ff80':'#ff9080';
+  const winLabel=win?'✦ VICTORY':'✗ REPELLED';
+  const winBg=win?'rgba(40,100,20,.22)':'rgba(100,20,20,.22)';
+  const winBorder=win?'rgba(60,160,40,.5)':'rgba(160,40,40,.5)';
+  const atkPct=Math.min(95,Math.round(effAtk/(effAtk+effDef)*100));
+  const defPct=100-atkPct;
+  const lostTxt=win?`Lost ${fa(al)}`:`Repelled — lost ${fa(al)}`;
+  const bonusTxt=[];
+  if((G.buildings[fr]||[]).includes('arsenal'))bonusTxt.push('⚙ Arsenal +20% atk');
+  if((G.buildings[to]||[]).includes('fortress'))bonusTxt.push('🏰 Fortress ×1.6 def');
+  if(G.resistance[to]>20)bonusTxt.push('🔥 Resistance +def');
+
+  ov.innerHTML=`<div style="
+    background:linear-gradient(160deg,#1e1208,#0c0804);
+    border:1px solid rgba(201,168,76,.35);
+    width:min(380px,92vw);
+    font-family:'Cinzel',serif;
+    animation:_bov_slide .28s ease;
+    position:relative;
+  " onclick="window.skipBattleAnim&&window.skipBattleAnim()">
+    <div style="font-size:12px;color:var(--gold,#c9a84c);text-align:center;letter-spacing:3px;padding:14px 16px 10px;border-bottom:1px solid rgba(42,36,24,.5)">⚔ Battle Report ⚔</div>
+    <div style="font-size:9px;color:var(--dim,#8a7848);text-align:center;padding:4px 0 0;letter-spacing:1px">tap to skip</div>
+
+    <div style="display:flex;padding:12px 16px;gap:0;border-bottom:1px solid rgba(42,36,24,.35)">
+      <div style="flex:1;text-align:center">
+        <div style="font-size:8px;color:var(--dim,#8a7848);letter-spacing:1px;margin-bottom:4px">ATTACKING FROM</div>
+        <div style="font-size:14px;color:var(--gold,#c9a84c)">${frName}</div>
+        <div style="font-size:11px;color:#e8d5a3;margin-top:2px">${fa(atkF)} troops</div>
+      </div>
+      <div style="display:flex;align-items:center;padding:0 10px;font-size:18px;color:var(--dim,#8a7848)">VS</div>
+      <div style="flex:1;text-align:center">
+        <div style="font-size:8px;color:var(--dim,#8a7848);letter-spacing:1px;margin-bottom:4px">DEFENDING</div>
+        <div style="font-size:14px;color:#ff7070">${toName}</div>
+        <div style="font-size:11px;color:#e8d5a3;margin-top:2px">${fa(G.army[to])} troops</div>
+      </div>
+    </div>
+
+    <div style="padding:10px 16px">
+      <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--dim,#8a7848);margin-bottom:3px">
+        <span>⚔ Attack power</span><span style="color:var(--gold,#c9a84c)">${Math.round(effAtk)}</span>
+      </div>
+      <div style="height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;margin-bottom:8px">
+        <div style="height:100%;background:linear-gradient(90deg,#c9a84c,#f0d080);border-radius:3px;width:${atkPct}%;transition:width .6s ease"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--dim,#8a7848);margin-bottom:3px">
+        <span>🛡 Defense power</span><span style="color:#ff7070">${Math.round(effDef)}</span>
+      </div>
+      <div style="height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden">
+        <div style="height:100%;background:linear-gradient(90deg,#c03030,#ff6060);border-radius:3px;width:${defPct}%;transition:width .6s ease"></div>
+      </div>
+      ${bonusTxt.length?`<div style="font-size:8px;color:var(--dim,#8a7848);margin-top:8px;line-height:1.8">${bonusTxt.join(' · ')}</div>`:''}
+    </div>
+
+    <div style="
+      margin:0 16px 14px;
+      padding:10px 14px;
+      background:${winBg};
+      border:1px solid ${winBorder};
+      border-radius:1px;
+      text-align:center;
+    ">
+      <div style="font-size:14px;color:${winColor};letter-spacing:2px;margin-bottom:3px">${winLabel}</div>
+      <div style="font-size:9px;color:var(--dim,#8a7848)">${lostTxt} · Win chance was ~${Math.round(ap)}%</div>
+    </div>
+  </div>`;
+
+  ov.style.display='flex';
+
+  // Auto-close after 2.8s, or on tap (skipBattleAnim)
+  let closed=false;
+  function closeOverlay(){
+    if(closed)return;
+    closed=true;
+    ov.style.opacity='0';
+    ov.style.transition='opacity .18s ease';
+    setTimeout(()=>{ov.style.display='none';ov.innerHTML='';done();},200);
+  }
+  const autoT=setTimeout(closeOverlay,2800);
+  window._battleSkipFn=()=>{clearTimeout(autoT);closeOverlay();};
+}
+
+// ── ENEMY ATTACK OVERLAY ──────────────────────────────────────
+function showEnemyAttackOverlay(ev, done){
+  if(_fastMode){done();return;}
+  const frName=PROVINCES[ev.fr]?.short||'?';
+  const toName=PROVINCES[ev.to]?.name||'?';
+  const atkerName=NATIONS[ev.atker]?.name||'Enemy';
+  const resultTxt=ev.win?`${atkerName} seized ${toName}!`:`${atkerName}'s attack on ${toName} was repelled.`;
+  const col=ev.win?'#ff9080':'#90a8ff';
+
+  popup(`⚔ ${resultTxt}`, 3200);
+  done();
 }

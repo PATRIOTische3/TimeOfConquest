@@ -36,6 +36,8 @@ let G = {
   moveQueue:[],
   draftQueue:[],
   assimQueue:[],
+  // Occupation
+  occupied:{},
   // Disease
   epidemics:[],
   provDisease:[],
@@ -122,6 +124,7 @@ function startGame(){
   G.moveQueue  = [];
   G.draftQueue = [];
   G.assimQueue = PROVINCES.map(() => null);
+  G.occupied   = {};
 
   G.resBase = PROVINCES.map(p => ({...((p.res) || {})}));
   G.resPool = {oil:0, coal:0, grain:0, steel:0};

@@ -109,7 +109,18 @@ function offerPeace(ai){
   const ma=regsOf(PN).reduce((s,r)=>s+G.army[r],0),aa=regsOf(ai).reduce((s,r)=>s+G.army[r],0);
   let ch=.38;if(ma>aa*2)ch=.82;if(ma<aa*.5)ch=.18;
   setTimeout(()=>{
-    if(Math.random()<ch){G.war[PN][ai]=G.war[ai][PN]=false;addLog(`🕊 Peace with ${ownerName(ai)}.`,'peace');popup(`✓ Peace accepted`);}
+    if(Math.random()<ch){
+      G.war[PN][ai]=G.war[ai][PN]=false;
+      // Clear occupation records between these two nations
+      if(G.occupied){
+        for(const [k,occ] of Object.entries(G.occupied)){
+          if(occ&&(occ.by===PN&&occ.originalOwner===ai)||(occ.by===ai&&occ.originalOwner===PN)){
+            delete G.occupied[k];
+          }
+        }
+      }
+      addLog(`🕊 Peace with ${ownerName(ai)}.`,'peace');popup(`✓ Peace accepted`);
+    }
     else popup(`✗ ${ownerName(ai)} rejected`);
     scheduleDraw();
   },300);
