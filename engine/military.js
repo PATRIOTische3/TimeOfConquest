@@ -23,43 +23,7 @@ function chkBtns(){
   if(ok){window._af=fr;window._at=si;}
 }
 
-// ── MODAL ─────────────────────────────────────────────────
-function openMo(title,body,btns){
-  sEl('mo-t',title);sHTML('mo-b',body);
-  const bw=document.getElementById('mo-btns');bw.innerHTML='';
-  btns.forEach(({lbl,cls,cb})=>{const b=document.createElement('button');b.className='btn '+(cls||'');b.textContent=lbl;b.onclick=()=>{closeMo();cb&&cb();};bw.appendChild(b);});
-  document.getElementById('mo').classList.add('on');
-}
-function closeMo(){document.getElementById('mo').classList.remove('on');}
-function moOut(e){if(e.target===document.getElementById('mo'))closeMo();}
-// Aliases used by save system in index.html
-function openModal(title,body,btnsHtml){
-  sEl('mo-t',title);sHTML('mo-b',body);
-  const bw=document.getElementById('mo-btns');
-  bw.innerHTML=btnsHtml||'';
-  document.getElementById('mo').classList.add('on');
-}
-function closeModal(){closeMo();}
-
-function popup(msg,dur=2600){const p=document.getElementById('popup');if(!p)return;p.textContent=msg;p.classList.add('on');clearTimeout(_popT);_popT=setTimeout(()=>p.classList.remove('on'),dur);}
-function addLog(msg,type='info'){
-  const entryHtml=`<div class="le le-new"><span class="lt">${dateStr()}</span><span class="lm ${type}">${msg}</span></div>`;
-  ['log','mob-log'].forEach(id=>{
-    const l=document.getElementById(id);if(!l)return;
-    // Clear placeholder
-    if(id==='log'&&l.children.length===1&&l.children[0].style?.textAlign==='center')l.innerHTML='';
-    l.insertAdjacentHTML('afterbegin',entryHtml);
-    // Trigger animation on the new entry
-    const newEl=l.firstElementChild;
-    if(newEl){
-      void newEl.offsetWidth; // reflow
-      newEl.classList.add('le-anim');
-      setTimeout(()=>newEl?.classList.remove('le-new','le-anim'),600);
-    }
-    while(l.children.length>100)l.removeChild(l.lastChild);
-  });
-}
-function setEB(d){['end-btn','end-btn-mob'].forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=d;});}
+// NOTE: openMo/closeMo/openModal/closeModal/popup/addLog/setEB live in ui.js
 
 // Escape key closes popup and cancels modes
 document.addEventListener('keydown', e=>{
@@ -169,11 +133,7 @@ function launchAtkFromMove(from,to){
   popup(`⚔ Attack queued — executes next turn`);
   scheduleDraw();updateHUD();if(G.sel>=0)updateSP(G.sel);chkBtns();
 }
-function updSl(slId,vId){
-  const sl=document.getElementById(slId),vEl=document.getElementById(vId);
-  if(!sl||!vEl)return;const v=+sl.value;
-  vEl.textContent=fa(v);sl.style.setProperty('--pct',+sl.max?(v/+sl.max*100)+'%':'0%');
-}
+// NOTE: updSl lives in ui.js
 
 // ── NAVAL ─────────────────────────────────────────────────
 

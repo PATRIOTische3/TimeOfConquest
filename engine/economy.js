@@ -312,11 +312,5 @@ function gatherResources(){
   }
 }
 
-// ── RESISTANCE SYSTEM ─────────────────────────────────────
-function openSponsor(){
 
-// ── RESOURCES ─────────────────────────────────────────────
-
-
-// ── RESISTANCE SYSTEM ─────────────────────────────────────
-function openSponsor(){
+// NOTE: openSponsor() and processResistance() live in events.js — not duplicated here.

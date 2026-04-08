@@ -12,7 +12,6 @@
 function doAI(fullMonth=true){
 // fullMonth=true → income, buildings, conscript, upkeep
 // fullMonth=false (weekly) → attacks, army movements only
-function doAI(fullMonth=true){
   for(const ai of aliveNations()){
     const ar=regsOf(ai);if(!ar.length)continue;
     const aio=IDEOLOGIES[NATIONS[ai]&&NATIONS[ai].ideology||'nationalism'];

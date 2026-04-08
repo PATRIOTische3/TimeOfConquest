@@ -7,10 +7,22 @@
 let HEX_R = 4.75;
 
 function computeHexRadius(){
+  // In HEX_GRID mode the renderer uses HEX_GRID.hexR directly — HEX_R is only
+  // used by the legacy centroid renderer.  Still compute it as a fallback, but
+  // NEVER rebuild NB here: the map editor already exports the correct NB array.
+  if(typeof HEX_GRID !== 'undefined' && HEX_GRID && HEX_GRID.hexes){
+    HEX_R = HEX_GRID.hexR || 18;
+    // Pad NB to match province count (safety only — editor export is authoritative)
+    const N = PROVINCES.length;
+    while(NB.length < N) NB.push([]);
+    return;
+  }
+
   if(PROVINCES.length < 2){ HEX_R = 4.75; return; }
   const N = PROVINCES.length;
 
-  while(NB.length < N) NB.push([]);
+  // NB already set by map file? Only rebuild if it looks empty.
+  const nbAlreadySet = NB.length >= N && NB.some(a => a && a.length > 0);
 
   const dists = [];
   const sample = Math.min(N, 300);
@@ -34,14 +46,16 @@ function computeHexRadius(){
   }
   HEX_R = (neighborDist / Math.sqrt(3)) * 0.995;
 
-  const thresh  = neighborDist * 1.35;
-  const thresh2 = thresh * thresh;
-  for(let i = 0; i < N; i++) NB[i] = [];
-  for(let i = 0; i < N; i++){
-    for(let j = i+1; j < N; j++){
-      const dx = PROVINCES[i].cx - PROVINCES[j].cx;
-      const dy = PROVINCES[i].cy - PROVINCES[j].cy;
-      if(dx*dx + dy*dy <= thresh2){ NB[i].push(j); NB[j].push(i); }
+  if(!nbAlreadySet){
+    const thresh  = neighborDist * 1.35;
+    const thresh2 = thresh * thresh;
+    for(let i = 0; i < N; i++) NB[i] = [];
+    for(let i = 0; i < N; i++){
+      for(let j = i+1; j < N; j++){
+        const dx = PROVINCES[i].cx - PROVINCES[j].cx;
+        const dy = PROVINCES[i].cy - PROVINCES[j].cy;
+        if(dx*dx + dy*dy <= thresh2){ NB[i].push(j); NB[j].push(i); }
+      }
     }
   }
 }

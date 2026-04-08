@@ -136,22 +136,7 @@ function updateSP(i){
 }
 
 
-function chkBtns(){
-  const si=G.sel,PN=G.playerNation;
-  const peace=inPeacePeriod();
-  const canAtk=!peace&&si>=0&&G.owner[si]!==PN&&G.owner[si]>=0;
-  const fr=canAtk?regsOf(PN).find(r=>G.army[r]>100&&NB[r]?.includes(si)):undefined;
-  const ok=fr!==undefined&&canAtk;
-  ['btn-atk','sp-btn-atk'].forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=!ok;});
-  const atkSub = peace
-    ? `Peace — ${peaceTurnsLeft()} weeks left`
-    : !canAtk ? 'Select enemy'
-    : ok ? `${PROVINCES[fr].short}→${PROVINCES[si].short}`
-    : 'No army on border';
-  sEl('sp-atk-sub', atkSub);
-  sEl('atk-sub', peace ? `Peace — ${peaceTurnsLeft()}wk` : ok?`${PROVINCES[fr].short}→${PROVINCES[si].short}`:'Select enemy');
-  if(ok){window._af=fr;window._at=si;}
-}
+// NOTE: chkBtns() lives in military.js
 
 // ── MODAL ─────────────────────────────────────────────────
 function openMo(title,body,btns){
@@ -361,11 +346,6 @@ function onCanvasClick(wx,wy){
   panToProvince(i);
 }
 
-
-function hexToRgb(hex){
-  const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
-  return `${r},${g},${b}`;
-}
 
 function updSl(slId,vId){
   const sl=document.getElementById(slId),vEl=document.getElementById(vId);

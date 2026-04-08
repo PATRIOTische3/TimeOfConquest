@@ -78,11 +78,6 @@ function endTurn(){
     inc=Math.floor(inc*io.income*satIncomeMod*reformMod*(1-Math.min(.5,G.instab[r]/100))*s.incomeMod*taxIncomeFactor);
     G.gold[PN]+=inc;
 
-    // Puppet tribute
-    G.puppet.forEach(pp=>{
-      regsOf(pp).forEach(pr=>{let pi=G.income[pr];if((G.buildings[pr]||[]).includes('factory'))pi=Math.floor(pi*1.8);G.gold[PN]+=Math.floor(pi*.3);});
-    });
-
     // Population growth
     let pgr=G.pop[r]*.005*io.popGrowth*(sat<40?0.5:sat<60?0.8:1.0);
     if((G.buildings[r]||[]).includes('hospital'))pgr*=1.1;
@@ -179,6 +174,15 @@ function endTurn(){
   });
 
   if(G.capitalPenalty[PN]>0)G.capitalPenalty[PN]--;
+
+  // Puppet tribute — collected once per month (not per province)
+  G.puppet.forEach(pp=>{
+    regsOf(pp).forEach(pr=>{
+      let pi=G.income[pr];
+      if((G.buildings[pr]||[]).includes('factory'))pi=Math.floor(pi*1.8);
+      G.gold[PN]+=Math.floor(pi*.3);
+    });
+  });
 
   // NAP expiry
   for(let a=0;a<NATIONS.length;a++)for(let b=0;b<NATIONS.length;b++)if(G.pact[a][b]){G.pLeft[a][b]--;if(G.pLeft[a][b]<=0){G.pact[a][b]=false;G.pLeft[a][b]=0;}}
