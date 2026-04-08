@@ -216,7 +216,7 @@ function openDraft(){
 
   const others=mr.filter(r=>r!==cur);
   const html=`
-    <p class="mx" style="font-size:10px;margin-bottom:6px">Cost: <b>1,000 pop + 1 gold</b>/soldier · ${io.icon} ×${(1/io.conscriptMod).toFixed(2)} · Treasury: <b>${fa(G.gold[G.playerNation])}g</b></p>
+    <p class="mx" style="font-size:10px;margin-bottom:6px">Cost: <b>1,000 pop + 1 gold</b>/soldier · ${io.icon} · Treasury: <b>${fa(G.gold[G.playerNation])}g</b></p>
     ${rowHtml(cur,true)}
     ${others.length?`<div style="font-size:8px;color:var(--dim);letter-spacing:2px;text-transform:uppercase;padding:4px 0 3px;border-bottom:1px solid rgba(42,36,24,.3);margin-bottom:4px">Other Territories</div>
     <div class="tlist" style="margin:0;max-height:220px;overflow-y:auto">${others.map(r=>rowHtml(r,false)).join('')}</div>`:''}
@@ -548,8 +548,15 @@ function runBattle(fr,to,atkF,atker,done){
 
       // ── OCCUPATION: attacker occupies, original owner stays as "occupied by" ──
       if(prev>=0 && prev!==atker){
-        // Record occupation: who is occupying and who originally owned it
-        G.occupied[to]={by:atker, originalOwner:prev};
+        // Check if attacker is reclaiming their own occupied province
+        const existingOcc = G.occupied[to];
+        if(existingOcc && existingOcc.originalOwner === atker){
+          // Recaptured by original owner — clear occupation
+          delete G.occupied[to];
+        } else {
+          // Record occupation: who is occupying and who originally owned it
+          G.occupied[to]={by:atker, originalOwner:prev};
+        }
       } else {
         // Neutral or rebel — just take it
         delete G.occupied[to];

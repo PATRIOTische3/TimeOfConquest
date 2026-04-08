@@ -157,7 +157,15 @@ function doAI(fullMonth=true){
         const win=send*aio.atk*terrMod*rf(.75,1.25)>G.army[to2]*provTerrainDef(to2)*frt*rf(.75,1.25);
         if(win){
           const al=Math.floor(send*rf(.15,.3));
+          const prevOwner=G.owner[to2];
           G.army[fr2]-=send;G.army[to2]=Math.max(50,send-al);G.owner[to2]=ai;
+          // Update occupation map
+          if(!G.occupied) G.occupied={};
+          if(prevOwner>=0 && prevOwner!==ai){
+            const existOcc=G.occupied[to2];
+            if(existOcc && existOcc.originalOwner===ai) delete G.occupied[to2];
+            else G.occupied[to2]={by:ai, originalOwner:prevOwner};
+          } else { delete G.occupied[to2]; }
           G.instab[to2]=ri(30,60);G.assim[to2]=ri(5,20);
           if((G.buildings[to2]||[]).includes('fortress'))
             G.buildings[to2]=(G.buildings[to2]||[]).filter(b=>b!=='fortress');

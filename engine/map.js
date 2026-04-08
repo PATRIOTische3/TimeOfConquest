@@ -278,17 +278,35 @@ function provColor(i){
   // Political
   if(o < 0){ if(PROVINCES[i]?.isSea) return '#0a1828'; return REBEL_COLOR; }
 
-  // Occupied province — show original owner's color (occupier shown via dashed overlay)
-  if(G.occupied && G.occupied[i] && G.occupied[i].originalOwner >= 0){
-    const origO = G.occupied[i].originalOwner;
-    return natColor(origO);
+  // Always use G.owner[i] as the true controller — G.occupied is only for dashed overlay
+  // Player's own provinces: green tint over nation color
+  if(o === G.playerNation){
+    // Blend player's nation color with green to keep visual identity
+    const nc = NATIONS[G.playerNation]?.color || '#288820';
+    return _blendHex(nc, '#2a9a28', 0.55);
   }
 
-  if(o === G.playerNation) return '#288820';
-  if(atWar(G.playerNation, o)) return '#801818';
-  if(G.pact[G.playerNation][o]) return '#706010';
-  if(areAllies(G.playerNation, o)) return '#183868';
+  // At war: darken their color with red tint so it's clearly hostile but still identifiable
+  if(atWar(G.playerNation, o)){
+    const nc = natColor(o);
+    return _blendHex(nc, '#8a1010', 0.45);
+  }
+
+  if(G.pact[G.playerNation][o]) return _blendHex(natColor(o), '#807010', 0.35);
+  if(areAllies(G.playerNation, o)) return _blendHex(natColor(o), '#103878', 0.35);
   return natColor(o);
+}
+
+// ── COLOR BLEND HELPER ─────────────────────────────────────
+// Blend two hex colors: t=0 → a, t=1 → b
+function _blendHex(a, b, t){
+  try{
+    const pa = a.replace('#',''), pb = b.replace('#','');
+    const ar=parseInt(pa.slice(0,2),16), ag=parseInt(pa.slice(2,4),16), ab2=parseInt(pa.slice(4,6),16);
+    const br=parseInt(pb.slice(0,2),16), bg=parseInt(pb.slice(2,4),16), bb=parseInt(pb.slice(4,6),16);
+    const r=Math.round(ar+(br-ar)*t), g=Math.round(ag+(bg-ag)*t), b2=Math.round(ab2+(bb-ab2)*t);
+    return '#'+[r,g,b2].map(v=>Math.max(0,Math.min(255,v)).toString(16).padStart(2,'0')).join('');
+  }catch(e){ return a; }
 }
 
 // ── SEA LABELS ────────────────────────────────────────────
@@ -791,10 +809,85 @@ function drawMap(){
     // Province borders fade at low zoom for performance + readability
     const provBorderAlpha = useLOD ? 0 : Math.min(1, Math.max(0, (vp.scale - 0.18) / 0.12));
 
-    if(provBorderAlpha > 0){
-      // PASS 4A: Province inner borders — thin black line between different provinces
-      ctx.strokeStyle = `rgba(0,0,0,${(0.65*provBorderAlpha).toFixed(2)})`;
+    if(provBorderAlpha > 0 && G.mapMode === 'political'){
+      // PASS 4A: Province borders within same nation — thin gold (editor style)
+      ctx.strokeStyle = `rgba(201,168,76,${(0.38*provBorderAlpha).toFixed(2)})`;
+      ctx.lineWidth = 0.9/vp.scale;
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.beginPath();
+      for(let pi=0; pi<PROVINCES.length; pi++){
+        const oA = G.owner[pi];
+        const edges = window._provBorderEdges && window._provBorderEdges[pi];
+        if(!edges) continue;
+        for(const e of edges){
+          if(!e.isProvBorder) continue;
+          const oB = e.nbProv>=0 ? G.owner[e.nbProv] : -1;
+          if(oA !== oB) continue; // nation borders drawn separately below
+          if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+          if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+          ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
+        }
+      }
+      ctx.stroke();
+
+      // PASS 4B: Coastlines (border touching sea) — subtle dark gold
+      ctx.strokeStyle = `rgba(140,115,50,${(0.50*provBorderAlpha).toFixed(2)})`;
       ctx.lineWidth = 1.0/vp.scale;
+      ctx.beginPath();
+      for(let pi=0; pi<PROVINCES.length; pi++){
+        const edges = window._provBorderEdges && window._provBorderEdges[pi];
+        if(!edges) continue;
+        for(const e of edges){
+          if(e.isProvBorder) continue; // coast = not adjacent to another province
+          if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+          if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+          ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
+        }
+      }
+      ctx.stroke();
+
+      // PASS 4C: Nation borders — black outline + gold line on top (editor style)
+      // Black shadow pass
+      ctx.lineWidth = 2.6/vp.scale;
+      ctx.strokeStyle = `rgba(0,0,0,${(0.72*provBorderAlpha).toFixed(2)})`;
+      ctx.beginPath();
+      for(let pi=0; pi<PROVINCES.length; pi++){
+        const oA = G.owner[pi];
+        const edges = window._provBorderEdges && window._provBorderEdges[pi];
+        if(!edges) continue;
+        for(const e of edges){
+          if(!e.isProvBorder) continue;
+          const oB = e.nbProv>=0 ? G.owner[e.nbProv] : -1;
+          if(oB<0 || oA===oB) continue;
+          if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+          if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+          ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
+        }
+      }
+      ctx.stroke();
+      // Gold top pass
+      ctx.lineWidth = 1.5/vp.scale;
+      ctx.strokeStyle = `rgba(201,168,76,${(0.72*provBorderAlpha).toFixed(2)})`;
+      ctx.beginPath();
+      for(let pi=0; pi<PROVINCES.length; pi++){
+        const oA = G.owner[pi];
+        const edges = window._provBorderEdges && window._provBorderEdges[pi];
+        if(!edges) continue;
+        for(const e of edges){
+          if(!e.isProvBorder) continue;
+          const oB = e.nbProv>=0 ? G.owner[e.nbProv] : -1;
+          if(oB<0 || oA===oB) continue;
+          if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+          if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+          ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
+        }
+      }
+      ctx.stroke();
+
+    } else if(provBorderAlpha > 0){
+      // Non-political modes: simple thin black border
+      ctx.strokeStyle = `rgba(0,0,0,${(0.50*provBorderAlpha).toFixed(2)})`;
+      ctx.lineWidth = 0.8/vp.scale;
       ctx.lineJoin = 'round'; ctx.lineCap = 'round';
       ctx.beginPath();
       for(let pi=0; pi<PROVINCES.length; pi++){
@@ -808,27 +901,6 @@ function drawMap(){
         }
       }
       ctx.stroke();
-
-      // PASS 4B: Nation borders — slightly thicker/brighter on political map
-      if(G.mapMode==='political'){
-        ctx.strokeStyle = `rgba(0,0,0,${(0.88*provBorderAlpha).toFixed(2)})`;
-        ctx.lineWidth = 1.8/vp.scale;
-        ctx.beginPath();
-        for(let pi=0; pi<PROVINCES.length; pi++){
-          const oA = G.owner[pi];
-          const edges = window._provBorderEdges && window._provBorderEdges[pi];
-          if(!edges) continue;
-          for(const e of edges){
-            if(!e.isProvBorder) continue;
-            const oB = e.nbProv>=0 ? G.owner[e.nbProv] : -1;
-            if(oB<0 || oA===oB) continue;
-            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
-            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
-          }
-        }
-        ctx.stroke();
-      }
     }
 
     // PASS 5: Selected province — pulsing white fill + gold border outline
