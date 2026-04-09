@@ -133,7 +133,22 @@ function doAI(fullMonth=true){
         if(G.army[r]<200)continue;
         for(const nb of (NB[r]||[])){
           const nbo=G.owner[nb];
-          if(nbo===ai||areAllies(ai,nbo)||(nbo>=0&&G.pact[ai][nbo]))continue;
+          if(nbo===ai||areAllies(ai,nbo))continue;
+          if(nbo>=0&&G.pact[ai][nbo]){
+            // Ceasefire break: only 4% weekly chance, only if aggressive personality
+            const cfKey=`${Math.min(ai,nbo)}_${Math.max(ai,nbo)}`;
+            const isCeasefire=G.ceasefire&&G.ceasefire[cfKey];
+            const canBreak=isCeasefire&&aggressive&&Math.random()<0.04;
+            if(!canBreak)continue;
+            // Break the ceasefire
+            G.pact[ai][nbo]=G.pact[nbo][ai]=false;
+            G.pLeft[ai][nbo]=G.pLeft[nbo][ai]=0;
+            if(G.ceasefire)delete G.ceasefire[cfKey];
+            if(nbo===G.playerNation){
+              addLog(`⚔ ${ownerName(ai)} broke the ceasefire!`,'war');
+              popup(`⚠ ${ownerName(ai)} broke the ceasefire!`,3500);
+            }
+          }
           // Prefer capitals and provinces with buildings
           const hasCap=PROVINCES[nb]&&PROVINCES[nb].isCapital;
           const hasBld=(G.buildings[nb]||[]).length>0;
@@ -157,15 +172,7 @@ function doAI(fullMonth=true){
         const win=send*aio.atk*terrMod*rf(.75,1.25)>G.army[to2]*provTerrainDef(to2)*frt*rf(.75,1.25);
         if(win){
           const al=Math.floor(send*rf(.15,.3));
-          const prevOwner=G.owner[to2];
           G.army[fr2]-=send;G.army[to2]=Math.max(50,send-al);G.owner[to2]=ai;
-          // Update occupation map
-          if(!G.occupied) G.occupied={};
-          if(prevOwner>=0 && prevOwner!==ai){
-            const existOcc=G.occupied[to2];
-            if(existOcc && existOcc.originalOwner===ai) delete G.occupied[to2];
-            else G.occupied[to2]={by:ai, originalOwner:prevOwner};
-          } else { delete G.occupied[to2]; }
           G.instab[to2]=ri(30,60);G.assim[to2]=ri(5,20);
           if((G.buildings[to2]||[]).includes('fortress'))
             G.buildings[to2]=(G.buildings[to2]||[]).filter(b=>b!=='fortress');

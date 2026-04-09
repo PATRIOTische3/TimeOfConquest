@@ -111,6 +111,12 @@ function offerPeace(ai){
   setTimeout(()=>{
     if(Math.random()<ch){
       G.war[PN][ai]=G.war[ai][PN]=false;
+      // 10-turn ceasefire — stored in G.pact / G.pLeft like a NAP
+      G.pact[PN][ai]=G.pact[ai][PN]=true;
+      G.pLeft[PN][ai]=G.pLeft[ai][PN]=10;
+      // Mark as ceasefire (not voluntary NAP) so AI can break it with low chance
+      if(!G.ceasefire) G.ceasefire={};
+      G.ceasefire[`${Math.min(PN,ai)}_${Math.max(PN,ai)}`]=true;
       // Clear occupation records between these two nations
       if(G.occupied){
         for(const [k,occ] of Object.entries(G.occupied)){
@@ -119,7 +125,8 @@ function offerPeace(ai){
           }
         }
       }
-      addLog(`🕊 Peace with ${ownerName(ai)}.`,'peace');popup(`✓ Peace accepted`);
+      addLog(`🕊 Ceasefire with ${ownerName(ai)} — 10 months.`,'peace');
+      popup(`✓ Ceasefire for 10 months`);
     }
     else popup(`✗ ${ownerName(ai)} rejected`);
     scheduleDraw();

@@ -44,6 +44,7 @@ let G = {
   _allyEpicNotified:null,
   // AI
   aiPersonality:{},
+  ceasefire:{},
 };
 
 // ── SETUP UI GLOBALS ──────────────────────────────────────
@@ -136,6 +137,7 @@ function startGame(){
   G.navalMode = false; G.navalFrom = -1; G.sel = -1;
 
   G.aiPersonality = {};
+  G.ceasefire = {};
 
   G.gold[SC] = 1200;
   NATIONS.forEach((_, i) => { if(i !== SC) G.gold[i] = ri(300, 700); });
