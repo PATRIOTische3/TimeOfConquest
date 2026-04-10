@@ -216,7 +216,7 @@ function openDraft(){
 
   const others=mr.filter(r=>r!==cur);
   const html=`
-    <p class="mx" style="font-size:10px;margin-bottom:6px">Cost: <b>1,000 pop + 1 gold</b>/soldier · ${io.icon} · Treasury: <b>${fa(G.gold[G.playerNation])}g</b></p>
+    <p class="mx" style="font-size:10px;margin-bottom:6px">Cost: <b>1,000 pop + 1 gold</b>/soldier · ${io.icon} ×${(1/io.conscriptMod).toFixed(2)} · Treasury: <b>${fa(G.gold[G.playerNation])}g</b></p>
     ${rowHtml(cur,true)}
     ${others.length?`<div style="font-size:8px;color:var(--dim);letter-spacing:2px;text-transform:uppercase;padding:4px 0 3px;border-bottom:1px solid rgba(42,36,24,.3);margin-bottom:4px">Other Territories</div>
     <div class="tlist" style="margin:0;max-height:220px;overflow-y:auto">${others.map(r=>rowHtml(r,false)).join('')}</div>`:''}
@@ -548,15 +548,8 @@ function runBattle(fr,to,atkF,atker,done){
 
       // ── OCCUPATION: attacker occupies, original owner stays as "occupied by" ──
       if(prev>=0 && prev!==atker){
-        // Check if attacker is reclaiming their own occupied province
-        const existingOcc = G.occupied[to];
-        if(existingOcc && existingOcc.originalOwner === atker){
-          // Recaptured by original owner — clear occupation
-          delete G.occupied[to];
-        } else {
-          // Record occupation: who is occupying and who originally owned it
-          G.occupied[to]={by:atker, originalOwner:prev};
-        }
+        // Record occupation: who is occupying and who originally owned it
+        G.occupied[to]={by:atker, originalOwner:prev};
       } else {
         // Neutral or rebel — just take it
         delete G.occupied[to];
@@ -707,14 +700,111 @@ function showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done){
 }
 
 // ── ENEMY ATTACK OVERLAY ──────────────────────────────────────
+function _animZoomTo(fr, to, offsetY){
+  if(_fastMode) return;
+  const tp=PROVINCES[to], fp=fr>=0?PROVINCES[fr]:tp;
+  if(!tp||!fp||typeof CW==='undefined'||CW<=0||typeof CH==='undefined'||CH<=0) return;
+  const midX=(tp.cx+(fp?fp.cx:tp.cx))/2;
+  const midY=(tp.cy+(fp?fp.cy:tp.cy))/2;
+  const dist=fp!==tp?Math.sqrt((tp.cx-fp.cx)**2+(tp.cy-fp.cy)**2):0;
+  const targetScale=Math.min(CW,CH)/(Math.max(dist*4,20)*1.0);
+  const endScale=Math.max(1.5,Math.min(targetScale,10));
+  const endTx=CW/2-midX*endScale;
+  const endTy=(CH*(offsetY||0.40))-midY*endScale;
+  const startScale=vp.scale,startTx=vp.tx,startTy=vp.ty;
+  const ANIM_MS=550; const startT=performance.now();
+  function easeOut(t){return 1-Math.pow(1-t,3);}
+  function frame(now){
+    const t=easeOut(Math.min((now-startT)/ANIM_MS,1));
+    vp.scale=startScale+(endScale-startScale)*t;
+    vp.tx=startTx+(endTx-startTx)*t;
+    vp.ty=startTy+(endTy-startTy)*t;
+    scheduleDraw();
+    if(t<1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
 function showEnemyAttackOverlay(ev, done){
   if(_fastMode){done();return;}
-  const frName=PROVINCES[ev.fr]?.short||'?';
-  const toName=PROVINCES[ev.to]?.name||'?';
-  const atkerName=NATIONS[ev.atker]?.name||'Enemy';
-  const resultTxt=ev.win?`${atkerName} seized ${toName}!`:`${atkerName}'s attack on ${toName} was repelled.`;
-  const col=ev.win?'#ff9080':'#90a8ff';
+  const {fr, to, atker, send, win, al} = ev;
 
-  popup(`⚔ ${resultTxt}`, 3200);
-  done();
+  // Zoom camera to the battle site
+  if(typeof _animZoomTo==='function') _animZoomTo(fr, to, 0.38);
+
+  const atkerName = NATIONS[atker]?.name || ownerName(atker);
+  const toName    = PROVINCES[to]?.name  || '?';
+  const frName    = PROVINCES[fr]?.short || '?';
+  const approxSend = approxForce(send);
+  const approxDef  = approxForce(G.army[to] || 0);
+  const resColor   = win ? '#ff8060' : '#a0c880';
+  const resText    = win
+    ? `☠ ${atkerName} seized ${toName}!`
+    : `✦ ${toName} repelled the attack!`;
+  const resBg      = win ? 'rgba(100,20,20,.22)' : 'rgba(20,80,10,.22)';
+  const resBorder  = win ? 'rgba(160,40,40,.5)'  : 'rgba(60,160,40,.5)';
+
+  let ov = document.getElementById('_battle_overlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = '_battle_overlay';
+    ov.style.cssText = [
+      'position:fixed','inset:0','z-index:200',
+      'display:flex','align-items:center','justify-content:center',
+      'background:rgba(6,8,14,.72)',
+      'backdrop-filter:blur(3px)','-webkit-backdrop-filter:blur(3px)',
+      'animation:_bov_in .22s ease',
+    ].join(';');
+    if(!document.getElementById('_bov_style')){
+      const st=document.createElement('style');st.id='_bov_style';
+      st.textContent='@keyframes _bov_in{from{opacity:0}to{opacity:1}}'+
+        '@keyframes _bov_slide{from{transform:translateY(18px);opacity:0}to{transform:translateY(0);opacity:1}}';
+      document.head.appendChild(st);
+    }
+    document.body.appendChild(ov);
+  }
+
+  ov.innerHTML=`<div style="
+    background:linear-gradient(160deg,#1a0808,#0a0404);
+    border:1px solid rgba(180,40,40,.5);
+    width:min(420px,94vw);
+    font-family:'Cinzel',serif;
+    animation:_bov_slide .30s ease;
+    position:relative;
+  ">
+    <div style="font-size:12px;color:#c06040;text-align:center;letter-spacing:3px;padding:14px 16px 8px;border-bottom:1px solid rgba(100,30,30,.5)">⚔ Enemy Attack ⚔</div>
+    <div style="font-size:9px;color:#4a2820;text-align:center;padding:5px 0 0;letter-spacing:2px">${atkerName} → ${toName}</div>
+    <div style="font-size:8px;color:#2a1810;text-align:center;padding:2px 0 10px;letter-spacing:1px">tap to continue</div>
+
+    <div style="display:flex;gap:0;margin:0 16px 12px;border:1px solid rgba(80,30,30,.35)">
+      <div style="flex:1;text-align:center;padding:12px 10px;background:rgba(70,16,16,.35)">
+        <div style="font-size:8px;color:#c85050;letter-spacing:2px;margin-bottom:5px">ENEMY FORCE</div>
+        <div style="font-size:11px;color:#e8d5a3;margin-bottom:3px">${atkerName}</div>
+        <div style="font-size:32px;font-weight:700;color:#e87070;line-height:1">~${fa(approxSend)}</div>
+      </div>
+      <div style="display:flex;align-items:center;padding:0 14px;font-size:22px;color:#c09040;font-family:'Cinzel Decorative',serif">VS</div>
+      <div style="flex:1;text-align:center;padding:12px 10px;background:rgba(20,50,20,.35)">
+        <div style="font-size:8px;color:#80c860;letter-spacing:2px;margin-bottom:5px">YOUR FORCE</div>
+        <div style="font-size:11px;color:#e8d5a3;margin-bottom:3px">${toName}</div>
+        <div style="font-size:32px;font-weight:700;color:#a0e870;line-height:1">${fa(approxDef)}</div>
+      </div>
+    </div>
+
+    <div style="margin:0 16px 14px;padding:11px 14px;background:${resBg};border:1px solid ${resBorder};text-align:center">
+      <div style="font-size:14px;color:${resColor};letter-spacing:2px">${resText}</div>
+    </div>
+  </div>`;
+
+  ov.style.display = 'flex';
+
+  let closed = false;
+  function closeOverlay(){
+    if(closed) return; closed = true;
+    ov.style.opacity = '0';
+    ov.style.transition = 'opacity .18s ease';
+    setTimeout(()=>{ ov.style.display='none'; ov.innerHTML=''; done(); }, 200);
+  }
+  const autoT = setTimeout(closeOverlay, 3200);
+  window._battleSkipFn = ()=>{ clearTimeout(autoT); closeOverlay(); };
+  ov.onclick = ()=>{ clearTimeout(autoT); closeOverlay(); };
 }

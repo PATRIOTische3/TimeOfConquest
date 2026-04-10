@@ -110,8 +110,13 @@ function buildHexCache(){
 
   const EVEN_OFFS     = [[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]];
   const ODD_OFFS      = [[-1,-1],[-1,0],[0,1],[1,0],[1,-1],[0,-1]];
-  const EVEN_DIR_SIDE = [4,5,5,0,0,2];
-  const ODD_DIR_SIDE  = [3,3,5,1,2,2];
+  // For pointy-top hex, vertex k is at angle PI/6 + k*PI/3.
+  // Edge k connects vertex k → vertex (k+1)%6.
+  // Direction mapping: offset index d → which side of THIS hex borders that neighbour
+  // EVEN row offsets order: [NW, NE, E, SE, SW, W] → sides [5, 0, 1, 2, 3, 4]
+  // ODD  row offsets order: [NW, NE, E, SE, SW, W] → sides [5, 0, 1, 2, 3, 4]
+  const EVEN_DIR_SIDE = [5, 0, 1, 2, 3, 4];
+  const ODD_DIR_SIDE  = [5, 0, 1, 2, 3, 4];
 
   _hexCache.forEach((h, idx) => {
     h.nbIdx = getNeighbours(h.r, h.c);
@@ -278,26 +283,17 @@ function provColor(i){
   // Political
   if(o < 0){ if(PROVINCES[i]?.isSea) return '#0a1828'; return REBEL_COLOR; }
 
-  // G.owner[i] is always the TRUE current controller.
-  // G.occupied is only used for the dashed overlay — never change the fill color based on it.
+  // Occupied province — show original owner's color (occupier shown via dashed overlay)
+  if(G.occupied && G.occupied[i] && G.occupied[i].originalOwner >= 0){
+    const origO = G.occupied[i].originalOwner;
+    return natColor(origO);
+  }
 
-  if(o === G.playerNation) return _tintHex(natColor(G.playerNation), '#2aaa28', 0.40);
-  if(atWar(G.playerNation, o))   return _tintHex(natColor(o), '#cc1010', 0.38);
-  if(G.pact[G.playerNation][o])  return _tintHex(natColor(o), '#907010', 0.28);
-  if(areAllies(G.playerNation, o)) return _tintHex(natColor(o), '#1040a0', 0.28);
+  if(o === G.playerNation) return '#288820';
+  if(atWar(G.playerNation, o)) return '#801818';
+  if(G.pact[G.playerNation][o]) return '#706010';
+  if(areAllies(G.playerNation, o)) return '#183868';
   return natColor(o);
-}
-
-// Blend hex color `base` toward `tint` by factor t (0=base, 1=tint)
-function _tintHex(base, tint, t){
-  try{
-    const p=s=>parseInt(s,16);
-    const b=base.replace('#',''), c=tint.replace('#','');
-    const r=Math.round(p(b.slice(0,2))*(1-t)+p(c.slice(0,2))*t);
-    const g=Math.round(p(b.slice(2,4))*(1-t)+p(c.slice(2,4))*t);
-    const bl=Math.round(p(b.slice(4,6))*(1-t)+p(c.slice(4,6))*t);
-    return '#'+[r,g,bl].map(v=>Math.max(0,Math.min(255,v)).toString(16).padStart(2,'0')).join('');
-  }catch(e){return base;}
 }
 
 // ── SEA LABELS ────────────────────────────────────────────
@@ -647,12 +643,15 @@ function drawMap(){
     _seaZonePositions.forEach((z,zi)=>{
       const edges = _seaZoneBorderEdges&&_seaZoneBorderEdges[zi];
       if(edges&&edges.length){
-        // Sea zone border: ONLY shown when a province in this zone is selected
+        // Check if this zone contains the selected province (for gold highlight)
         const isSelected = G.sel>=0 && z.hexIds && z.hexIds.length>0 &&
-          z.hexIds.some(hi=>_hexCache[hi]?.p === G.sel);
-        if(!isSelected) return; // no border unless selected
-        ctx.strokeStyle = `rgba(201,168,76,${(0.88*seaBorderAlpha).toFixed(2)})`;
-        ctx.lineWidth = 2.0/vp.scale;
+          _hexCache[z.hexIds[0]]?.p === G.sel;
+        // Regular border: blue-ish; selected: gold
+        const borderColor = isSelected
+          ? `rgba(201,168,76,${(0.90*seaBorderAlpha).toFixed(2)})`
+          : `rgba(60,140,220,${(0.55*seaBorderAlpha).toFixed(2)})`;
+        ctx.strokeStyle = borderColor;
+        ctx.lineWidth = isSelected ? 2.2/vp.scale : 1.4/vp.scale;
         ctx.lineJoin='round'; ctx.lineCap='round';
         ctx.beginPath();
         for(const e of edges){
@@ -798,122 +797,39 @@ function drawMap(){
     const provBorderAlpha = useLOD ? 0 : Math.min(1, Math.max(0, (vp.scale - 0.18) / 0.12));
 
     if(provBorderAlpha > 0){
+      // PASS 4A: Province inner borders — thin black line between different provinces
+      ctx.strokeStyle = `rgba(0,0,0,${(0.65*provBorderAlpha).toFixed(2)})`;
+      ctx.lineWidth = 1.0/vp.scale;
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.beginPath();
+      for(let pi=0; pi<PROVINCES.length; pi++){
+        const edges = window._provBorderEdges && window._provBorderEdges[pi];
+        if(!edges) continue;
+        for(const e of edges){
+          if(!e.isProvBorder) continue;
+          if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+          if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+          ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
+        }
+      }
+      ctx.stroke();
+
+      // PASS 4B: Nation borders — slightly thicker/brighter on political map
       if(G.mapMode==='political'){
-
-        // PASS 4A: Intra-nation province borders — very thin, dim gold (editor style)
-        ctx.strokeStyle = `rgba(201,168,76,${(0.32*provBorderAlpha).toFixed(2)})`;
-        ctx.lineWidth = 0.7/vp.scale;
-        ctx.lineJoin='round'; ctx.lineCap='round';
+        ctx.strokeStyle = `rgba(0,0,0,${(0.88*provBorderAlpha).toFixed(2)})`;
+        ctx.lineWidth = 1.8/vp.scale;
         ctx.beginPath();
-        for(let pi=0;pi<PROVINCES.length;pi++){
-          const oA=G.owner[pi];
-          const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-          if(!edges)continue;
+        for(let pi=0; pi<PROVINCES.length; pi++){
+          const oA = G.owner[pi];
+          const edges = window._provBorderEdges && window._provBorderEdges[pi];
+          if(!edges) continue;
           for(const e of edges){
-            if(!e.isProvBorder)continue;
-            const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
-            if(oA!==oB)continue; // same nation only
-            if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-            ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
-          }
-        }
-        ctx.stroke();
-
-        // PASS 4B: Coastline (outer edge touching sea) — subtle
-        ctx.strokeStyle=`rgba(130,105,45,${(0.45*provBorderAlpha).toFixed(2)})`;
-        ctx.lineWidth=0.8/vp.scale;
-        ctx.beginPath();
-        for(let pi=0;pi<PROVINCES.length;pi++){
-          const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-          if(!edges)continue;
-          for(const e of edges){
-            if(e.isProvBorder)continue;
-            if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-            ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
-          }
-        }
-        ctx.stroke();
-
-        // PASS 4C: Nation borders — black shadow + gold (neutral/ally) or red (enemy at war)
-        // First: shadow pass (thick black under all nation borders)
-        ctx.lineWidth=2.8/vp.scale;
-        ctx.strokeStyle=`rgba(0,0,0,${(0.70*provBorderAlpha).toFixed(2)})`;
-        ctx.lineJoin='round';ctx.lineCap='round';
-        ctx.beginPath();
-        for(let pi=0;pi<PROVINCES.length;pi++){
-          const oA=G.owner[pi];
-          const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-          if(!edges)continue;
-          for(const e of edges){
-            if(!e.isProvBorder)continue;
-            const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
-            if(oB<0||oA===oB)continue;
-            if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-            ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
-          }
-        }
-        ctx.stroke();
-
-        // Second: gold nation borders (non-war)
-        ctx.lineWidth=1.5/vp.scale;
-        ctx.strokeStyle=`rgba(201,168,76,${(0.78*provBorderAlpha).toFixed(2)})`;
-        ctx.beginPath();
-        for(let pi=0;pi<PROVINCES.length;pi++){
-          const oA=G.owner[pi];
-          const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-          if(!edges)continue;
-          for(const e of edges){
-            if(!e.isProvBorder)continue;
-            const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
-            if(oB<0||oA===oB)continue;
-            // Skip war borders — drawn in red below
-            const isWarBorder=atWar(G.playerNation,oA)||atWar(G.playerNation,oB);
-            if(isWarBorder)continue;
-            if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-            ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
-          }
-        }
-        ctx.stroke();
-
-        // Third: RED borders for nations at war with player
-        ctx.lineWidth=1.6/vp.scale;
-        ctx.strokeStyle=`rgba(220,50,40,${(0.82*provBorderAlpha).toFixed(2)})`;
-        ctx.beginPath();
-        for(let pi=0;pi<PROVINCES.length;pi++){
-          const oA=G.owner[pi];
-          const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-          if(!edges)continue;
-          for(const e of edges){
-            if(!e.isProvBorder)continue;
-            const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
-            if(oB<0||oA===oB)continue;
-            const isWarBorder=atWar(G.playerNation,oA)||atWar(G.playerNation,oB);
-            if(!isWarBorder)continue;
-            if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-            ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
-          }
-        }
-        ctx.stroke();
-
-      } else {
-        // Non-political: simple thin dark border between any different provinces
-        ctx.strokeStyle=`rgba(0,0,0,${(0.50*provBorderAlpha).toFixed(2)})`;
-        ctx.lineWidth=0.8/vp.scale;
-        ctx.lineJoin='round';ctx.lineCap='round';
-        ctx.beginPath();
-        for(let pi=0;pi<PROVINCES.length;pi++){
-          const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-          if(!edges)continue;
-          for(const e of edges){
-            if(!e.isProvBorder)continue;
-            if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-            ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
+            if(!e.isProvBorder) continue;
+            const oB = e.nbProv>=0 ? G.owner[e.nbProv] : -1;
+            if(oB<0 || oA===oB) continue;
+            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
           }
         }
         ctx.stroke();
@@ -1003,23 +919,34 @@ function drawMap(){
       const labelR=_hexCache?HEX_GRID.hexR:scaledR(i);
       const fs=Math.max(3,Math.min(7,labelR*.42));
 
-      // Province name — capitals always, selected non-capitals also show name
+      // ── Unified label layout ──────────────────────────────
+      // name (shifted up when army present) → army (below name) → draft (slides right from army)
+      const hasName = p.isCapital || (i===G.sel && vp.scale>0.7);
+      const hasArmy = G.army[i]>0 && vp.scale>1.0 && canSeeArmy(i) &&
+                      G.mapMode!=='instab' && G.mapMode!=='disease' && G.mapMode!=='buildings';
+      const _draftEntry = (G.draftQueue||[]).find(d=>d.prov===i&&d.nation===G.playerNation);
+      const hasDraft = !!_draftEntry && G.mapMode==='political' && vp.scale>1.0;
+
+      // Name: shift up if army will be shown below it
+      const nameUpOff = (hasArmy && hasName) ? fs*0.9 : 0;
+      // Army: centered, or below name
+      const armyOffY  = hasName ? fs*1.0 : 0;
+
+      // Province name
       if(p.isCapital){
         ctx.font=`700 ${fs+1}px Cinzel,serif`;
         ctx.fillStyle='#f0d080';
         ctx.textAlign='center';ctx.textBaseline='middle';
         ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=4;
-        // Capital name NEVER moves — stays at center
-        ctx.fillText(p.short.length>10?p.short.slice(0,10):p.short,px,py-(G.army[i]>0&&vp.scale>1.2?2:0));
+        ctx.fillText(p.short.length>10?p.short.slice(0,10):p.short, px, py-nameUpOff);
         ctx.shadowBlur=0;
       } else if(i===G.sel&&vp.scale>0.7){
-        // Non-capital selected — show name at center, no shift
         const nameStr=(p.name||p.short||'').slice(0,14);
         ctx.font=`600 ${fs+0.5}px Cinzel,serif`;
         ctx.fillStyle='rgba(240,210,120,.95)';
         ctx.textAlign='center';ctx.textBaseline='middle';
         ctx.shadowColor='rgba(0,0,0,.98)';ctx.shadowBlur=5;
-        ctx.fillText(nameStr,px,py);
+        ctx.fillText(nameStr, px, py-nameUpOff);
         ctx.shadowBlur=0;
       }
 
@@ -1034,11 +961,6 @@ function drawMap(){
         ctx.font=`bold ${Math.max(4,fs)}px Cinzel,serif`;
         ctx.fillStyle=ins>70?'#ff8060':ins>40?'#ffcc60':ins>15?'#c0e860':'#80ff80';
         ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=3;
-        // % slides down from center when entering instab mode or selecting a province with name
-        // For capitals: always slides below center (name stays at center)
-        // For selected non-capitals: same slide
-        // For others (no name): stays at center (offset=0)
-        const hasName=p.isCapital||(i===G.sel&&vp.scale>0.7);
         const targetOffY=hasName?fs*1.55:0;
         if(!window._instabAnimY) window._instabAnimY={};
         if(window._instabAnimY[i]===undefined) window._instabAnimY[i]=0;
@@ -1047,18 +969,40 @@ function drawMap(){
         ctx.fillText(sat+'%',px,py+window._instabAnimY[i]);ctx.shadowBlur=0;
       }
 
-      const _draftEntry=(G.draftQueue||[]).find(d=>d.prov===i&&d.nation===G.playerNation);
-      if(_draftEntry&&G.mapMode==='political'&&vp.scale>1.0){
-        const _draftY=py+(p.isCapital?fs*.85:0)+(G.army[i]>0&&canSeeArmy(i)?fs*1.4:0);
-        ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;ctx.fillStyle='#72F372';
-        ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=2;
-        ctx.fillText(fm(_draftEntry.amount),px,_draftY);ctx.shadowBlur=0;
+      // Army count — below name if name shown
+      if(hasArmy){
+        ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;
+        ctx.fillStyle='rgba(232,205,145,.85)';
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.shadowColor='rgba(0,0,0,.9)';ctx.shadowBlur=2;
+        ctx.fillText(fm(G.army[i]), px, py+armyOffY);
+        ctx.shadowBlur=0;
       }
 
-      if(G.army[i]>0&&vp.scale>1.0&&canSeeArmy(i)&&G.mapMode!=='instab'&&G.mapMode!=='disease'&&G.mapMode!=='buildings'){
-        ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;ctx.fillStyle='rgba(232,205,145,.85)';
-        ctx.textAlign='center';ctx.textBaseline='middle';ctx.shadowColor='rgba(0,0,0,.9)';ctx.shadowBlur=2;
-        ctx.fillText(fm(G.army[i]),px,py+(p.isCapital?fs*.85:0));ctx.shadowBlur=0;
+      // Draft label — slides RIGHT from army position with fog-of-war gradient
+      if(hasDraft){
+        if(!window._draftAnimX) window._draftAnimX={};
+        if(window._draftAnimX[i]===undefined) window._draftAnimX[i]=0;
+        const targetDX = fs*2.6;
+        window._draftAnimX[i] = window._draftAnimX[i]*0.70 + targetDX*0.30;
+        const draftX = px + window._draftAnimX[i];
+        const draftY = py + armyOffY;
+        const draftStr = '+'+fm(_draftEntry.amount);
+        ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        // Fog gradient: transparent near army, solid green at destination
+        const measW = ctx.measureText(draftStr).width;
+        const g=ctx.createLinearGradient(px+fs*0.5, 0, draftX+measW*0.5, 0);
+        g.addColorStop(0,'rgba(114,243,114,0)');
+        g.addColorStop(0.5,'rgba(114,243,114,0.6)');
+        g.addColorStop(1,'rgba(114,243,114,1)');
+        ctx.fillStyle=g;
+        ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=2;
+        ctx.fillText(draftStr, draftX, draftY);
+        ctx.shadowBlur=0;
+        scheduleDraw();
+      } else if(window._draftAnimX && window._draftAnimX[i]!==undefined){
+        delete window._draftAnimX[i];
       }
 
       if(p.isCapital){
