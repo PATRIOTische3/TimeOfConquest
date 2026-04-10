@@ -210,7 +210,7 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .sp-rname{font-family:'Cinzel',serif;font-size:clamp(12px,1.2vw,18px);color:var(--gold);margin-bottom:2px}
 .sp-rsub{font-size:clamp(8px,.8vw,12px);color:var(--dim);font-style:italic;margin-bottom:3px}
 .sp-4{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin-bottom:4px}
-.sp-box{background:rgba(255,255,255,0.05);border:1px solid rgba(201,168,76,.15);padding:clamp(2px,.3vh,5px) clamp(3px,.4vw,6px);text-align:center;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.sp-box{background:rgba(0,0,0,.28);border:1px solid rgba(42,36,24,.5);padding:clamp(2px,.3vh,5px) clamp(3px,.4vw,6px);text-align:center}
 .sp-bl{font-size:clamp(6px,.6vw,9px);color:var(--dim);text-transform:uppercase;letter-spacing:.3px}
 .sp-bv{font-family:'Cinzel',serif;font-size:clamp(11px,1.1vw,16px);color:var(--text)}
 .sp-res{display:flex;gap:3px;flex-wrap:wrap;margin:3px 0}
@@ -226,7 +226,7 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 #sp-actions{flex:1;overflow-y:auto;padding:clamp(4px,.6vh,8px) clamp(8px,.9vw,14px);display:flex;flex-direction:column;gap:2px;background:rgba(4,3,10,0.35)}
 #sp-actions::-webkit-scrollbar{width:2px}
 #sp-actions::-webkit-scrollbar-thumb{background:var(--border)}
-.sp-sec{font-family:'Cinzel',serif;font-size:clamp(7px,.7vw,11px);color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;padding:clamp(4px,.5vh,7px) 0 3px;border-bottom:1px solid rgba(42,36,24,.35);margin-top:4px}
+.sp-sec{font-family:'Cinzel',serif;font-size:clamp(7px,.7vw,11px);color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;padding:clamp(4px,.5vh,7px) 0 3px;border-bottom:1px solid rgba(201,168,76,.18);margin-top:4px}
 .abtn{width:100%;padding:clamp(6px,.8vh,10px) clamp(6px,.7vw,10px);background:rgba(255,255,255,0.04);border:1px solid rgba(201,168,76,.14);color:var(--text);font-family:'IM Fell English',serif;font-size:clamp(10px,1vw,14px);cursor:pointer;transition:all .11s;text-align:left;display:flex;align-items:center;gap:clamp(4px,.5vw,8px);min-height:0;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
 .abtn:hover:not(:disabled){background:rgba(201,168,76,.06);border-color:var(--gold);color:var(--gold)}
 .abtn:disabled{opacity:.22;cursor:not-allowed}
@@ -238,8 +238,8 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .abtn .al{display:flex;flex-direction:column}
 .abtn .am{font-size:clamp(9px,2.4vw,13px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .abtn .as{font-size:clamp(7px,.7vw,10px);color:var(--dim);margin-top:1px}
-#sp-end{padding:clamp(5px,.8vh,10px) clamp(8px,.9vw,14px);flex-shrink:0;border-top:1px solid rgba(201,168,76,.15);background:rgba(6,4,14,0.60);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
-#sp-log{border-top:1px solid rgba(201,168,76,.12);height:clamp(140px,18vh,240px);flex-shrink:0;display:flex;flex-direction:column;background:rgba(4,3,12,0.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+#sp-end{padding:clamp(5px,.8vh,10px) clamp(8px,.9vw,14px);flex-shrink:0;border-top:1px solid var(--border)}
+#sp-log{border-top:1px solid var(--border);height:clamp(140px,18vh,240px);flex-shrink:0;display:flex;flex-direction:column}
 .sp-log-title{font-family:'Cinzel',serif;font-size:clamp(7px,.7vw,10px);color:var(--dim);letter-spacing:2px;padding:clamp(2px,.4vh,5px) clamp(7px,.8vw,12px);border-bottom:1px solid rgba(42,36,24,.4);background:rgba(0,0,0,.2);display:flex;justify-content:space-between;align-items:center}
 .sp-log-clear{font-size:clamp(7px,.7vw,10px);color:var(--dim);cursor:pointer;padding:2px 4px;transition:color .12s}
 .sp-log-clear:hover{color:var(--red2)}
