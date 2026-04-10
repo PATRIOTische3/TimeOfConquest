@@ -16,6 +16,8 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .btn{padding:9px 20px;background:linear-gradient(180deg,#1e1408,#100a04);border:1px solid var(--gold);color:var(--gold);font-family:'Cinzel',serif;font-size:11px;letter-spacing:2px;cursor:pointer;transition:all .15s;text-transform:uppercase}
 .btn:hover{background:rgba(201,168,76,.1);box-shadow:0 0 16px rgba(201,168,76,.2)}
 .btn:active{transform:scale(.96)}
+.btn:disabled{opacity:.28;cursor:not-allowed;filter:grayscale(.6);box-shadow:none}
+.btn:disabled:hover{background:linear-gradient(180deg,#1e1408,#100a04);box-shadow:none}
 .btn.full{width:100%;text-align:center}
 .btn.red{border-color:#b03030;color:#ff7070}
 .btn.grn{border-color:#307830;color:#70e870}
@@ -64,41 +66,42 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .wc-btn.del:hover{border-color:#7a1a1a;color:#ff7070}
 
 /* SETUP */
-#s-setup{flex-direction:row;overflow:hidden}
-#setup-map-side{flex:1;position:relative;overflow:hidden;background:#06080e;display:none}
-@media(min-width:700px){#setup-map-side{display:block}}
-#setup-map-canvas{position:absolute;inset:0;width:100%;height:100%}
-#setup-map-label{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(6,8,14,.85);border:1px solid var(--gold);padding:5px 16px;font-family:'Cinzel',serif;font-size:11px;color:var(--gold);letter-spacing:2px;white-space:nowrap;opacity:0;transition:opacity .3s}
+#s-setup{flex-direction:column;overflow:hidden;position:relative}
+/* Full-screen map background behind the panel */
+#setup-map-bg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+#setup-map-canvas{position:absolute;inset:0;width:100%;height:100%;filter:blur(4px) brightness(0.45) saturate(0.7);transform:scale(1.06)}
+#setup-frosted{position:absolute;inset:0;background:rgba(6,8,14,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);pointer-events:none;z-index:1}
+#setup-map-label{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(6,8,14,.85);border:1px solid var(--gold);padding:5px 16px;font-family:'Cinzel',serif;font-size:11px;color:var(--gold);letter-spacing:2px;white-space:nowrap;opacity:0;transition:opacity .3s;z-index:3}
 #setup-map-label.vis{opacity:1}
-#setup-panel{background:linear-gradient(160deg,#0e1018,#06080e);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;width:clamp(280px,30vw,420px)}
-@media(max-width:699px){#setup-panel{width:100%;border-left:none}}
-#setup-panel-inner{flex:1;overflow-y:auto;padding:clamp(10px,1.5vh,20px) clamp(10px,1.3vw,18px);display:flex;flex-direction:column;gap:clamp(6px,1.1vh,12px)}
+/* Scrollable panel floats over the map */
+#setup-panel{position:relative;z-index:2;width:min(480px,100%);margin:0 auto;display:flex;flex-direction:column;overflow:hidden;height:100%}
+#setup-panel-inner{flex:1;overflow-y:auto;padding:clamp(10px,2vh,22px) clamp(12px,2vw,24px);display:flex;flex-direction:column;gap:clamp(8px,1.2vh,14px)}
 #setup-panel-inner::-webkit-scrollbar{width:2px}
 #setup-panel-inner::-webkit-scrollbar-thumb{background:var(--border)}
 .setup-back-btn{background:none;border:none;color:var(--dim);font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;cursor:pointer;padding:0;text-align:left;transition:color .15s}
 .setup-back-btn:hover{color:var(--gold)}
-.setup-section-title{font-family:'Cinzel Decorative',serif;font-size:clamp(14px,1.8vw,22px);color:var(--gold);letter-spacing:4px;text-shadow:0 0 20px rgba(201,168,76,.3)}
+.setup-section-title{font-family:'Cinzel Decorative',serif;font-size:clamp(18px,3vw,28px);color:var(--gold);letter-spacing:4px;text-shadow:0 0 30px rgba(201,168,76,.5)}
 .setup-block{display:flex;flex-direction:column;gap:5px}
 .setup-lbl{font-size:clamp(7px,.7vw,9px);color:var(--dim);letter-spacing:3px;text-transform:uppercase}
-.sinp{width:100%;background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text);font-family:'IM Fell English',serif;font-size:clamp(11px,1.1vw,14px);padding:7px 10px;outline:none;transition:border .15s}
+.sinp{width:100%;background:rgba(0,0,0,.45);border:1px solid var(--border);color:var(--text);font-family:'IM Fell English',serif;font-size:clamp(11px,1.1vw,14px);padding:7px 10px;outline:none;transition:border .15s}
 .sinp:focus{border-color:var(--border2)}
 .sinp::placeholder{color:var(--dim)}
 #nation-list{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:2px}
 #nation-list::-webkit-scrollbar{width:2px}
 #nation-list::-webkit-scrollbar-thumb{background:var(--border)}
-.nat-row{display:flex;align-items:center;gap:9px;padding:6px 9px;background:rgba(0,0,0,.2);border:1px solid var(--border);cursor:pointer;transition:all .12s}
-.nat-row:hover{border-color:var(--border2);background:rgba(201,168,76,.04)}
-.nat-row.pick{border-color:var(--gold);background:rgba(201,168,76,.07)}
+.nat-row{display:flex;align-items:center;gap:9px;padding:6px 9px;background:rgba(0,0,0,.35);border:1px solid var(--border);cursor:pointer;transition:all .12s}
+.nat-row:hover{border-color:var(--border2);background:rgba(201,168,76,.06)}
+.nat-row.pick{border-color:var(--gold);background:rgba(201,168,76,.1)}
 .nat-swatch{width:14px;height:14px;border-radius:2px;flex-shrink:0;border:1px solid rgba(255,255,255,.1)}
 .nat-name{font-family:'Cinzel',serif;font-size:clamp(9px,.9vw,11px);color:var(--text);flex:1}
 .nat-ideo{font-size:clamp(7px,.7vw,9px);padding:1px 4px;border:1px solid;border-radius:1px}
-#nation-info-card{background:rgba(0,0,0,.35);border:1px solid var(--border2);padding:10px;display:flex;flex-direction:column;gap:7px;flex-shrink:0}
+#nation-info-card{background:rgba(0,0,0,.5);border:1px solid var(--border2);padding:10px;display:flex;flex-direction:column;gap:7px;flex-shrink:0}
 #nic-header{display:flex;align-items:center;gap:10px}
 #nic-flag{width:30px;height:30px;border-radius:3px;flex-shrink:0;border:1px solid rgba(255,255,255,.15)}
 #nic-name{font-family:'Cinzel',serif;font-size:clamp(11px,1.2vw,14px);color:var(--gold)}
 #nic-ideo{font-size:clamp(8px,.8vw,9px);color:var(--dim);margin-top:2px}
 #nic-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
-.nic-stat{background:rgba(0,0,0,.3);border:1px solid rgba(42,36,24,.4);padding:4px;text-align:center}
+.nic-stat{background:rgba(0,0,0,.4);border:1px solid rgba(42,36,24,.4);padding:4px;text-align:center}
 .nic-sl{font-size:clamp(6px,.6vw,8px);color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
 .nic-sv{font-family:'Cinzel',serif;font-size:clamp(10px,1vw,12px);color:var(--text)}
 #nic-traits{display:flex;flex-wrap:wrap;gap:3px}
@@ -112,25 +115,61 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .camp-title-input{font-family:'Cinzel Decorative',serif;font-size:clamp(14px,1.8vw,22px);color:var(--gold);background:transparent;border:none;border-bottom:1.5px solid var(--gold);outline:none;width:100%;letter-spacing:3px;padding:2px 0}
 .camp-title-input::placeholder{color:var(--dim)}
 
-/* ERA CAROUSEL */
-.era-carousel{display:flex;align-items:center;height:clamp(60px,8.5vh,80px)}
+/* SCENARIO PICKER */
+#scenario-section{display:flex;flex-direction:column;gap:6px}
+#scenario-header{display:flex;align-items:center;justify-content:space-between;gap:6px}
+#scenario-view-toggle{display:flex;gap:3px}
+.scen-view-btn{background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--dim);font-size:10px;padding:3px 8px;cursor:pointer;transition:all .12s;font-family:'Cinzel',serif}
+.scen-view-btn.on{border-color:var(--gold);color:var(--gold);background:rgba(201,168,76,.08)}
+#scenario-list{display:flex;flex-direction:column;gap:3px;max-height:clamp(130px,24vh,240px);overflow-y:auto}
+
+#scenario-list::-webkit-scrollbar{width:2px}
+#scenario-list::-webkit-scrollbar-thumb{background:var(--border)}
+/* List mode card */
+.scen-card{display:flex;align-items:center;gap:10px;padding:8px 11px;background:rgba(0,0,0,.38);border:1px solid var(--border);cursor:pointer;transition:all .12s;user-select:none;position:relative}
+.scen-card:hover:not(.locked){border-color:var(--border2);background:rgba(201,168,76,.06)}
+.scen-card.active{border-color:var(--gold);background:rgba(201,168,76,.1)}
+.scen-card.locked{opacity:.42;cursor:not-allowed}
+.scen-card.user-map{border-color:rgba(100,160,255,.3)}
+.scen-card.editor-map{border-color:rgba(255,215,0,.35);color:#FFD700}
+.scen-card.loading::after{content:'';position:absolute;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+.scen-icon{font-size:15px;flex-shrink:0;width:20px;text-align:center}
+.scen-info{flex:1;min-width:0}
+.scen-name{font-family:'Cinzel',serif;font-size:clamp(9px,.95vw,12px);color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scen-sub{font-size:clamp(7px,.7vw,9px);color:var(--dim);margin-top:1px}
+.scen-del{background:none;border:none;color:var(--dim);cursor:pointer;font-size:11px;padding:2px 6px;transition:color .12s;flex-shrink:0}
+.scen-del:hover{color:#ff7070}
+
+/* Scenario actions */
+#scenario-actions{display:flex;gap:5px;align-items:center}
+#scenario-actions .btn{padding:4px 9px;font-size:8px;letter-spacing:1px}
+/* Carousel mode (era-style) */
+#era-carousel-wrap{display:none}
+#era-carousel-wrap.on{display:block}
+#scen-carousel{display:flex;align-items:center;height:clamp(70px,10vh,90px)}
 .era-arrow{background:none;border:none;color:var(--dim);font-size:clamp(24px,3.2vw,36px);cursor:pointer;padding:0 clamp(4px,.5vw,9px);flex-shrink:0;transition:color .15s;line-height:1;z-index:3;touch-action:manipulation;user-select:none}
 .era-arrow:hover{color:var(--gold)}
 @keyframes eraShake{0%,100%{transform:translateX(0) scaleX(1)}20%{transform:translateX(-6px) scaleX(.95)}40%{transform:translateX(5px)}60%{transform:translateX(-4px)}80%{transform:translateX(3px)}}
 .era-arrow.shake{animation:eraShake .38s ease;color:#cc3030!important}
 .era-track-outer{flex:1;overflow:hidden;position:relative;height:100%}
 .era-fog-l,.era-fog-r{position:absolute;top:0;bottom:0;width:28%;pointer-events:none;z-index:2}
-.era-fog-l{left:0;background:linear-gradient(90deg,var(--panel) 0%,transparent 100%)}
-.era-fog-r{right:0;background:linear-gradient(270deg,var(--panel) 0%,transparent 100%)}
+.era-fog-l{left:0;background:linear-gradient(90deg,rgba(6,8,14,.95) 0%,transparent 100%)}
+.era-fog-r{right:0;background:linear-gradient(270deg,rgba(6,8,14,.95) 0%,transparent 100%)}
 .era-track{display:flex;height:100%;will-change:transform}
-.era-slide{flex:0 0 33.3333%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:1px solid transparent;transition:border-color .25s,background .25s,opacity .25s,transform .25s}
-.era-slide.active{border-color:var(--gold);background:rgba(201,168,76,.07);box-shadow:0 0 18px rgba(201,168,76,.1),inset 0 0 10px rgba(201,168,76,.03)}
-.era-slide.side{border-color:rgba(42,36,24,.4);background:rgba(0,0,0,.18);opacity:.48;transform:scaleY(.86)}
-.era-slide.hidden{opacity:0}
-.era-year{font-family:'Cinzel',serif;font-size:clamp(15px,2vw,24px);color:var(--gold);letter-spacing:2px;line-height:1.1}
-.era-slide.side .era-year,.era-slide.locked .era-year{color:var(--dim)}
-.era-sub{font-size:clamp(7px,.75vw,9px);color:var(--dim);letter-spacing:.5px;text-align:center;padding:0 4px}
-.era-lock{font-size:clamp(9px,1vw,13px)}
+.era-slide{flex:0 0 33.3333%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:1px solid transparent;transition:border-color .25s,background .25s,opacity .25s,transform .25s;padding:4px;overflow:hidden}
+.era-slide.active{border-color:var(--gold);background:rgba(201,168,76,.08)}
+.era-slide.side{border-color:rgba(42,36,24,.4);background:rgba(0,0,0,.18);opacity:.5;transform:scaleY(.88)}
+.era-slide.hidden{opacity:0;pointer-events:none}
+.era-slide.locked{opacity:.38;cursor:not-allowed}
+.era-scen-icon{font-size:18px;line-height:1}
+.era-scen-name{font-family:'Cinzel',serif;font-size:clamp(8px,.9vw,11px);color:var(--gold);letter-spacing:1px;text-align:center;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;padding:0 4px}
+.era-slide.side .era-scen-name,.era-slide.locked .era-scen-name{color:var(--dim)}
+.era-scen-sub{font-size:clamp(6px,.65vw,8px);color:var(--dim);text-align:center}
+
+/* NATION FLAGS */
+.nat-flag{width:22px;height:15px;border-radius:1px;flex-shrink:0;border:1px solid rgba(255,255,255,.15);overflow:hidden;position:relative;background:#1a1a2a}
+.nat-flag-svg{width:100%;height:100%;display:block}
+.nat-swatch{width:14px;height:14px;border-radius:2px;flex-shrink:0;border:1px solid rgba(255,255,255,.1)}
 
 /* HUD */
 #s-game{flex-direction:column}
@@ -509,10 +548,12 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 
 <!-- SETUP -->
 <div class="scr" id="s-setup">
-  <div id="setup-map-side">
+  <!-- Full-screen blurred map background -->
+  <div id="setup-map-bg">
     <canvas id="setup-map-canvas"></canvas>
-    <div id="setup-map-label"></div>
   </div>
+  <div id="setup-frosted"></div>
+  <div id="setup-map-label"></div>
   <div id="setup-panel">
     <div id="setup-panel-inner">
       <button class="setup-back-btn" onclick="show('worlds');refreshWorldsList()">← Worlds</button>
@@ -521,18 +562,38 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
         <input class="camp-title-input" id="camp-title-input" type="text" maxlength="28" value="NEW CAMPAIGN" style="display:none">
         <span class="camp-title-edit-icon">✎</span>
       </div>
-      <div class="setup-block">
-        <div class="setup-lbl">ERA</div>
-        <div class="era-carousel" id="era-carousel">
-          <button class="era-arrow" id="era-prev" onclick="eraStep(-1)">‹</button>
-          <div class="era-track-outer" id="era-track-outer">
-            <div class="era-fog-l"></div>
-            <div class="era-track" id="era-track"></div>
-            <div class="era-fog-r"></div>
+
+      <!-- SCENARIO PICKER -->
+      <div class="setup-block" id="scenario-section">
+        <div id="scenario-header">
+          <div class="setup-lbl">SCENARIO / MAP</div>
+          <div style="display:flex;gap:5px;align-items:center">
+            <div id="scenario-view-toggle">
+              <button class="scen-view-btn on" id="scen-btn-list" onclick="setScenView('list')" title="List view">☰</button>
+              <button class="scen-view-btn" id="scen-btn-carousel" onclick="setScenView('carousel')" title="Carousel">◫</button>
+            </div>
+            <div id="scenario-actions">
+              <button class="btn" onclick="refreshScenarios()" title="Scan server for new maps" style="padding:4px 8px;font-size:8px">↺</button>
+              <button class="btn" onclick="importUserMap()" title="Upload your own map .js file" style="padding:4px 8px;font-size:8px">↑</button>
+            </div>
           </div>
-          <button class="era-arrow" id="era-next" onclick="eraStep(1)">›</button>
+        </div>
+        <!-- List / Tile view -->
+        <div id="scenario-list"></div>
+        <!-- Carousel view -->
+        <div id="era-carousel-wrap">
+          <div id="scen-carousel">
+            <button class="era-arrow" id="era-prev" onclick="eraStep(-1)">‹</button>
+            <div class="era-track-outer">
+              <div class="era-fog-l"></div>
+              <div class="era-track" id="era-track"></div>
+              <div class="era-fog-r"></div>
+            </div>
+            <button class="era-arrow" id="era-next" onclick="eraStep(1)">›</button>
+          </div>
         </div>
       </div>
+
       <div class="setup-block">
         <div class="setup-lbl">LEADER NAME</div>
         <input class="sinp" id="rname" type="text" placeholder="The Chancellor…" maxlength="26">
@@ -736,36 +797,110 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 
 <div id="mo" onclick="moOut(event)"><div id="mb"><div class="mt" id="mo-t">—</div><div id="mo-b"></div><div class="mbtns" id="mo-btns"></div></div></div>
 <div id="popup"></div>
-<script src="map.js"></script>
-<script src="game.js"></script>
+<script>
+// Load the first map from maps.json synchronously via XHR and patch const→var so scenario switching works
+(function(){
+  const MAP_GLOBALS=['PROVINCES','NATIONS','NB','HEX_GRID','SEA_ZONES','LAND','INIT_ALLIANCES','IDEOLOGIES','TERRAIN','TOC_MAP_KEY','TOC_MAP_NAME','TOC_MAP_DESC'];
+  function patchAndExec(src){
+    MAP_GLOBALS.forEach(g=>{
+      src=src.replace(new RegExp('(^|\n)([ \t]*)(const|let)([ \t]+)'+g+'([ \t]*=)','g'),
+        (_,pre,indent,_kw,sp,eq)=>pre+indent+'var '+g+eq);
+    });
+    const s=document.createElement('script');s.textContent=src;document.head.appendChild(s);
+  }
+  try{
+    // Read maps.json to find the first (default) map filename
+    const mxhr=new XMLHttpRequest();
+    mxhr.open('GET','maps.json',false);
+    mxhr.send();
+    let firstMap=null;
+    if(mxhr.status===0||mxhr.status===200){
+      try{
+        const json=JSON.parse(mxhr.responseText);
+        const list=Array.isArray(json)?json:(json.maps||[]);
+        if(list.length)firstMap=list[0];
+      }catch{}
+    }
+    if(firstMap){
+      window._TOC_DEFAULT_MAP=firstMap; // remember for scenario system
+      const xhr=new XMLHttpRequest();
+      xhr.open('GET',firstMap,false);
+      xhr.send();
+      if(xhr.status===0||xhr.status===200)patchAndExec(xhr.responseText);
+    }
+  }catch(e){}
+})();
+</script>
+<!-- ═══ ENGINE MODULES (replaces monolithic game.js) ═══ -->
+<script src="engine/utils.js"></script>
+<script src="engine/time.js"></script>
+<script src="engine/state.js"></script>
+<script src="engine/map.js"></script>
+<script src="engine/naval.js"></script>
+<script src="engine/military.js"></script>
+<script src="engine/assimilation.js"></script>
+<script src="engine/economy.js"></script>
+<script src="engine/diplomacy.js"></script>
+<script src="engine/events.js"></script>
+<script src="engine/ai.js"></script>
+<script src="engine/endturn.js"></script>
+<script src="engine/ui.js"></script>
 <script src="multiplayer.js"></script>
 <script>
+// ── SHARED MINI-MAP RENDERER (intro, worlds, setup) ──────────
+// Builds a list of {x,y,color} for all land hexes using HEX_GRID if available,
+// otherwise falls back to PROVINCES cx/cy centroids.
+function _buildMiniMapHexes(){
+  const nc=NATIONS.map(n=>n.color);
+  if(typeof HEX_GRID!=='undefined'&&HEX_GRID&&HEX_GRID.hexes){
+    const hR=HEX_GRID.hexR,W=Math.sqrt(3)*hR,H=2*hR;
+    return HEX_GRID.hexes.map(h=>({
+      x:W*h.c+(h.r%2?W/2:0),y:H*.75*h.r,
+      color:h.sea?null:(h.p>=0?(nc[PROVINCES[h.p]?.nation]||'#1a1a2a'):null),
+      R:hR,sea:h.sea,p:h.p
+    })).filter(h=>!h.sea&&h.color);
+  }
+  // Fallback: centroid mode
+  const R=8/Math.sqrt(3)*1.14;
+  return PROVINCES.map(p=>({x:p.cx,y:p.cy,color:nc[p.nation]||'#1a1a2a',R,sea:false,p:p.id||0}));
+}
+function _miniMapBounds(hexes){
+  let mnX=Infinity,mxX=-Infinity,mnY=Infinity,mxY=-Infinity;
+  for(const h of hexes){mnX=Math.min(mnX,h.x);mxX=Math.max(mxX,h.x);mnY=Math.min(mnY,h.y);mxY=Math.max(mxY,h.y);}
+  const R=hexes[0]?.R||18;
+  return{minX:mnX-R*2,maxX:mxX+R*2,minY:mnY-R*2,maxY:mxY+R*2};
+}
+
 // ── INTRO MAP ────────────────────────────────────────────────
 (function(){
   const cv=document.getElementById('intro-map-canvas');if(!cv)return;
-  const cx=cv.getContext('2d'),nc=NATIONS.map(n=>n.color),R=8/Math.sqrt(3)*1.14,W=560,H=500;
+  const cx=cv.getContext('2d');
   let px=0,pd=1,raf;
-  function rsz(){cv.width=cv.offsetWidth;cv.height=cv.offsetHeight;}
+  let hexes=null,bnds=null;
   function hp(x,y,r){cx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/6+Math.PI/3*i;i?cx.lineTo(x+r*Math.cos(a),y+r*Math.sin(a)):cx.moveTo(x+r*Math.cos(a),y+r*Math.sin(a));}cx.closePath();}
+  function rsz(){cv.width=cv.offsetWidth;cv.height=cv.offsetHeight;}
   function draw(){
+    if(!hexes){hexes=_buildMiniMapHexes();bnds=_miniMapBounds(hexes);}
     const cw=cv.width,ch=cv.height;cx.clearRect(0,0,cw,ch);
+    const W=bnds.maxX-bnds.minX,H=bnds.maxY-bnds.minY;
     const sc=Math.max(ch/H*1.06,cw/W*1.06),sw=W*sc,mp=Math.max(0,sw-cw);
     px+=.18*pd;if(px>=mp){px=mp;pd=-1;}if(px<=0){px=0;pd=1;}
-    const ox=(cw-sw)/2-(mp>0?px:0),oy=(ch-H*sc)/2;
+    const ox=(cw-sw)/2-(mp>0?px:0)-bnds.minX*sc,oy=(ch-H*sc)/2-bnds.minY*sc;
     cx.save();cx.translate(ox,oy);cx.scale(sc,sc);
-    cx.fillStyle='#0a0f1a';cx.fillRect(-10,-10,W+20,H+20);
-    PROVINCES.forEach(p=>{hp(p.cx,p.cy,R);cx.fillStyle=nc[p.nation]||'#1a1a2a';cx.fill();cx.strokeStyle='rgba(0,0,0,.38)';cx.lineWidth=.28;cx.stroke();});
+    cx.fillStyle='#0a0f1a';cx.fillRect(bnds.minX-10,bnds.minY-10,W+20,H+20);
+    for(const h of hexes){hp(h.x,h.y,h.R);cx.fillStyle=h.color;cx.fill();cx.strokeStyle='rgba(0,0,0,.38)';cx.lineWidth=.28/sc;cx.stroke();}
     cx.restore();
     const vg=cx.createRadialGradient(cw/2,ch/2,ch*.15,cw/2,ch/2,ch*.85);
     vg.addColorStop(0,'rgba(6,8,14,.3)');vg.addColorStop(1,'rgba(6,8,14,.82)');
     cx.fillStyle=vg;cx.fillRect(0,0,cw,ch);
     raf=requestAnimationFrame(draw);
   }
-  function start(){rsz();if(raf)cancelAnimationFrame(raf);draw();}
+  function start(){rsz();hexes=null;if(raf)cancelAnimationFrame(raf);draw();}
   new MutationObserver(()=>{
     document.getElementById('s-intro')?.classList.contains('on')?start():(cancelAnimationFrame(raf),raf=null);
   }).observe(document.getElementById('s-intro'),{attributes:true,attributeFilter:['class']});
   window.addEventListener('resize',()=>{if(raf)rsz();});
+  window.addEventListener('toc-map-changed',()=>{hexes=null;});
   start();
 })();
 
@@ -773,32 +908,38 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 (function(){
   const cv=document.getElementById('worlds-map-bg');if(!cv)return;
   cv.style.position='absolute';cv.style.inset='0';cv.style.width='100%';cv.style.height='100%';cv.style.opacity='.22';
-  const cx=cv.getContext('2d'),nc=NATIONS.map(n=>n.color),R=8/Math.sqrt(3)*1.14,W=560,H=500;
+  const cx=cv.getContext('2d');
   let px=0,pd=1,raf;
-  function rsz(){cv.width=cv.offsetWidth;cv.height=cv.offsetHeight;}
+  let hexes=null,bnds=null;
   function hp(x,y,r){cx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/6+Math.PI/3*i;i?cx.lineTo(x+r*Math.cos(a),y+r*Math.sin(a)):cx.moveTo(x+r*Math.cos(a),y+r*Math.sin(a));}cx.closePath();}
+  function rsz(){cv.width=cv.offsetWidth;cv.height=cv.offsetHeight;}
   function draw(){
+    if(!hexes){hexes=_buildMiniMapHexes();bnds=_miniMapBounds(hexes);}
     const cw=cv.width,ch=cv.height;cx.clearRect(0,0,cw,ch);
+    const W=bnds.maxX-bnds.minX,H=bnds.maxY-bnds.minY;
     const sc=Math.max(ch/H*1.06,cw/W*1.06),sw=W*sc,mp=Math.max(0,sw-cw);
     px+=.14*pd;if(px>=mp){px=mp;pd=-1;}if(px<=0){px=0;pd=1;}
-    const ox=(cw-sw)/2-(mp>0?px:0),oy=(ch-H*sc)/2;
+    const ox=(cw-sw)/2-(mp>0?px:0)-bnds.minX*sc,oy=(ch-H*sc)/2-bnds.minY*sc;
     cx.save();cx.translate(ox,oy);cx.scale(sc,sc);
-    cx.fillStyle='#0a0f1a';cx.fillRect(-10,-10,W+20,H+20);
-    PROVINCES.forEach(p=>{hp(p.cx,p.cy,R);cx.fillStyle=nc[p.nation]||'#1a1a2a';cx.fill();cx.strokeStyle='rgba(0,0,0,.35)';cx.lineWidth=.28;cx.stroke();});
+    cx.fillStyle='#0a0f1a';cx.fillRect(bnds.minX-10,bnds.minY-10,W+20,H+20);
+    for(const h of hexes){hp(h.x,h.y,h.R);cx.fillStyle=h.color;cx.fill();cx.strokeStyle='rgba(0,0,0,.35)';cx.lineWidth=.28/sc;cx.stroke();}
     cx.restore();
     const vg=cx.createRadialGradient(cw/2,ch/2,ch*.1,cw/2,ch/2,ch*.92);
     vg.addColorStop(0,'rgba(6,8,14,.55)');vg.addColorStop(1,'rgba(6,8,14,.93)');
     cx.fillStyle=vg;cx.fillRect(0,0,cw,ch);
     raf=requestAnimationFrame(draw);
   }
-  function start(){rsz();if(raf)cancelAnimationFrame(raf);draw();}
+  function start(){rsz();hexes=null;if(raf)cancelAnimationFrame(raf);draw();}
   new MutationObserver(()=>{
     document.getElementById('s-worlds')?.classList.contains('on')?start():(raf&&(cancelAnimationFrame(raf),raf=null));
   }).observe(document.getElementById('s-worlds'),{attributes:true,attributeFilter:['class']});
   window.addEventListener('resize',()=>{if(raf)rsz();});
+  window.addEventListener('toc-map-changed',()=>{hexes=null;});
 })();
 
 // ── SAVE SYSTEM ──────────────────────────────────────────────
+// showToast = alias for popup() defined in game.js
+function showToast(msg,dur){if(typeof popup==='function')popup(msg,dur||2200);else console.log(msg);}
 const SAVE_KEY='toc1936_v2';
 const MAX_SLOTS=6;
 function getAllSaves(){try{return JSON.parse(localStorage.getItem(SAVE_KEY)||'[]');}catch{return[];}}
@@ -845,7 +986,7 @@ function loadFromSlot(slot){
   if(!G.draftQueue) G.draftQueue=[];
   show('game');
   setTimeout(()=>{
-    computeHexRadius();buildCanvas();zoomReset();
+    buildHexCache();computeHexRadius();buildCanvas();zoomReset();
     updateHUD();updateIdeoHUD();updateSeasonUI();
     addLog(`${G.leaderName} returns to the throne.`,'event');
   },80);
@@ -869,19 +1010,7 @@ window.importSave=function(){
   const inp=document.createElement('input');inp.type='file';inp.accept='.json';
   inp.onchange=e=>{
     const f=e.target.files[0];if(!f)return;
-    new FileReader().addEventListener('load',ev=>{
-      try{
-        const entry=JSON.parse(ev.target.result);
-        if(!entry?.state)throw 0;
-        const saves=getAllSaves();
-        let slot=typeof entry.slot==='number'?entry.slot:saves.length;
-        if(saves.find(s=>s.slot===slot))slot=Math.max(...saves.map(s=>s.slot),-1)+1;
-        entry.slot=slot;
-        const idx=saves.findIndex(s=>s.slot===slot);
-        if(idx>=0)saves[idx]=entry;else saves.push(entry);
-        setSaves(saves);refreshWorldsList();showToast('✓ Imported');
-      }catch{showToast('Invalid save file');}
-    });
+    // (duplicate FileReader removed — fix applied)
     const fr=new FileReader();fr.onload=ev=>{
       try{
         const entry=JSON.parse(ev.target.result);
@@ -958,99 +1087,568 @@ window.refreshWorldsList=function(){
   `).join('');
 };
 
-// ── SETUP MAP + ERA CAROUSEL + NATIONS ───────────────────────
+// ── SETUP MAP + SCENARIO SYSTEM + NATIONS ───────────────────
 (function(){
-  const W=560,H=500,R=8/Math.sqrt(3)*1.14;
   let hilite=-1;
+  let _setupHexes=null,_setupBnds=null;
 
-  function hp(ctx,x,y,r){ctx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/6+Math.PI/3*i;i?ctx.lineTo(x+r*Math.cos(a),y+r*Math.sin(a)):ctx.moveTo(x+r*Math.cos(a),y+r*Math.sin(a));}ctx.closePath();}
-  function bright(hex,f){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);r=Math.min(255,Math.round(r*f+40));g=Math.min(255,Math.round(g*f+30));b=Math.min(255,Math.round(b*f+20));return`#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;}
-  function dark(hex){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return`#${Math.round(r*.35).toString(16).padStart(2,'0')}${Math.round(g*.35).toString(16).padStart(2,'0')}${Math.round(b*.35).toString(16).padStart(2,'0')}`;}
-
-  function rsz(){const cv=document.getElementById('setup-map-canvas');if(!cv)return;const side=document.getElementById('setup-map-side');if(!side)return;cv.width=side.offsetWidth;cv.height=side.offsetHeight;drawMap(hilite);}
-
-  function drawMap(hl){
-    const cv=document.getElementById('setup-map-canvas');if(!cv)return;
-    const ctx=cv.getContext('2d'),cw=cv.width,ch=cv.height;
-    const sc=Math.max(ch/H*1.04,cw/W*1.04);
-    const ox=(cw-W*sc)/2,oy=(ch-H*sc)/2;
-    ctx.clearRect(0,0,cw,ch);ctx.save();ctx.translate(ox,oy);ctx.scale(sc,sc);
-    ctx.fillStyle='#0a0f1a';ctx.fillRect(-10,-10,W+20,H+20);
-    PROVINCES.forEach(p=>{
-      const isH=hl>=0&&p.nation===hl;
-      hp(ctx,p.cx,p.cy,R);
-      ctx.fillStyle=isH?bright(NATIONS[hl].color,1.8):(hl>=0?dark(NATIONS[p.nation]?.color||'#1a1a2a'):NATIONS[p.nation]?.color||'#1a1a2a');
-      ctx.fill();ctx.strokeStyle=isH?'rgba(201,168,76,.5)':'rgba(0,0,0,.36)';ctx.lineWidth=isH?.75:.3;ctx.stroke();
-    });
-    ctx.restore();
-    const vg=ctx.createRadialGradient(cw/2,ch/2,ch*.1,cw/2,ch/2,ch*.75);
-    vg.addColorStop(0,'rgba(6,8,14,0)');vg.addColorStop(1,'rgba(6,8,14,.72)');
-    ctx.fillStyle=vg;ctx.fillRect(0,0,cw,ch);
+  // ── LOADING OVERLAY ───────────────────────────────────────
+  function _showLoading(msg){
+    let ov=document.getElementById('scen-loading-overlay');
+    if(!ov){
+      ov=document.createElement('div');ov.id='scen-loading-overlay';
+      ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(6,8,14,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);transition:opacity .3s';
+      ov.innerHTML=`<div style="width:44px;height:44px;border:3px solid rgba(201,168,76,.2);border-top-color:var(--gold,#c9a84c);border-radius:50%;animation:_ldSpin .7s linear infinite"></div>
+        <div id="scen-loading-msg" style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold,#c9a84c);letter-spacing:2px;text-transform:uppercase"></div>`;
+      if(!document.getElementById('_ldSpinStyle')){
+        const s=document.createElement('style');s.id='_ldSpinStyle';
+        s.textContent='@keyframes _ldSpin{to{transform:rotate(360deg)}}';
+        document.head.appendChild(s);
+      }
+      document.body.appendChild(ov);
+    }
+    const m=document.getElementById('scen-loading-msg');if(m)m.textContent=msg||'Loading…';
+    ov.style.display='flex';ov.style.opacity='1';
+  }
+  function _hideLoading(){
+    const ov=document.getElementById('scen-loading-overlay');
+    if(!ov)return;
+    ov.style.opacity='0';
+    setTimeout(()=>{ov.style.display='none';},320);
   }
 
-  // ── ERA ──────────────────────────────────────────────────
-  const ERAS=[
-    {year:1936,sub:'Age of Ideologies',locked:false},
-    {year:1939,sub:'World at War',locked:true},
-    {year:1942,sub:'Turning Point',locked:true},
-  ];
-  let eraIdx=0;
+  // ── SCENARIO STORAGE & SYSTEM ─────────────────────────────
+  const SCEN_KEY='toc_scenarios_v1';
+  // List of server maps — edit maps.json on the server to add/remove maps without touching index.html
+  // Fallback hardcoded list is used if maps.json is not found
+  const MAP_KEY_PREFIX='TOC-';
 
-  function buildEra(){
+  let _activeScenario=null;
+  let _scenView='list';
+  let _eraIdx=0;
+
+  function getAllUserMaps(){try{return JSON.parse(localStorage.getItem(SCEN_KEY)||'[]');}catch{return[];}}
+  function saveUserMaps(arr){try{localStorage.setItem(SCEN_KEY,JSON.stringify(arr));}catch(e){showToast('Storage full!');}}
+
+  // ── MAP KEY DECODE & VERIFY ────────────────────────────────
+  const _KEY_SALT  = 0x4F4354;
+  const _KEY_PRIME = 1_000_003;
+  const _KEY_MOD   = 36 ** 5;
+
+  function _encodeVal(n){
+    const mixed=((n*_KEY_SALT+n*n+7)%_KEY_PRIME+_KEY_PRIME)%_KEY_PRIME;
+    return(mixed%_KEY_MOD).toString(36).toUpperCase().padStart(5,'0');
+  }
+  function _decodeKey(key){
+    const m=key&&key.match(/^TOC-([0-9A-Z]{5})-([0-9A-Z]{5})-([0-9A-Z]{5})$/i);
+    if(!m)return null;
+    return{pEnc:m[1].toUpperCase(),nEnc:m[2].toUpperCase(),hEnc:m[3].toUpperCase()};
+  }
+  function _validateMapKey(data){
+    const keyMatch=data.match(/TOC_MAP_KEY\s*=\s*['"`](TOC-[^'"`]+)['"`]/);
+    if(!keyMatch)return{ok:false,reason:'Missing TOC_MAP_KEY'};
+    const key=keyMatch[1];
+    const parts=_decodeKey(key);
+    if(!parts)return{ok:false,reason:'Malformed key: '+key};
+    const provMatch=data.match(/(?:const|var) PROVINCES\s*=\s*(\[[\s\S]*?\]);/);
+    const natMatch =data.match(/(?:const|var) NATIONS\s*=\s*(\[[\s\S]*?\]);/);
+    const hexMatch =data.match(/(?:const|var) HEX_GRID\s*=\s*(\{[\s\S]*?\});/);
+    if(!provMatch||!natMatch||!hexMatch)return{ok:false,reason:'Missing required arrays'};
+    let provCount,natCount,landHexCount;
+    try{
+      provCount=(provMatch[1].match(/"id"\s*:/g)||[]).length;
+      natCount =(natMatch[1].match(/"id"\s*:/g)||[]).length;
+      landHexCount=(hexMatch[1].match(/"sea"\s*:\s*0/g)||[]).length;
+    }catch(e){return{ok:false,reason:'Parse error: '+e.message};}
+    const expP=_encodeVal(provCount),expN=_encodeVal(natCount),expH=_encodeVal(landHexCount);
+    if(parts.pEnc!==expP)return{ok:false,reason:`Province count mismatch`};
+    if(parts.nEnc!==expN)return{ok:false,reason:`Nation count mismatch`};
+    if(parts.hEnc!==expH)return{ok:false,reason:`Hex count mismatch`};
+    return{ok:true};
+  }
+  function _extractMapMeta(data){
+    const nameM=data.match(/TOC_MAP_NAME\s*=\s*['"`]([^'"`]+)['"`]/);
+    const descM=data.match(/TOC_MAP_DESC\s*=\s*['"`]([^'"`]+)['"`]/);
+    return{name:nameM?nameM[1]:null,desc:descM?descM[1]:null};
+  }
+
+  async function probeServerMaps(){
+    const found=[];
+
+    // Try to load maps.json — a simple list of map filenames on the server
+    // This way you just edit maps.json to add/remove maps, no need to touch index.html
+    let serverMapNames=[];
+    try{
+      const r=await fetch('maps.json?_='+Date.now(),{cache:'no-store'});
+      if(r.ok){
+        const json=await r.json();
+        // Accept either ["map_e.js","map_other.js"] or {"maps":["map_e.js",...]}
+        serverMapNames=Array.isArray(json)?json:(json.maps||[]);
+      }
+    }catch{}
+
+    // Probe each map file — bypass cache to avoid stale 404s
+    // The FIRST map in the list is treated as the default (already loaded at page start)
+    const probes=serverMapNames.map(async (filename,idx)=>{
+      try{
+        const r=await fetch(filename+'?_='+Date.now(),{method:'HEAD',cache:'no-store'});
+        if(r.ok){
+          const isDefault=idx===0;
+          found.push({
+            id:isDefault?'default':filename,
+            name:isDefault?_getDefaultMapName():_filenameToName(filename),
+            sub:isDefault?'Built-in · Default':'Server map',
+            source:'server',filename,
+            loaded:isDefault,trusted:true
+          });
+        }
+      }catch{}
+    });
+    await Promise.allSettled(probes);
+    // Keep original order from maps.json
+    found.sort((a,b)=>{
+      const ai=serverMapNames.indexOf(a.filename),bi=serverMapNames.indexOf(b.filename);
+      return ai-bi;
+    });
+    return found;
+  }
+  function _filenameToName(fn){
+    // Extract year or name from filename, e.g. map_1936.js → "1936", map_europe.js → "Europe"
+    return fn.replace(/^map_?/,'').replace(/\.js$/,'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())||'Map';
+  }
+  function _getDefaultMapName(){
+    if(typeof TOC_MAP_NAME!=='undefined'&&TOC_MAP_NAME)return TOC_MAP_NAME;
+    if(typeof NATIONS!=='undefined'&&NATIONS.length)return'Map';
+    return'Map';
+  }
+
+  let _serverMaps=null;
+  async function getScenarioList(){
+    if(!_serverMaps)_serverMaps=await probeServerMaps();
+    const userMaps=getAllUserMaps().map(u=>({
+      id:'user_'+u.id,name:u.name,
+      sub:u.id.startsWith('ed_')?`⚙ Editor · ${u.size||'?'}`:`👤 Uploaded · ${u.size||'?'}`,
+      source:'user',editor:u.id.startsWith('ed_'),data:u.data,loaded:false,trusted:true
+    }));
+    return[..._serverMaps,...userMaps,{id:'__mystery',name:'???',sub:'Coming soon…',source:'locked',locked:true}];
+  }
+
+  // ── GLOBAL MINI-MAP REFRESH ────────────────────────────────
+  function _refreshAllMiniMaps(){
+    _setupHexes=null;_setupBnds=null;
+    window.dispatchEvent(new CustomEvent('toc-map-changed'));
+  }
+
+  // ── LOAD SCENARIO (with full game engine reinit) ───────────
+  // Globals that map files declare and game.js reads
+  const _MAP_GLOBALS=['PROVINCES','NATIONS','NB','HEX_GRID','SEA_ZONES','LAND','INIT_ALLIANCES','IDEOLOGIES','TERRAIN','TOC_MAP_KEY','TOC_MAP_NAME','TOC_MAP_DESC'];
+
+  // Patch map source: rewrite `const/let FOO =` → `var FOO =`
+  // Using var in global script scope creates a real window property,
+  // so game.js can see the updated values via its lexical NATIONS/PROVINCES/etc references.
+  function _patchMapData(src){
+    let out=src;
+    _MAP_GLOBALS.forEach(g=>{
+      out=out.replace(
+        new RegExp('(^|\\n)([ \\t]*)(const|let)([ \\t]+)'+g+'([ \\t]*=)','g'),
+        (_,pre,indent,_kw,sp,eq)=>pre+indent+'var '+g+eq
+      );
+    });
+    return out;
+  }
+
+  // Execute patched map source in TRUE global scope via script tag.
+  // Function() creates its own scope — var inside it does NOT become window property.
+  // A <script> tag executes in global scope, so var FOO = ... becomes window.FOO.
+  function _execMapData(src){
+    const existing=document.getElementById('dyn-map-script');
+    if(existing)existing.remove();
+    const s=document.createElement('script');
+    s.id='dyn-map-script';
+    s.textContent=src;
+    document.head.appendChild(s);
+    // Script tag execution is synchronous for inline scripts
+  }
+
+  function loadScenario(scen,cb){
+    // User-uploaded map
+    if(scen.source==='user'&&scen.data){
+      const check=_validateMapKey(scen.data);
+      if(!check.ok){_hideLoading();showToast('❌ Key error: '+check.reason);cb&&cb(false);return;}
+      try{
+        _execMapData(_patchMapData(scen.data));
+        _activeScenario={...scen,loaded:true};
+        _refreshAllMiniMaps();
+        _reinitGameGlobals();
+        cb&&cb(true);
+      }catch(e){
+        _hideLoading();
+        showToast('Map error: '+e.message);
+        console.error('Map load error:',e);
+        _loadFallback(cb);
+      }
+      return;
+    }
+
+    // Server map — fetch text, patch globals, execute
+    if(scen.source==='server'){
+      fetch(scen.filename+'?_='+Date.now())
+        .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text();})
+        .then(data=>{
+          const check=_validateMapKey(data);
+          if(!check.ok){_hideLoading();showToast('❌ Key error: '+check.reason);_loadFallback(cb);return;}
+          try{
+            _execMapData(_patchMapData(data));
+          }catch(e){
+            _hideLoading();
+            showToast('Map error: '+e.message);
+            console.error('Server map exec error:',e);
+            _loadFallback(cb);return;
+          }
+          _activeScenario={...scen,loaded:true};
+          _refreshAllMiniMaps();
+          _reinitGameGlobals();
+          cb&&cb(true);
+        })
+        .catch(e=>{_hideLoading();showToast('Failed: '+e.message);_loadFallback(cb);});
+      return;
+    }
+
+    _hideLoading();cb&&cb(false);
+  }
+
+  // Rebuild game engine caches after map data changes
+  function _reinitGameGlobals(){
+    try{
+      if(typeof buildHexCache==='function')buildHexCache();
+      if(typeof computeHexRadius==='function')computeHexRadius();
+    }catch(e){console.warn('reinit:',e);}
+  }
+
+  function _loadFallback(cb){
+    showToast('↩ Falling back to default map');
+    const def=_serverMaps&&_serverMaps[0];
+    if(def){_activeScenario=def;_refreshAllMiniMaps();_reinitGameGlobals();cb&&cb(false);}
+    else{_hideLoading();cb&&cb(false);}
+  }
+
+  // ── SCENARIO UI ───────────────────────────────────────────
+  let _currentScenarios=[];
+  let _selectedScenId='default';
+
+  window.setScenView=function(mode){
+    _scenView=mode;
+    ['list','carousel'].forEach(m=>{
+      const b=document.getElementById('scen-btn-'+m);
+      if(b)b.classList.toggle('on',m===mode);
+    });
+    const list=document.getElementById('scenario-list');
+    const car=document.getElementById('era-carousel-wrap');
+    if(mode==='carousel'){
+      if(list)list.style.display='none';
+      if(car)car.classList.add('on');
+      buildCarousel();
+    }else{
+      if(list){list.style.display='';list.className='';}
+      if(car)car.classList.remove('on');
+    }
+  };
+
+  async function buildScenarios(){
+    const list=document.getElementById('scenario-list');
+    if(list)list.innerHTML='<div style="font-size:9px;color:var(--dim);padding:8px;text-align:center;font-style:italic">Scanning…</div>';
+    _currentScenarios=await getScenarioList();
+    renderScenList();
+    if(_scenView==='carousel')buildCarousel();
+  }
+
+  function renderScenList(){
+    const list=document.getElementById('scenario-list');if(!list)return;
+    list.innerHTML='';
+    list.className='';
+    _currentScenarios.forEach(scen=>{
+      const isActive=scen.id===_selectedScenId;
+      const isUser=scen.source==='user';
+      const isLocked=scen.locked;
+      const isLoading=scen.id===_loadingScenId;
+      const div=document.createElement('div');
+      const isEditor=scen.editor||false;
+      div.className='scen-card'+(isActive?' active':'')+(isUser?' user-map':'')+(isEditor?' editor-map':'')+(isLocked?' locked':'')+(isLoading?' loading':'');
+      div.innerHTML=`
+        <div class="scen-icon">${isLoading?'⏳':isLocked?'🔒':isEditor?'⚙':isUser?'👤':'🗺'}</div>
+        <div class="scen-info">
+          <div class="scen-name">${scen.name}</div>
+          <div class="scen-sub">${scen.sub||''}</div>
+        </div>
+        ${isUser&&!isLoading?`<button class="scen-del" onclick="event.stopPropagation();deleteUserMap('${scen.id}')" title="Delete">✕</button>`:''}`;
+      if(!isLocked&&!isLoading)div.onclick=()=>selectScenario(scen.id);
+      list.appendChild(div);
+    });
+  }
+
+  function buildCarousel(){
     const track=document.getElementById('era-track');if(!track)return;
     track.innerHTML='';
-    ERAS.forEach((e,i)=>{
+    _currentScenarios.forEach((scen,i)=>{
+      const isLocked=scen.locked;
       const d=document.createElement('div');
-      d.className='era-slide'+(e.locked?' locked':'');
-      d.id='era-s'+i;
-      d.innerHTML=e.locked
-        ?`<div class="era-lock">🔒</div><div class="era-year">${e.year}</div><div class="era-sub">${e.sub}</div>`
-        :`<div class="era-year">${e.year}</div><div class="era-sub">${e.sub}</div>`;
+      d.className='era-slide'+(isLocked?' locked':'')+(scen.id===_selectedScenId?' active':'');
+      d.id='era-sc'+i;
+      d.innerHTML=`<div class="era-scen-icon">${isLocked?'🔒':scen.source==='user'?'👤':'🗺'}</div>
+        <div class="era-scen-name">${scen.name}</div>
+        <div class="era-scen-sub">${scen.sub||''}</div>`;
+      if(!isLocked)d.onclick=()=>selectScenario(scen.id);
       track.appendChild(d);
     });
-    posEra(false);
+    posCarousel(false);
   }
 
-  function posEra(anim){
+  function posCarousel(anim){
     const track=document.getElementById('era-track');if(!track)return;
-    // slide so active is in center (slot 1 of 3 visible)
-    const pct=(-eraIdx+1)*33.3333;
+    const pct=(-_eraIdx+1)*33.3333;
     track.style.transition=anim?'transform .3s cubic-bezier(.4,0,.2,1)':'none';
     track.style.transform=`translateX(${pct}%)`;
-    ERAS.forEach((_,i)=>{
-      const sl=document.getElementById('era-s'+i);if(!sl)return;
-      const d=i-eraIdx;
+    _currentScenarios.forEach((_,i)=>{
+      const sl=document.getElementById('era-sc'+i);if(!sl)return;
+      const d=i-_eraIdx;
       sl.classList.remove('active','side','hidden');
       if(d===0)sl.classList.add('active');
       else if(Math.abs(d)===1)sl.classList.add('side');
       else sl.classList.add('hidden');
     });
     const prev=document.getElementById('era-prev'),next=document.getElementById('era-next');
-    if(prev)prev.style.opacity=eraIdx===0?'.2':'1';
-    if(next)next.style.opacity=eraIdx===ERAS.length-1?'.2':'1';
-  }
-
-  function shake(id){
-    const b=document.getElementById(id);if(!b)return;
-    b.classList.remove('shake');void b.offsetWidth;b.classList.add('shake');
-    setTimeout(()=>b.classList.remove('shake'),400);
+    if(prev)prev.style.opacity=_eraIdx===0?'.2':'1';
+    if(next)next.style.opacity=_eraIdx>=_currentScenarios.length-1?'.2':'1';
   }
 
   window.eraStep=function(dir){
-    const n=eraIdx+dir;
-    if(n<0){shake('era-prev');return;}
-    if(n>=ERAS.length){shake('era-next');return;}
-    eraIdx=n;posEra(true);
+    const n=_eraIdx+dir;
+    if(n<0||n>=_currentScenarios.length)return;
+    _eraIdx=n;posCarousel(true);
+    const scen=_currentScenarios[n];
+    if(scen&&!scen.locked)selectScenario(scen.id);
   };
 
-  // drag/swipe
-  function initDrag(){
-    const outer=document.getElementById('era-track-outer');if(!outer)return;
-    let sx=null,dragging=false;
-    outer.addEventListener('mousedown',e=>{sx=e.clientX;dragging=true;e.preventDefault();});
-    window.addEventListener('mouseup',e=>{if(dragging){const dx=sx-e.clientX;dragging=false;if(Math.abs(dx)>22)eraStep(dx>0?1:-1);}});
-    outer.addEventListener('touchstart',e=>{sx=e.touches[0].clientX;},{passive:true});
-    outer.addEventListener('touchend',e=>{if(sx!==null){const dx=sx-e.changedTouches[0].clientX;if(Math.abs(dx)>22)eraStep(dx>0?1:-1);sx=null;}},{passive:true});
+  let _loadingScenId=null;
+
+  function selectScenario(id){
+    if(_loadingScenId)return; // prevent double-click during load
+    const scen=_currentScenarios.find(s=>s.id===id);
+    if(!scen||scen.locked)return;
+
+    _selectedScenId=id;
+    _loadingScenId=id;
+    // Always reset loaded flag so loadScenario re-runs engine reinit
+    scen.loaded=false;
+    renderScenList();
+    if(_scenView==='carousel')buildCarousel();
+
+    // Show loading overlay
+    _showLoading('Loading '+scen.name+'…');
+
+    loadScenario(scen,ok=>{
+      _loadingScenId=null;
+      _hideLoading();
+      if(ok){
+        SC=-1;SI='fascism';
+        _setupHexes=null;_setupBnds=null;
+        buildNations();
+        _zoomReset();
+        hilite=-1;drawMap(-1);
+        const nc=document.getElementById('nation-info-card');if(nc)nc.style.display='none';
+        chkSB();
+        renderScenList();
+        if(_scenView==='carousel')buildCarousel();
+        showToast('✓ '+scen.name+' loaded',1800);
+      }else{
+        _selectedScenId=(_currentScenarios[0]&&_currentScenarios[0].id)||'default';
+        renderScenList();
+      }
+    });
+  }
+
+  window.refreshScenarios=async function(){
+    _serverMaps=null;
+    await buildScenarios();
+    showToast('↺ Refreshed');
+  };
+
+  window.importUserMap=function(){
+    const inp=document.createElement('input');inp.type='file';inp.accept='.js';
+    inp.onchange=e=>{
+      const f=e.target.files[0];if(!f)return;
+      _showLoading('Validating '+f.name+'…');
+      const reader=new FileReader();
+      reader.onload=ev=>{
+        const data=ev.target.result;
+        _hideLoading();
+        if(!data.includes('PROVINCES')||!data.includes('NATIONS')){
+          showToast('❌ Invalid map — needs PROVINCES & NATIONS');return;
+        }
+        const check=_validateMapKey(data);
+        if(!check.ok){showToast('❌ '+check.reason);return;}
+        const meta=_extractMapMeta(data);
+        const maps=getAllUserMaps();
+        const id='u'+Date.now();
+        const name=meta.name||f.name.replace(/\.js$/,'').replace(/^map_?/,'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())||'Custom Map';
+        const size=Math.round(f.size/1024)+'KB';
+        maps.push({id,name,size,data,desc:meta.desc||'',uploaded:new Date().toLocaleDateString()});
+        saveUserMaps(maps);
+        _serverMaps=null;
+        buildScenarios().then(()=>selectScenario('user_'+id));
+        showToast('✓ Uploaded: '+name);
+      };
+      reader.readAsText(f);
+    };
+    inp.click();
+  };
+
+  window.deleteUserMap=function(scenId){
+    const rawId=scenId.replace(/^user_/,'');
+    saveUserMaps(getAllUserMaps().filter(m=>m.id!==rawId));
+    _serverMaps=null;
+    if(_selectedScenId===scenId){const fb=(_currentScenarios[0]&&_currentScenarios[0].id)||'default';_selectedScenId=fb;selectScenario(fb);}
+    else buildScenarios();
+  };
+
+  // ── SETUP MAP RENDER (animated panning + nation zoom) ──────
+  function _getSetupHexes(){
+    if(_setupHexes)return{hexes:_setupHexes,bnds:_setupBnds};
+    _setupHexes=_buildMiniMapHexes();
+    _setupBnds=_miniMapBounds(_setupHexes);
+    return{hexes:_setupHexes,bnds:_setupBnds};
+  }
+
+  function hp(ctx,x,y,r){ctx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/6+Math.PI/3*i;i?ctx.lineTo(x+r*Math.cos(a),y+r*Math.sin(a)):ctx.moveTo(x+r*Math.cos(a),y+r*Math.sin(a));}ctx.closePath();}
+  function bright(hex,f){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);r=Math.min(255,Math.round(r*f+40));g=Math.min(255,Math.round(g*f+30));b=Math.min(255,Math.round(b*f+20));return`#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;}
+  function dark(hex){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return`#${Math.round(r*.35).toString(16).padStart(2,'0')}${Math.round(g*.35).toString(16).padStart(2,'0')}${Math.round(b*.35).toString(16).padStart(2,'0')}`;}
+
+  // Viewport for the setup map: pan offset + zoom
+  let _vp={x:0,y:0,sc:1}; // world offset (in hex coords)
+  let _panX=0,_panDir=1;  // slow pan state
+  let _panFrozen=false;   // true when nation selected → camera locked
+  let _raf=null;
+
+  function _zoomReset(){
+    const {hexes,bnds}=_getSetupHexes();
+    const cv=document.getElementById('setup-map-canvas');if(!cv)return;
+    const cw=cv.width||cv.offsetWidth,ch=cv.height||cv.offsetHeight;
+    if(!cw||!ch)return;
+    const W=bnds.maxX-bnds.minX,H=bnds.maxY-bnds.minY;
+    _vp.sc=Math.max(ch/H*1.06,cw/W*1.06);
+    _vp.x=(cw-W*_vp.sc)/2-bnds.minX*_vp.sc;
+    _vp.y=(ch-H*_vp.sc)/2-bnds.minY*_vp.sc;
+    _panX=0;_panDir=1;_panFrozen=false;
+  }
+
+  // Smoothly zoom to a nation's capital province
+  function _zoomToNation(natIdx){
+    if(natIdx<0){
+      // Deselect — resume pan from current position
+      _panFrozen=false;
+      return;
+    }
+    // Find capital province of nation
+    const cap=PROVINCES.find(p=>p.nation===natIdx&&p.isCapital)||PROVINCES.find(p=>p.nation===natIdx);
+    if(!cap)return;
+
+    const {hexes,bnds}=_getSetupHexes();
+    const cv=document.getElementById('setup-map-canvas');if(!cv)return;
+    const cw=cv.width||cv.offsetWidth,ch=cv.height||cv.offsetHeight;
+    if(!cw||!ch)return;
+
+    // Find hex centroid for this province
+    let cx=cap.cx,cy=cap.cy;
+    // If HEX_GRID, find average position of hexes belonging to this province
+    if(typeof HEX_GRID!=='undefined'&&HEX_GRID&&HEX_GRID.hexes){
+      const hR=HEX_GRID.hexR,W2=Math.sqrt(3)*hR,H2=2*hR;
+      const capIdx=PROVINCES.indexOf(cap);
+      const pHexes=hexes.filter(h=>h.p===capIdx);
+      if(pHexes.length){
+        cx=pHexes.reduce((s,h)=>s+h.x,0)/pHexes.length;
+        cy=pHexes.reduce((s,h)=>s+h.y,0)/pHexes.length;
+      }
+    }
+
+    const W=bnds.maxX-bnds.minX,H=bnds.maxY-bnds.minY;
+    const baseSc=Math.max(ch/H*1.06,cw/W*1.06);
+    const targetSc=baseSc*2.2; // zoom in 2.2x
+    const targetX=cw/2-cx*targetSc;
+    const targetY=ch*0.42-cy*targetSc;
+
+    _panFrozen=true; // stop auto-pan
+
+    // Animate zoom
+    const startX=_vp.x,startY=_vp.y,startSc=_vp.sc;
+    const dur=600,t0=performance.now();
+    function ease(t){return t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}
+    function animZoom(now){
+      const t=Math.min((now-t0)/dur,1),e=ease(t);
+      _vp.x=startX+(targetX-startX)*e;
+      _vp.y=startY+(targetY-startY)*e;
+      _vp.sc=startSc+(targetSc-startSc)*e;
+      drawMap(hilite);
+      if(t<1)requestAnimationFrame(animZoom);
+    }
+    requestAnimationFrame(animZoom);
+  }
+
+  function rsz(){
+    const cv=document.getElementById('setup-map-canvas');if(!cv)return;
+    const bg=document.getElementById('setup-map-bg');if(!bg)return;
+    cv.width=bg.offsetWidth;cv.height=bg.offsetHeight;
+    _zoomReset();
+    drawMap(hilite);
+    if(!_raf)_startRender();
+  }
+
+  function _startRender(){
+    if(_raf)cancelAnimationFrame(_raf);
+    function frame(){
+      if(!document.getElementById('s-setup')?.classList.contains('on')){_raf=null;return;}
+      // Auto-pan when not frozen
+      if(!_panFrozen){
+        const {bnds}=_getSetupHexes();
+        const cv=document.getElementById('setup-map-canvas');
+        if(cv){
+          const cw=cv.width,W=bnds.maxX-bnds.minX;
+          const sw=W*_vp.sc,mp=Math.max(0,sw-cw);
+          _panX+=.18*_panDir;
+          if(_panX>=mp){_panX=mp;_panDir=-1;}
+          if(_panX<=0){_panX=0;_panDir=1;}
+          // Apply pan as offset from reset position
+          const {bnds:b2}=_getSetupHexes();
+          const ch=cv.height,H=b2.maxY-b2.minY;
+          const baseSc=Math.max(ch/H*1.06,cw/W*1.06);
+          _vp.x=(cw-W*baseSc)/2-b2.minX*baseSc-(mp>0?_panX:0);
+          _vp.y=(ch-H*baseSc)/2-b2.minY*baseSc;
+          _vp.sc=baseSc;
+        }
+        drawMap(hilite);
+      }
+      _raf=requestAnimationFrame(frame);
+    }
+    _raf=requestAnimationFrame(frame);
+  }
+
+  function drawMap(hl){
+    const cv=document.getElementById('setup-map-canvas');if(!cv)return;
+    const ctx=cv.getContext('2d'),cw=cv.width,ch=cv.height;
+    if(!cw||!ch)return;
+    const {hexes,bnds}=_getSetupHexes();
+    ctx.clearRect(0,0,cw,ch);
+    ctx.fillStyle='#0a0f1a';ctx.fillRect(0,0,cw,ch);
+    ctx.save();ctx.translate(_vp.x,_vp.y);ctx.scale(_vp.sc,_vp.sc);
+    for(const h of hexes){
+      const nat=PROVINCES[h.p]?.nation;
+      const natColor=NATIONS[nat]?.color||'#1a1a2a';
+      const isH=hl>=0&&nat===hl;
+      hp(ctx,h.x,h.y,h.R);
+      ctx.fillStyle=isH?bright(NATIONS[hl]?.color||natColor,1.8):(hl>=0?dark(natColor):natColor);
+      ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,.4)';ctx.lineWidth=.3/_vp.sc;ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // ── TITLE ────────────────────────────────────────────────
@@ -1065,21 +1663,58 @@ window.refreshWorldsList=function(){
     inp.onclick=e=>e.stopPropagation();
   }
 
+  // ── FLAG RENDERING ────────────────────────────────────────
+  function makeFlagSvg(nat,ideo){
+    // Custom flag URL — show image
+    if(nat.flagUrl){
+      return`<img src="${nat.flagUrl}" style="width:22px;height:15px;object-fit:cover;display:block;border-radius:1px" onerror="this.style.display='none'">`;
+    }
+    // No flag — just show nation color as a solid block
+    const c=nat.color||'#334';
+    return`<svg xmlns="http://www.w3.org/2000/svg" width="22" height="15" viewBox="0 0 22 15"><rect width="22" height="15" fill="${c}"/></svg>`;
+  }
+
   // ── NATIONS ──────────────────────────────────────────────
   function buildNations(){
     const list=document.getElementById('nation-list');if(!list)return;
     list.innerHTML='';
+    if(typeof NATIONS==='undefined'||!NATIONS.length){
+      list.innerHTML='<div style="color:var(--dim);font-size:10px;padding:8px;font-style:italic">No nations in this map</div>';return;
+    }
     NATIONS.forEach((nat,i)=>{
       const ideo=IDEOLOGIES[nat.ideology];
+      const flagSvg=makeFlagSvg(nat,ideo);
       const row=document.createElement('div');
       row.className='nat-row';
-      row.innerHTML=`<div class="nat-swatch" style="background:${nat.color}"></div><div class="nat-name">${nat.name}</div><div class="nat-ideo" style="color:${ideo?.color||'#888'};border-color:${ideo?.color||'#444'}">${ideo?.icon||''} ${nat.ideology}</div>`;
-      row.onmouseenter=()=>{hilite=i;drawMap(i);const l=document.getElementById('setup-map-label');if(l){l.textContent=nat.name;l.classList.add('vis');}};
-      row.onmouseleave=()=>{if(SC!==i){hilite=SC;drawMap(SC);const l=document.getElementById('setup-map-label');if(SC<0&&l)l.classList.remove('vis');}};
+      row.innerHTML=`
+        <div class="nat-flag">${flagSvg}</div>
+        <div class="nat-name">${nat.name}</div>
+        <div class="nat-ideo" style="color:${ideo?.color||'#888'};border-color:${ideo?.color||'#444'}">${ideo?.icon||''} ${nat.ideology}</div>`;
+      row.onmouseenter=()=>{
+        if(SC>=0)return; // don't override selection zoom on hover
+        hilite=i;drawMap(i);
+        const l=document.getElementById('setup-map-label');if(l){l.textContent=nat.name;l.classList.add('vis');}
+      };
+      row.onmouseleave=()=>{
+        if(SC>=0)return;
+        hilite=-1;drawMap(-1);
+        const l=document.getElementById('setup-map-label');if(l)l.classList.remove('vis');
+      };
       row.onclick=()=>{
-        if(SC===i){SC=-1;SI='fascism';row.classList.remove('pick');hilite=-1;drawMap(-1);const c=document.getElementById('nation-info-card');if(c)c.style.display='none';const l=document.getElementById('setup-map-label');if(l)l.classList.remove('vis');chkSB();return;}
+        if(SC===i){
+          // Deselect
+          SC=-1;SI='fascism';row.classList.remove('pick');hilite=-1;
+          drawMap(-1);
+          _zoomToNation(-1); // release camera, resume pan
+          const c=document.getElementById('nation-info-card');if(c)c.style.display='none';
+          const l=document.getElementById('setup-map-label');if(l)l.classList.remove('vis');
+          chkSB();return;
+        }
         document.querySelectorAll('.nat-row').forEach(x=>x.classList.remove('pick'));
-        row.classList.add('pick');SC=i;SI=nat.ideology;hilite=i;drawMap(i);showCard(i);chkSB();
+        row.classList.add('pick');SC=i;SI=nat.ideology;hilite=i;
+        drawMap(i);
+        _zoomToNation(i); // zoom camera to nation capital
+        showCard(i);chkSB();
         const l=document.getElementById('setup-map-label');if(l){l.textContent=nat.name;l.classList.add('vis');}
       };
       list.appendChild(row);
@@ -1087,13 +1722,15 @@ window.refreshWorldsList=function(){
   }
 
   function showCard(i){
+    if(typeof NATIONS==='undefined'||!NATIONS[i])return;
     const nat=NATIONS[i],ideo=IDEOLOGIES[nat.ideology],card=document.getElementById('nation-info-card');
     if(!card)return;card.style.display='flex';
-    document.getElementById('nic-flag').style.background=nat.color;
+    const flagEl=document.getElementById('nic-flag');
+    if(flagEl){flagEl.style.background='none';flagEl.innerHTML=makeFlagSvg(nat,ideo);}
     document.getElementById('nic-name').textContent=nat.name;
     document.getElementById('nic-ideo').innerHTML=`${ideo?.icon||''} ${ideo?.name||nat.ideology}`;
     document.getElementById('nic-ideo').style.color=ideo?.color||'#888';
-    const pc=PROVINCES.filter(p=>p.nation===i).length;
+    const pc=(typeof PROVINCES!=='undefined'?PROVINCES:[]).filter(p=>p.nation===i).length;
     const isD=['fascism','nazism','communism','stalinism','militarism'].includes(nat.ideology);
     document.getElementById('nic-stats').innerHTML=`
       <div class="nic-stat"><div class="nic-sl">Regions</div><div class="nic-sv">${pc}</div></div>
@@ -1113,25 +1750,41 @@ window.refreshWorldsList=function(){
     SC=-1;SI='fascism';
     const d=document.getElementById('camp-title-display');if(d)d.textContent='NEW CAMPAIGN';
     const inp=document.getElementById('camp-title-input');if(inp)inp.value='NEW CAMPAIGN';
-    eraIdx=0;
   };
   window.selectYear=function(){};
+  window.eraStep=window.eraStep||function(){};
 
   const origShow=window.show;
   window.show=function(id){
     origShow(id);
     if(id==='setup'){
       setTimeout(()=>{
-        rsz();buildNations();hilite=-1;drawMap(-1);
-        document.getElementById('nation-info-card').style.display='none';
-        buildEra();initDrag();initTitle();
+        rsz();
+        buildNations();
+        _setupHexes=null;_setupBnds=null;
+        _zoomReset();
+        drawMap(-1);
+        _startRender();
+        const nc=document.getElementById('nation-info-card');if(nc)nc.style.display='none';
+        buildScenarios();
+        initTitle();
+        SC=-1;SI='fascism';chkSB();
       },30);
+    }else{
+      // Stop render loop when leaving setup
+      if(_raf){cancelAnimationFrame(_raf);_raf=null;}
     }
     if(id==='worlds')refreshWorldsList();
     if(id==='mp')initMpScreen();
   };
-  window.addEventListener('resize',()=>{if(document.getElementById('s-setup')?.classList.contains('on'))rsz();});
+  window.addEventListener('resize',()=>{
+    if(document.getElementById('s-setup')?.classList.contains('on')){rsz();}
+  });
+  window.addEventListener('toc-map-changed',()=>{
+    _setupHexes=null;_setupBnds=null;
+  });
 })();
+
 
 // ════════════════════════════════════════════════════════════
 //  MULTIPLAYER LOBBY INIT
@@ -1310,7 +1963,7 @@ function _restoreSession(state){
     if(!G._enemyAttackQueue)G._enemyAttackQueue=[];
     show('game');
     setTimeout(()=>{
-      computeHexRadius();buildCanvas();zoomReset();
+      buildHexCache();computeHexRadius();buildCanvas();zoomReset();
       updateHUD();updateIdeoHUD();updateSeasonUI();
       addLog('↺ Session restored.','event');
     },80);
