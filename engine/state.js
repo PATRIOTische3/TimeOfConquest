@@ -26,7 +26,7 @@ let G = {
   resistance:[],
   resistSponsor:[],
   fleet:[],
-  sel:-1, moveFrom:-1, moveMode:false, navalMode:false, navalFrom:-1,
+  sel:-1, selStage:0, selHex:null, moveFrom:-1, moveMode:false, navalMode:false, navalFrom:-1,
   mapMode:'political',
   allianceOf:[],
   tick:0,
@@ -134,7 +134,7 @@ function startGame(){
   G.fleet = [];
 
   G.moveFrom = -1; G.moveMode = false;
-  G.navalMode = false; G.navalFrom = -1; G.sel = -1;
+  G.navalMode = false; G.navalFrom = -1; G.sel = -1; G.selStage = 0; G.selHex = null;
 
   G.aiPersonality = {};
   G.ceasefire = {};

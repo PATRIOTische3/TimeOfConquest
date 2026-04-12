@@ -140,10 +140,12 @@ function buildHexCache(){
         isBorder = true;
         const isProvBorder = nb && !nb.sea && nb.p >= 0 && nb.p !== h.p;
 
-        // For land-land borders: deduplicate — store only from the side with lower p index
-        if(isProvBorder && nb.p < h.p){
-          // The neighbour province (lower index) will add this edge from its side
-          // But we still need to mark isBorder for this hex
+        // For land-land borders: deduplicate — store only from the side with HIGHER p index
+        // Sea/edge borders (isProvBorder=false) are always stored (no other side)
+        if(isProvBorder && nb && nb.p >= 0 && nb.p > h.p){
+          // Higher-index province will add this edge from its side
+          // Still mark isBorder for this hex
+          h.isBorder = true;
           continue;
         }
 
@@ -543,6 +545,30 @@ function hitProv(wx, wy){
     const dx = wx-p.cx, dy = wy-p.cy, d = dx*dx + dy*dy;
     if(d < threshold && d < bestDist){ bestDist = d; best = i; }
   });
+  return best;
+}
+
+// Returns the specific hex object under world coords (wx,wy), or null
+function hitHex(wx, wy){
+  if(!_hexCache || !_hexCache.length) return null;
+  const R = HEX_GRID.hexR, W2 = Math.sqrt(3)*R, H2 = 2*R;
+  const approxRow = Math.round(wy / (H2*.75));
+  const startRow  = Math.max(0, approxRow-2);
+  const endRow    = Math.min((_hexByRC?.length||0)-1, approxRow+2);
+  let best = null, bestD = Infinity;
+  for(let r = startRow; r <= endRow; r++){
+    if(!_hexByRC[r]) continue;
+    const offset    = r%2 ? W2/2 : 0;
+    const approxCol = Math.round((wx - offset) / W2);
+    for(let c = Math.max(0, approxCol-2); c <= approxCol+2; c++){
+      const idx = _hexByRC[r][c];
+      if(idx === undefined) continue;
+      const h = _hexCache[idx];
+      if(h.sea || h.p < 0) continue;
+      const dx = wx-h.x, dy = wy-h.y, d = dx*dx + dy*dy;
+      if(d < R*R*1.8 && d < bestD){ bestD = d; best = h; }
+    }
+  }
   return best;
 }
 
@@ -1024,20 +1050,36 @@ function drawMap(){
     if(G.sel>=0){
       const pulse=0.18+0.12*Math.sin(Date.now()/220);
       const pulseBorder=0.7+0.3*Math.sin(Date.now()/220);
-      // White fill pulse
-      for(const h of _hexCache){
-        if(h.sea||h.p!==G.sel)continue;
-        if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
-        hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
-        ctx.fillStyle=`rgba(255,255,255,${pulse})`;
-        ctx.fill();
+
+      // Stage 1+2: white fill on whole province
+      if(G.selStage === 1 || G.selStage === 2){
+        for(const h of _hexCache){
+          if(h.sea||h.p!==G.sel)continue;
+          if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
+          hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
+          ctx.fillStyle=`rgba(255,255,255,${pulse})`;
+          ctx.fill();
+        }
       }
+
+      // Stage 2: additionally highlight specific selected hex
+      if(G.selStage === 2 && G.selHex){
+        const sh = G.selHex;
+        if(sh.x>=wx0-pad&&sh.x<=wx1+pad&&sh.y>=wy0-pad&&sh.y<=wy1+pad){
+          hexPath(ctx,sh.x,sh.y,R+0.3/vp.scale);
+          ctx.fillStyle='rgba(255,255,255,0.55)';
+          ctx.fill();
+        }
+      }
+
       // Gold border on outer edges of selected province
       const selEdges = window._provBorderEdges && window._provBorderEdges[G.sel];
       if(selEdges){
-        ctx.strokeStyle=`rgba(201,168,76,${pulseBorder.toFixed(2)})`;
-        ctx.lineWidth=2.0/vp.scale;
+        ctx.strokeStyle=`rgba(255,215,0,${pulseBorder.toFixed(2)})`;
+        ctx.lineWidth=2.5/vp.scale;
         ctx.lineJoin='round'; ctx.lineCap='round';
+        ctx.shadowColor='rgba(255,160,0,0.8)';
+        ctx.shadowBlur=4/vp.scale;
         ctx.beginPath();
         for(const e of selEdges){
           if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
@@ -1045,6 +1087,7 @@ function drawMap(){
           ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
         }
         ctx.stroke();
+        ctx.shadowBlur=0;
       }
     }
 

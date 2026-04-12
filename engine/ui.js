@@ -312,38 +312,61 @@ function hexToRgb(hex){
 
 function onCanvasClick(wx,wy){
   const i=hitProv(wx,wy);
-  if(i<0){G.sel=-1;scheduleDraw();chkBtns();return;}
 
+  // Special modes — bypass selection logic
   if(G.navalMode&&G.navalFrom>=0){
+    if(i<0){cancelNaval();return;}
     if(navalDests(G.navalFrom).includes(i))openNavalDialog(G.navalFrom,i);
     else if(G.owner[i]===G.playerNation&&canLaunchNaval(i)){G.navalFrom=i;scheduleDraw();updateSP(i);}
     else cancelNaval();
     return;
   }
   if(G.moveMode&&G.moveFrom>=0){
+    if(i<0){cancelMove();return;}
     if(isMoveTgt(i))openMoveDialog(G.moveFrom,i);
     else if(G.owner[i]===G.playerNation&&G.army[i]>100){G.moveFrom=i;scheduleDraw();updateSP(i);}
     else cancelMove();
     return;
   }
   if(_atkSelectMode&&_atkTarget>=0){
+    if(i<0){cancelAtkSelect();return;}
     if(isAtkSrc(i)){const tgt=_atkTarget;cancelAtkSelect();showAttackDialog(i,tgt);}
     else cancelAtkSelect();
     return;
   }
 
-  // Select province — update side panel and pulse animation
-  G.sel=i;
-  if(window._instabAnimY) window._instabAnimY[i]=undefined;
-  scheduleDraw();
-  updateSP(i);
-  chkBtns();
+  // ── Staged selection (like test stand) ──────────────────
+  // Stage 0 → clicked nothing: deselect
+  if(i<0){
+    G.sel=-1; G.selStage=0; G.selHex=null;
+    scheduleDraw(); chkBtns(); return;
+  }
 
-  // On mobile: switch to info tab so user sees the data
-  if(window.innerWidth<=900) switchTab('info');
-
-  // Pan camera to province if not visible
-  panToProvince(i);
+  if(G.sel !== i){
+    // Clicked a DIFFERENT province → stage 1: select province
+    G.sel=i; G.selStage=1; G.selHex=null;
+    if(window._instabAnimY) window._instabAnimY[i]=undefined;
+    scheduleDraw(); updateSP(i); chkBtns();
+    if(window.innerWidth<=900) switchTab('info');
+    panToProvince(i);
+  } else {
+    // Same province clicked again
+    const h = (typeof hitHex === 'function') ? hitHex(wx,wy) : null;
+    if(G.selStage === 1){
+      // → stage 2: highlight specific hex
+      G.selStage=2; G.selHex=h;
+      scheduleDraw();
+    } else if(G.selStage === 2){
+      if(h && G.selHex && h.r===G.selHex.r && h.c===G.selHex.c){
+        // Same hex again → deselect all
+        G.sel=-1; G.selStage=0; G.selHex=null;
+        scheduleDraw(); chkBtns();
+      } else {
+        // Different hex in same province → move highlight
+        G.selHex=h; scheduleDraw();
+      }
+    }
+  }
 }
 
 
