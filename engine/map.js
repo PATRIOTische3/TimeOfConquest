@@ -118,6 +118,10 @@ function buildHexCache(){
   const EVEN_DIR_SIDE = [5, 0, 1, 2, 3, 4];
   const ODD_DIR_SIDE  = [5, 0, 1, 2, 3, 4];
 
+  // Deduplicate land-land border edges: each shared edge stored only in
+  // the province with the LOWER province index, to avoid double drawing.
+  const _edgeDedupSet = new Set();
+
   _hexCache.forEach((h, idx) => {
     h.nbIdx = getNeighbours(h.r, h.c);
     if(h.sea || h.p < 0) return;
@@ -134,13 +138,19 @@ function buildHexCache(){
       const isExternal = !nb || nb.sea || nb.p !== h.p;
       if(isExternal){
         isBorder = true;
-        const side = dirSide[d];
         const isProvBorder = nb && !nb.sea && nb.p >= 0 && nb.p !== h.p;
+
+        // For land-land borders: deduplicate — store only from the side with lower p index
+        if(isProvBorder && nb.p < h.p){
+          // The neighbour province (lower index) will add this edge from its side
+          // But we still need to mark isBorder for this hex
+          continue;
+        }
+
+        const side = dirSide[d];
         const seg = hexEdgeSeg(h.x, h.y, R, side);
         seg.isProvBorder = isProvBorder;
-        // Store neighbour province index AND nation for border-type detection at draw time
-        seg.nbProv = (nb && !nb.sea && nb.p >= 0) ? nb.p : -1;
-        // nbNation: original nation of neighbour province (static, used for province-vs-nation border distinction)
+        seg.nbProv   = (nb && !nb.sea && nb.p >= 0) ? nb.p : -1;
         seg.nbNation = (nb && !nb.sea && nb.p >= 0 && PROVINCES[nb.p]) ? PROVINCES[nb.p].nation : -1;
         seg.myNation = PROVINCES[h.p] ? PROVINCES[h.p].nation : -1;
         if(window._provBorderEdges[h.p]) window._provBorderEdges[h.p].push(seg);
@@ -151,6 +161,73 @@ function buildHexCache(){
   });
 
   _provCentroid = _provCentroid.map(c => c.n > 0 ? {x: c.x/c.n, y: c.y/c.n} : {x:0, y:0});
+
+  // ── Precompute province border chains ────────────────────
+  // For each province: collect border segments, split into
+  // "intra-nation" (same owner nation) and "inter-nation" chains.
+  // Stored in window._provChainsProv and window._provChainsNation.
+  // These are STATIC (built once at load). At draw time we use G.owner
+  // to decide which style to apply per edge dynamically.
+  // NOTE: chains are static so we store raw segments instead,
+  // and build chains at draw time only for changed provinces.
+  // Actually: we precompute chains per province here since topology is static.
+  // We split by: sameNation = PROVINCES[nbProv].nation === PROVINCES[pi].nation
+
+  function _vkey(x, y){ return `${x.toFixed(1)},${y.toFixed(1)}`; }
+
+  function _buildChains(segs){
+    // segs = array of {x0,y0,x1,y1}
+    const adj = new Map();
+    segs.forEach((s, i) => {
+      const ka = _vkey(s.x0,s.y0), kb = _vkey(s.x1,s.y1);
+      if(!adj.has(ka)) adj.set(ka,[]);
+      if(!adj.has(kb)) adj.set(kb,[]);
+      adj.get(ka).push([s.x1,s.y1,i]);
+      adj.get(kb).push([s.x0,s.y0,i]);
+    });
+    const used = new Set();
+    const chains = [];
+    segs.forEach((s, si) => {
+      if(used.has(si)) return;
+      const chain = [[s.x0,s.y0],[s.x1,s.y1]];
+      used.add(si);
+      let go = true;
+      while(go){
+        go = false;
+        const tail = chain[chain.length-1];
+        const tk = _vkey(tail[0],tail[1]);
+        for(const [nx,ny,ni] of (adj.get(tk)||[])){
+          if(used.has(ni)) continue;
+          used.add(ni);
+          chain.push([nx,ny]);
+          go = true;
+          break;
+        }
+      }
+      chains.push(chain);
+    });
+    return chains;
+  }
+
+  window._provChainsProv   = [];  // intra-nation (same PROVINCE nation)
+  window._provChainsNation = [];  // inter-nation (different or sea/edge)
+
+  for(let pi = 0; pi < N; pi++){
+    const edges = window._provBorderEdges[pi];
+    if(!edges || !edges.length){ window._provChainsProv.push([]); window._provChainsNation.push([]); continue; }
+    const myNat = PROVINCES[pi] ? PROVINCES[pi].nation : -1;
+    const segsProv = [], segsNation = [];
+    edges.forEach(e => {
+      const nbNat = e.nbProv >= 0 && PROVINCES[e.nbProv] ? PROVINCES[e.nbProv].nation : -1;
+      if(e.isProvBorder && nbNat === myNat){
+        segsProv.push(e);
+      } else {
+        segsNation.push(e);
+      }
+    });
+    window._provChainsProv.push(_buildChains(segsProv));
+    window._provChainsNation.push(_buildChains(segsNation));
+  }
 
   // ── Sea zone membership + label positions ─────────────────
   // Primary: SEA_ZONES[zi].hexIds exported directly from editor (exact membership).
@@ -807,101 +884,118 @@ function drawMap(){
     if(provBorderAlpha > 0){
       if(G.mapMode==='political'){
 
-        // PASS 4A-1: Intra-nation province borders — thin semi-transparent
-        // Only draw when BOTH sides belong to the same current owner (nation)
-        ctx.strokeStyle=`rgba(20,15,5,${(0.28*provBorderAlpha).toFixed(2)})`;
-        ctx.lineWidth=0.9/vp.scale;
-        ctx.lineJoin='round';ctx.lineCap='round';
+        // ── BORDER DRAWING via precomputed chains ──────────────────
+        // Helper: draw a chain (array of [x,y] points) on canvas
+        function drawChain(chain){
+          if(chain.length < 2) return;
+          ctx.moveTo(chain[0][0], chain[0][1]);
+          for(let ci = 1; ci < chain.length; ci++) ctx.lineTo(chain[ci][0], chain[ci][1]);
+          // Close if first ≈ last
+          const f = chain[0], l = chain[chain.length-1];
+          if(Math.abs(f[0]-l[0]) < 0.5 && Math.abs(f[1]-l[1]) < 0.5) ctx.closePath();
+        }
+
+        // PASS 4A: Intra-nation province borders — thin, semi-transparent
+        // Uses precomputed _provChainsProv (same original nation).
+        // But ownership can change, so we check G.owner at draw time:
+        // draw as province border only if both sides still same owner.
+        ctx.strokeStyle=`rgba(20,15,5,${(0.32*provBorderAlpha).toFixed(2)})`;
+        ctx.lineWidth=1.0/vp.scale;
+        ctx.lineJoin='round'; ctx.lineCap='round';
         ctx.beginPath();
         for(let pi=0;pi<PROVINCES.length;pi++){
-          const oA=G.owner[pi];
-          if(oA<0)continue;
+          const oA=G.owner[pi]; if(oA<0) continue;
           const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-          if(!edges)continue;
+          if(!edges) continue;
           for(const e of edges){
-            if(!e.isProvBorder)continue;
+            if(!e.isProvBorder) continue;
             const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
-            // Same current owner → intra-nation province border
-            if(oA!==oB)continue;
-            if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-            ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
+            if(oA!==oB) continue; // not same owner → nation border, skip here
+            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
           }
         }
         ctx.stroke();
 
-        // PASS 4B: Coastlines (land edge touching sea)
+        // PASS 4B: Coastlines (land edge touching sea) — using chains
         ctx.strokeStyle=`rgba(130,105,45,${(0.45*provBorderAlpha).toFixed(2)})`;
-        ctx.lineWidth=0.8/vp.scale;
+        ctx.lineWidth=0.9/vp.scale;
         ctx.beginPath();
         for(let pi=0;pi<PROVINCES.length;pi++){
-          const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-          if(!edges)continue;
+          const chains = window._provChainsNation&&window._provChainsNation[pi];
+          if(!chains) continue;
+          // coastline = nation chains where nbProv < 0 (sea/edge)
+          const edges = window._provBorderEdges[pi];
+          if(!edges) continue;
           for(const e of edges){
-            if(e.isProvBorder)continue;
-            if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-            ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
+            if(e.isProvBorder) continue; // skip land-land borders
+            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
           }
         }
         ctx.stroke();
 
-        // PASS 4C: Nation borders — black shadow pass (thicker = more visible)
-        ctx.lineWidth=3.2/vp.scale;
+        // PASS 4C: Nation borders — black shadow (drawn as chains for clean joins)
+        ctx.lineWidth=3.0/vp.scale;
         ctx.strokeStyle=`rgba(0,0,0,${(0.80*provBorderAlpha).toFixed(2)})`;
-        ctx.lineJoin='round';ctx.lineCap='round';
+        ctx.lineJoin='round'; ctx.lineCap='round';
         ctx.beginPath();
         for(let pi=0;pi<PROVINCES.length;pi++){
           const oA=G.owner[pi];
-          const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-          if(!edges)continue;
+          const chains=window._provChainsNation&&window._provChainsNation[pi];
+          if(!chains) continue;
+          // Only draw where neighbour is a different land owner
+          const edges=window._provBorderEdges[pi];
+          if(!edges) continue;
           for(const e of edges){
-            if(!e.isProvBorder)continue;
+            if(!e.isProvBorder) continue;
             const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
-            if(oB<0||oA===oB)continue;
-            if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-            ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
+            if(oB<0||oA===oB) continue;
+            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
           }
         }
         ctx.stroke();
 
-        // PASS 4D: Gold nation borders (non-war)
+        // PASS 4D: Gold nation borders (non-war) — drawn over shadow
         ctx.lineWidth=1.8/vp.scale;
         ctx.strokeStyle=`rgba(201,168,76,${(0.88*provBorderAlpha).toFixed(2)})`;
         ctx.beginPath();
         for(let pi=0;pi<PROVINCES.length;pi++){
           const oA=G.owner[pi];
           const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-          if(!edges)continue;
+          if(!edges) continue;
           for(const e of edges){
-            if(!e.isProvBorder)continue;
+            if(!e.isProvBorder) continue;
             const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
-            if(oB<0||oA===oB)continue;
-            if(atWar(G.playerNation,oA)||atWar(G.playerNation,oB))continue;
-            if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-            ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
+            if(oB<0||oA===oB) continue;
+            if(atWar(G.playerNation,oA)||atWar(G.playerNation,oB)) continue;
+            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
           }
         }
         ctx.stroke();
 
         // PASS 4E: RED borders for nations at war with player
-        ctx.lineWidth=1.6/vp.scale;
-        ctx.strokeStyle=`rgba(220,50,40,${(0.85*provBorderAlpha).toFixed(2)})`;
+        ctx.lineWidth=1.8/vp.scale;
+        ctx.strokeStyle=`rgba(220,50,40,${(0.88*provBorderAlpha).toFixed(2)})`;
         ctx.beginPath();
         for(let pi=0;pi<PROVINCES.length;pi++){
           const oA=G.owner[pi];
           const edges=window._provBorderEdges&&window._provBorderEdges[pi];
-          if(!edges)continue;
+          if(!edges) continue;
           for(const e of edges){
-            if(!e.isProvBorder)continue;
+            if(!e.isProvBorder) continue;
             const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
-            if(oB<0||oA===oB)continue;
-            if(!atWar(G.playerNation,oA)&&!atWar(G.playerNation,oB))continue;
-            if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
-            ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
+            if(oB<0||oA===oB) continue;
+            if(!atWar(G.playerNation,oA)&&!atWar(G.playerNation,oB)) continue;
+            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
           }
         }
         ctx.stroke();
