@@ -138,8 +138,11 @@ function buildHexCache(){
         const isProvBorder = nb && !nb.sea && nb.p >= 0 && nb.p !== h.p;
         const seg = hexEdgeSeg(h.x, h.y, R, side);
         seg.isProvBorder = isProvBorder;
-        // Store neighbour province index for nation-border detection at draw time
+        // Store neighbour province index AND nation for border-type detection at draw time
         seg.nbProv = (nb && !nb.sea && nb.p >= 0) ? nb.p : -1;
+        // nbNation: original nation of neighbour province (static, used for province-vs-nation border distinction)
+        seg.nbNation = (nb && !nb.sea && nb.p >= 0 && PROVINCES[nb.p]) ? PROVINCES[nb.p].nation : -1;
+        seg.myNation = PROVINCES[h.p] ? PROVINCES[h.p].nation : -1;
         if(window._provBorderEdges[h.p]) window._provBorderEdges[h.p].push(seg);
       }
     }
@@ -804,18 +807,21 @@ function drawMap(){
     if(provBorderAlpha > 0){
       if(G.mapMode==='political'){
 
-        // PASS 4A: Intra-nation province borders — very thin dim gold
-        ctx.strokeStyle=`rgba(201,168,76,${(0.30*provBorderAlpha).toFixed(2)})`;
-        ctx.lineWidth=0.7/vp.scale;
+        // PASS 4A-1: Intra-nation province borders — thin semi-transparent
+        // Only draw when BOTH sides belong to the same current owner (nation)
+        ctx.strokeStyle=`rgba(20,15,5,${(0.28*provBorderAlpha).toFixed(2)})`;
+        ctx.lineWidth=0.9/vp.scale;
         ctx.lineJoin='round';ctx.lineCap='round';
         ctx.beginPath();
         for(let pi=0;pi<PROVINCES.length;pi++){
           const oA=G.owner[pi];
+          if(oA<0)continue;
           const edges=window._provBorderEdges&&window._provBorderEdges[pi];
           if(!edges)continue;
           for(const e of edges){
             if(!e.isProvBorder)continue;
             const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
+            // Same current owner → intra-nation province border
             if(oA!==oB)continue;
             if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
             if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
@@ -840,9 +846,9 @@ function drawMap(){
         }
         ctx.stroke();
 
-        // PASS 4C: Nation borders — black shadow pass
-        ctx.lineWidth=2.8/vp.scale;
-        ctx.strokeStyle=`rgba(0,0,0,${(0.70*provBorderAlpha).toFixed(2)})`;
+        // PASS 4C: Nation borders — black shadow pass (thicker = more visible)
+        ctx.lineWidth=3.2/vp.scale;
+        ctx.strokeStyle=`rgba(0,0,0,${(0.80*provBorderAlpha).toFixed(2)})`;
         ctx.lineJoin='round';ctx.lineCap='round';
         ctx.beginPath();
         for(let pi=0;pi<PROVINCES.length;pi++){
@@ -861,8 +867,8 @@ function drawMap(){
         ctx.stroke();
 
         // PASS 4D: Gold nation borders (non-war)
-        ctx.lineWidth=1.5/vp.scale;
-        ctx.strokeStyle=`rgba(201,168,76,${(0.78*provBorderAlpha).toFixed(2)})`;
+        ctx.lineWidth=1.8/vp.scale;
+        ctx.strokeStyle=`rgba(201,168,76,${(0.88*provBorderAlpha).toFixed(2)})`;
         ctx.beginPath();
         for(let pi=0;pi<PROVINCES.length;pi++){
           const oA=G.owner[pi];
