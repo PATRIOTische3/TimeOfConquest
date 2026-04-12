@@ -90,7 +90,7 @@ function updateSP(i){
   sHTML('sp-bdg',bdg);
   sEl('sp-ow',(o>=0?ownerName(o):'Rebels')+' · '+(TERRAIN[p.terrain||'plains']?.name||'')+' · '+dateStr());
   const avArmy=G.owner[i]===G.playerNation?availableArmy(i):G.army[i];
-  // Army: own=exact, ally/puppet=exact, enemy=fog-of-war intel
+  // Army display: own/ally/puppet = exact, enemy = fog-of-war intel (matches map labels)
   let armyDisplay;
   if(o===G.playerNation){
     armyDisplay=avArmy<G.army[i]
@@ -102,7 +102,7 @@ function updateSP(i){
     const intel=typeof getArmyIntel==='function'?getArmyIntel(i):{visible:false,value:null};
     if(!intel.visible||intel.value==null) armyDisplay='?';
     else {
-      const isFar=(typeof _armyBFSDist==='function'?_armyBFSDist()[i]:99)>2;
+      const isFar=(typeof _armyBFSDist==='function'?_armyBFSDist()[i]:99)>1;
       armyDisplay=(isFar?'~':'')+fm(intel.value);
     }
   }
@@ -237,7 +237,7 @@ function showProvPopup(i, screenX, screenY){
     const intel=typeof getArmyIntel==='function'?getArmyIntel(i):{visible:false,value:null};
     if(!intel.visible||intel.value==null) armyStr='?';
     else {
-      const isFar=(typeof _armyBFSDist==='function'?_armyBFSDist()[i]:99)>2;
+      const isFar=(typeof _armyBFSDist==='function'?_armyBFSDist()[i]:99)>1;
       armyStr=(isFar?'~':'')+fm(intel.value);
     }
   }
