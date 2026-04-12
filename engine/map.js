@@ -807,7 +807,7 @@ function drawMap(){
     }
 
     // PASS 3: Subtle terrain tint on political map
-    if(G.mapMode==='political' && hexScreenR > 4){
+    if((!G.mapMode || G.mapMode==='political') && hexScreenR > 4){
       const TC2={plains:'#7a8c5a',forest:'#3a6040',mountain:'#8a7a6a',hills:'#7a6a50',
         desert:'#c8a860',jungle:'#2a7040',steppe:'#9aaa60',farmland:'#9aaa50',
         highland:'#8a7060',tundra:'#8aA0a8',swamp:'#4a7050',savanna:'#b0963c',
@@ -829,7 +829,7 @@ function drawMap(){
     const provBorderAlpha = useLOD ? 0 : Math.min(1, Math.max(0, (vp.scale - 0.18) / 0.12));
 
     if(provBorderAlpha > 0){
-      if(G.mapMode==='political'){
+      if(!G.mapMode || G.mapMode==='political'){
 
         // ── BORDERS: 4 passes ────────────────────────────────────
         // For every province, _provBorderEdges[pi] contains all external edges.
