@@ -271,6 +271,25 @@ function provColor(i){
     return hasBld ? '#1e1e28' : '#0e0e12';
   }
   if(m === 'terrain') return TC[PROVINCES[i].terrain] || '#2a2a2a';
+  if(m === 'army'){
+    if(PROVINCES[i]?.isSea) return '#0a1828';
+    const army = G.army[i] || 0;
+    const owner = o;
+    if(owner < 0) return '#1a1a1a'; // rebel / unowned — dark
+    if(army <= 0) return owner === G.playerNation ? '#111411' : '#191919'; // no army — near-black
+    // Find max army across ALL owned provinces of this nation for opacity scaling
+    const natProvs = PROVINCES.map((_,idx)=>idx).filter(idx=>G.owner[idx]===owner);
+    const maxArmy = Math.max(1, ...natProvs.map(idx=>G.army[idx]||0));
+    const alpha = Math.max(0.15, army / maxArmy); // 0.15–1.0
+    // Nation color with computed alpha
+    const col = natColor(owner);
+    try {
+      const r2=parseInt(col.slice(1,3),16), g2=parseInt(col.slice(3,5),16), b2=parseInt(col.slice(5,7),16);
+      // Blend toward black with alpha
+      const br=Math.round(r2*alpha), bg=Math.round(g2*alpha), bb=Math.round(b2*alpha);
+      return `rgb(${br},${bg},${bb})`;
+    } catch(e){ return col; }
+  }
   if(m === 'resources'){
     const r = G.resBase[i] || {};
     const F = window.RES_FILTER || {coal:true, iron:true, oil:true};
@@ -1382,6 +1401,60 @@ function drawMapOverlay(){
     ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.globalAlpha=0.9;
     ctx.beginPath();ctx.moveTo(bx+filled,by-1);ctx.lineTo(bx+filled,by+BAR_H+1);ctx.stroke();
     ctx.restore();
+  }
+
+  if(G.mapMode==='army'){
+    // Top-5 provinces by army size (player nation)
+    const armyProvs = myProvs
+      .filter(i => (G.army[i]||0) > 0)
+      .sort((a,b) => (G.army[b]||0)-(G.army[a]||0));
+    const totalArmy = myProvs.reduce((s,i) => s+(G.army[i]||0), 0);
+    const maxArmy   = armyProvs.length ? (G.army[armyProvs[0]]||0) : 1;
+    const top5 = armyProvs.slice(0, 5);
+    const rows = Math.max(top5.length, 1) + 1; // +1 for total row
+    const sh = PAD*2+14+rows*LH+4;
+    panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(60,40,20,.45)');
+    panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'⚔  ARMY STRENGTH');
+    if(!top5.length){
+      ctx.save();ctx.font='8px Cinzel,serif';ctx.fillStyle=DIM;
+      ctx.textAlign='left';ctx.textBaseline='top';
+      ctx.fillText('No armies deployed',CORNER_X+PAD,CORNER_Y+PAD+14);
+      ctx.restore();
+    } else {
+      // Total row first
+      const ty=CORNER_Y+PAD+14+LH/2;
+      ctx.save();
+      ctx.font='bold 8px Cinzel,serif';ctx.fillStyle=GOLD;
+      ctx.textAlign='left';ctx.textBaseline='middle';
+      ctx.fillText('Total',CORNER_X+PAD,ty);
+      ctx.textAlign='right';
+      ctx.fillText(fm(totalArmy),CORNER_X+SW-PAD,ty);
+      ctx.restore();
+      top5.forEach((provIdx, idx) => {
+        const ey = CORNER_Y+PAD+14+(idx+1)*LH;
+        const armyVal = G.army[provIdx]||0;
+        const barW = Math.round((SW-PAD*2-2) * armyVal/maxArmy);
+        const nc = natColor(G.playerNation);
+        ctx.save();
+        // Background track
+        ctx.fillStyle='rgba(0,0,0,.3)';
+        ctx.beginPath();ctx.rect(CORNER_X+PAD,ey,SW-PAD*2,LH-2);ctx.fill();
+        // Fill bar
+        try{
+          const r2=parseInt(nc.slice(1,3),16),g2=parseInt(nc.slice(3,5),16),b2=parseInt(nc.slice(5,7),16);
+          ctx.fillStyle=`rgba(${r2},${g2},${b2},0.55)`;
+        } catch(e){ ctx.fillStyle='rgba(180,140,60,0.5)'; }
+        ctx.beginPath();ctx.rect(CORNER_X+PAD,ey,barW,LH-2);ctx.fill();
+        // Label
+        ctx.font='7px Cinzel,serif';ctx.fillStyle=TEXT;
+        ctx.textAlign='left';ctx.textBaseline='middle';
+        const pname=(PROVINCES[provIdx]?.short||PROVINCES[provIdx]?.name||'?');
+        ctx.fillText(pname,CORNER_X+PAD+3,ey+LH/2-1);
+        ctx.fillStyle=GOLD;ctx.textAlign='right';
+        ctx.fillText(fm(armyVal),CORNER_X+SW-PAD,ey+LH/2-1);
+        ctx.restore();
+      });
+    }
   }
 
   if(G.mapMode==='terrain'){
