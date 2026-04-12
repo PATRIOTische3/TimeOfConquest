@@ -777,31 +777,114 @@ function drawMap(){
     // PASS 2B: Occupation overlay — dashed border of occupier color on occupied provinces
     // PASS 2A: Army overlay — only in army mode
     if(G.mapMode === 'army'){
-      // Precompute per-nation max army once
-      const natMaxArmy = {};
-      PROVINCES.forEach((_,pi)=>{
-        const o2 = G.owner[pi];
-        if(o2 < 0) return;
-        const a = G.army[pi] || 0;
-        if(!natMaxArmy[o2] || a > natMaxArmy[o2]) natMaxArmy[o2] = a;
-      });
-      for(const h of _hexCache){
-        if(h.sea || h.p < 0) continue;
-        if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad) continue;
-        const pi = h.p;
-        const o2 = G.owner[pi];
-        if(o2 < 0) continue;
-        const armyVal = G.army[pi] || 0;
-        if(armyVal <= 0) continue;
-        const maxA = natMaxArmy[o2] || 1;
-        const alpha = armyVal / maxA; // 0..1 where max province = 1.0
-        const col = natColor(o2);
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = col;
-        hexPath(ctx, h.x, h.y, R+0.3/vp.scale);
-        ctx.fill();
+      const PN = G.playerNation;
+
+      // ── Build BFS distance map from player+ally provinces ──
+      // dist[pi] = min hops through province adjacency to reach a player/ally province
+      // (province-level BFS, not hex-level)
+      const dist = new Int16Array(PROVINCES.length).fill(32767);
+      const bfsQueue = [];
+      for(let pi=0;pi<PROVINCES.length;pi++){
+        const o=G.owner[pi];
+        if(o===PN||(o>=0&&areAllies(PN,o))){
+          dist[pi]=0; bfsQueue.push(pi);
+        }
       }
-      ctx.globalAlpha = 1.0;
+      let head=0;
+      while(head<bfsQueue.length){
+        const cur=bfsQueue[head++];
+        const nd=dist[cur]+1;
+        for(const nb of (NB[cur]||[])){
+          if(nb<PROVINCES.length&&!PROVINCES[nb]?.isSea&&dist[nb]>nd){
+            dist[nb]=nd; bfsQueue.push(nb);
+          }
+        }
+      }
+
+      // ── Per-province intelligence cache (stable per G.tick) ──
+      // Recompute once per tick to avoid re-rolling every frame
+      if(!window._armyIntelTick||window._armyIntelTick!==G.tick){
+        window._armyIntelTick=G.tick;
+        window._armyIntel={};
+        for(let pi=0;pi<PROVINCES.length;pi++){
+          const o=G.owner[pi]; if(o<0||o===PN) continue;
+          const isAlly=areAllies(PN,o);
+          if(isAlly) continue; // allies always visible
+          const d=dist[pi];
+          const trueArmy=G.army[pi]||0;
+          let intelArmy=null; // null = hidden
+          if(d<=2){
+            const r=Math.random();
+            if(r<0.05){
+              // 5%: exact
+              intelArmy=trueArmy;
+            } else if(r<0.85){
+              // 80%: approximate — round to nearest 1k, then jitter ±1k
+              const base=Math.round(trueArmy/1000)*1000;
+              const jitter=(Math.floor(Math.random()*3)-1)*1000; // -1k, 0, +1k
+              intelArmy=Math.max(0,base+jitter);
+            } else if(r<0.975){
+              // 12.5%: no info
+              intelArmy=null;
+            } else {
+              // 2.5%: false positive — show small phantom army
+              intelArmy=Math.floor(Math.random()*3+1)*1000;
+            }
+          } else {
+            // Far range: 20% chance of rough estimate, heavily distorted
+            if(Math.random()<0.20){
+              const base=Math.round(trueArmy/1000)*1000;
+              // Heavy bias: 60% overestimate, 40% underestimate, large range
+              const biasDir=Math.random()<0.60?1:-1;
+              const biasMag=Math.floor(Math.random()*4+1)*1000; // 1k–4k swing
+              intelArmy=Math.max(0,base+biasDir*biasMag);
+            }
+          }
+          window._armyIntel[pi]=intelArmy; // null = unknown
+        }
+      }
+
+      // ── Precompute per-nation max army for player/allies (exact) ──
+      const natMaxArmy = {};
+      for(let pi=0;pi<PROVINCES.length;pi++){
+        const o=G.owner[pi];
+        if(o<0) continue;
+        const isVisible=o===PN||(o>=0&&areAllies(PN,o));
+        if(!isVisible) continue;
+        const a=G.army[pi]||0;
+        if(!natMaxArmy[o]||a>natMaxArmy[o]) natMaxArmy[o]=a;
+      }
+
+      // ── Draw army overlay hexes ──
+      for(const h of _hexCache){
+        if(h.sea||h.p<0) continue;
+        if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad) continue;
+        const pi=h.p;
+        const o=G.owner[pi];
+        if(o<0) continue;
+
+        if(o===PN||(o>=0&&areAllies(PN,o))){
+          // Own/ally: exact, full opacity scaling
+          const armyVal=G.army[pi]||0;
+          if(armyVal<=0) continue;
+          const maxA=natMaxArmy[o]||1;
+          const alpha=armyVal/maxA;
+          ctx.globalAlpha=alpha;
+          ctx.fillStyle=natColor(o);
+          hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
+          ctx.fill();
+        } else {
+          // Enemy: fog of war
+          const intel=window._armyIntel[pi];
+          if(intel==null||intel<=0) continue;
+          // Enemy shown at 25% opacity always
+          ctx.globalAlpha=0.25;
+          ctx.fillStyle=natColor(o);
+          hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha=1.0;
     }
 
     if(G.occupied && Object.keys(G.occupied).length > 0 && !useLOD){
@@ -965,8 +1048,60 @@ function drawMap(){
         }
         ctx.stroke();
 
+      } else if(G.mapMode === 'army'){
+        // Army mode: gold=mine, white=ally, red=enemy nation borders only
+        const PN = G.playerNation;
+        // Shadow pass
+        ctx.lineWidth=3.5/vp.scale;
+        ctx.strokeStyle=`rgba(0,0,0,${(0.85*provBorderAlpha).toFixed(2)})`;
+        ctx.lineJoin='round';ctx.lineCap='round';
+        ctx.beginPath();
+        for(let pi=0;pi<PROVINCES.length;pi++){
+          const oA=G.owner[pi];
+          const edges=window._provBorderEdges&&window._provBorderEdges[pi]; if(!edges) continue;
+          for(const e of edges){
+            if(!e.isProvBorder) continue;
+            const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
+            if(oB<0||oA===oB) continue;
+            // Only draw if one side is player, ally, or enemy
+            const aIsPN=oA===PN, bIsPN=oB===PN;
+            const aIsAlly=oA>=0&&areAllies(PN,oA), bIsAlly=oB>=0&&areAllies(PN,oB);
+            const aIsEnemy=oA>=0&&atWar(PN,oA), bIsEnemy=oB>=0&&atWar(PN,oB);
+            if(!(aIsPN||bIsPN||aIsAlly||bIsAlly||aIsEnemy||bIsEnemy)) continue;
+            if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
+            if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
+            ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
+          }
+        }
+        ctx.stroke();
+        // Color pass — gold, white, red
+        const borderConfigs=[
+          {color:`rgba(201,168,76,${(0.95*provBorderAlpha).toFixed(2)})`, test:(oA,oB)=>oA===PN||oB===PN},
+          {color:`rgba(220,220,220,${(0.80*provBorderAlpha).toFixed(2)})`, test:(oA,oB)=>(oA>=0&&areAllies(PN,oA)||oB>=0&&areAllies(PN,oB))&&oA!==PN&&oB!==PN},
+          {color:`rgba(220,50,40,${(0.90*provBorderAlpha).toFixed(2)})`,  test:(oA,oB)=>atWar(PN,oA)||atWar(PN,oB)},
+        ];
+        ctx.lineWidth=2.0/vp.scale;
+        ctx.lineJoin='round';ctx.lineCap='round';
+        for(const {color,test} of borderConfigs){
+          ctx.strokeStyle=color;
+          ctx.beginPath();
+          for(let pi=0;pi<PROVINCES.length;pi++){
+            const oA=G.owner[pi];
+            const edges=window._provBorderEdges&&window._provBorderEdges[pi]; if(!edges) continue;
+            for(const e of edges){
+              if(!e.isProvBorder) continue;
+              const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
+              if(oB<0||oA===oB) continue;
+              if(!test(oA,oB)) continue;
+              if(e.x0<wx0-pad&&e.x1<wx0-pad)continue;
+              if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
+              ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);
+            }
+          }
+          ctx.stroke();
+        }
       } else {
-        // Non-political modes: simple thin dark border
+        // Other non-political modes: simple thin dark border
         ctx.strokeStyle=`rgba(0,0,0,${(0.50*provBorderAlpha).toFixed(2)})`;
         ctx.lineWidth=0.8/vp.scale;
         ctx.lineJoin='round';ctx.lineCap='round';
@@ -1420,6 +1555,7 @@ function drawMapOverlay(){
   }
 
   if(G.mapMode==='army'){
+    const PN=G.playerNation;
     const armyProvs = myProvs.filter(i=>(G.army[i]||0)>0).sort((a,b)=>(G.army[b]||0)-(G.army[a]||0));
     const totalArmy = myProvs.reduce((s,i)=>s+(G.army[i]||0),0);
     const maxArmy   = armyProvs.length ? (G.army[armyProvs[0]]||0) : 1;
@@ -1444,7 +1580,7 @@ function drawMapOverlay(){
       ctx.fillText(fm(totalArmy),CORNER_X+SW-PAD,ty);
       ctx.restore();
       // Top 5 with bar
-      const nc=natColor(G.playerNation);
+      const nc=natColor(PN);
       top5.forEach((provIdx,idx)=>{
         const ey=CORNER_Y+PAD+14+(idx+1)*LH;
         const armyVal=G.army[provIdx]||0;
@@ -1465,6 +1601,13 @@ function drawMapOverlay(){
         ctx.restore();
       });
     }
+    // Intel legend hint
+    ctx.save();
+    const hy=CORNER_Y+sh+4;
+    ctx.font='7px Cinzel,serif';ctx.fillStyle=DIM;
+    ctx.textAlign='left';ctx.textBaseline='top';
+    ctx.fillText('Enemy intel: ~near  ?far',CORNER_X+PAD,hy);
+    ctx.restore();
   }
 
   if(G.mapMode==='terrain'){
