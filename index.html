@@ -648,7 +648,6 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <button class="mmbtn" id="mm-disease" onclick="setMapMode('disease')">☣ Disease</button>
     <button class="mmbtn" id="mm-instab" onclick="setMapMode('instab')">⚡ Unrest</button>
     <button class="mmbtn" id="mm-buildings" onclick="setMapMode('buildings')">🏛 Buildings</button>
-    <button class="mmbtn" id="mm-army" onclick="setMapMode('army')">⚔ Army</button>
   </div>
   <div id="game-body">
     <div id="map-wrap">
@@ -799,7 +798,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 <div id="mo" onclick="moOut(event)"><div id="mb"><div class="mt" id="mo-t">—</div><div id="mo-b"></div><div class="mbtns" id="mo-btns"></div></div></div>
 <div id="popup"></div>
 <script>
-// Load the first map from maps.json synchronously via XHR and patch const→var so scenario switching works
+// Load the first map from maps.json asynchronously (avoids deprecated sync XHR)
 (function(){
   const MAP_GLOBALS=['PROVINCES','NATIONS','NB','HEX_GRID','SEA_ZONES','LAND','INIT_ALLIANCES','IDEOLOGIES','TERRAIN','TOC_MAP_KEY','TOC_MAP_NAME','TOC_MAP_DESC'];
   function patchAndExec(src){
@@ -809,27 +808,22 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     });
     const s=document.createElement('script');s.textContent=src;document.head.appendChild(s);
   }
-  try{
-    // Read maps.json to find the first (default) map filename
-    const mxhr=new XMLHttpRequest();
-    mxhr.open('GET','maps.json',false);
-    mxhr.send();
-    let firstMap=null;
-    if(mxhr.status===0||mxhr.status===200){
-      try{
-        const json=JSON.parse(mxhr.responseText);
-        const list=Array.isArray(json)?json:(json.maps||[]);
-        if(list.length)firstMap=list[0];
-      }catch{}
-    }
-    if(firstMap){
-      window._TOC_DEFAULT_MAP=firstMap; // remember for scenario system
-      const xhr=new XMLHttpRequest();
-      xhr.open('GET',firstMap,false);
-      xhr.send();
-      if(xhr.status===0||xhr.status===200)patchAndExec(xhr.responseText);
-    }
-  }catch(e){}
+  async function loadMaps(){
+    try{
+      const ts='?_='+Date.now();
+      const mRes=await fetch('maps.json'+ts);
+      const json=await mRes.json();
+      const list=Array.isArray(json)?json:(json.maps||[]);
+      const firstMap=list.length?list[0]:null;
+      if(firstMap){
+        window._TOC_DEFAULT_MAP=firstMap;
+        const mRes2=await fetch(firstMap+ts);
+        const src=await mRes2.text();
+        patchAndExec(src);
+      }
+    }catch(e){console.warn('Map load failed:',e);}
+  }
+  loadMaps();
 })();
 </script>
 <!-- ═══ ENGINE MODULES (replaces monolithic game.js) ═══ -->
