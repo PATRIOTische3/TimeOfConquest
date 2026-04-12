@@ -86,8 +86,10 @@ function buildHexCache(){
   _hexCache.forEach((h, idx) => { if(!_hexByRC[h.r]) _hexByRC[h.r] = []; _hexByRC[h.r][h.c] = idx; });
 
   function getNeighbours(r, c){
-    const even = r%2 === 0;
-    const offs  = even ? [[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]] : [[-1,-1],[-1,0],[0,1],[1,0],[1,-1],[0,-1]];
+    // Correct offsets for pointy-top offset grid (odd rows shifted right)
+    const offs = r%2 === 0
+      ? [[-1,-1],[-1,0],[0,1],[1,0],[1,-1],[0,-1]]   // even row
+      : [[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]];     // odd row
     const out = [];
     for(const [dr, dc] of offs){
       const nr = r+dr, nc = c+dc;
@@ -108,15 +110,15 @@ function buildHexCache(){
             x1: cx+Math.cos(a1)*r, y1: cy+Math.sin(a1)*r};
   }
 
-  const EVEN_OFFS     = [[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]];
-  const ODD_OFFS      = [[-1,-1],[-1,0],[0,1],[1,0],[1,-1],[0,-1]];
-  // For pointy-top hex, vertex k is at angle PI/6 + k*PI/3.
-  // Edge k connects vertex k → vertex (k+1)%6.
-  // Direction mapping: offset index d → which side of THIS hex borders that neighbour
-  // EVEN row offsets order: [NW, NE, E, SE, SW, W] → sides [5, 0, 1, 2, 3, 4]
-  // ODD  row offsets order: [NW, NE, E, SE, SW, W] → sides [5, 0, 1, 2, 3, 4]
-  const EVEN_DIR_SIDE = [5, 0, 1, 2, 3, 4];
-  const ODD_DIR_SIDE  = [5, 0, 1, 2, 3, 4];
+  // Correct neighbour offsets for pointy-top offset grid (odd rows shifted right by W/2)
+  // Even row (r%2===0): neighbours at dr,dc offsets below
+  // Odd  row (r%2===1): neighbours at different dc due to half-shift
+  const EVEN_OFFS     = [[-1,-1],[-1,0],[0,1],[1,0],[1,-1],[0,-1]];
+  const ODD_OFFS      = [[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]];
+  // DIR_SIDE: for each direction d, which side of THIS hex touches that neighbour
+  // Both even and odd rows map the same: d→side = [3,4,5,0,1,2]
+  const EVEN_DIR_SIDE = [3, 4, 5, 0, 1, 2];
+  const ODD_DIR_SIDE  = [3, 4, 5, 0, 1, 2];
 
   _hexCache.forEach((h, idx) => {
     h.nbIdx = getNeighbours(h.r, h.c);
