@@ -478,10 +478,31 @@ function approxForce(real){
 }
 
 function executeBattleQueue(onAllDone){
-  const playerQueue=G.battleQueue&&G.battleQueue.length?[...G.battleQueue]:[];
+  let playerQueue=G.battleQueue&&G.battleQueue.length?[...G.battleQueue]:[];
   G.battleQueue=[];
   const enemyQueue=G._enemyAttackQueue&&G._enemyAttackQueue.length?[...G._enemyAttackQueue]:[];
   G._enemyAttackQueue=[];
+
+  // ── Merge multi-front attacks on same target (fix friendly fire) ──
+  // Group player battles by target province; combine forces, award +10% atk bonus
+  if(playerQueue.length > 1){
+    const merged = {};
+    for(const b of playerQueue){
+      const key = b.to;
+      if(!merged[key]){
+        merged[key] = {...b, multiFlank: false};
+      } else {
+        merged[key].force += b.force;
+        // Deduct from attacker province so we don't double-spend
+        // (actual deduction happens in runBattle; just accumulate force here)
+        merged[key].multiFlank = true;
+        // Track extra attacker province to deduct from
+        if(!merged[key].extraFr) merged[key].extraFr = [];
+        merged[key].extraFr.push({fr: b.fr, force: b.force});
+      }
+    }
+    playerQueue = Object.values(merged);
+  }
 
   if(!playerQueue.length&&!enemyQueue.length){onAllDone();return;}
 
@@ -490,16 +511,23 @@ function executeBattleQueue(onAllDone){
 
   function runPlayerNext(){
     if(pidx>=playerQueue.length){runEnemyQueue(onAllDone);return;}
-    const {fr,to,force}=playerQueue[pidx++];
+    const b=playerQueue[pidx++];
+    const {fr,to,force,multiFlank,extraFr}=b;
     // Skip if attacker lost their province
     if(G.owner[fr]!==G.playerNation){runPlayerNext();return;}
-    // Skip if target is already fully ours (could happen if two attacks queued at same target)
+    // Skip if target already ours (no occupation pending)
     if(G.owner[to]===G.playerNation&&(!G.occupied||!G.occupied[to])){runPlayerNext();return;}
+    // Deduct from extra flank provinces upfront (primary deduction in runBattle)
+    if(multiFlank && extraFr){
+      for(const {fr:eFr,force:eF} of extraFr){
+        if(G.owner[eFr]===G.playerNation) G.army[eFr]=Math.max(0,G.army[eFr]-eF);
+      }
+    }
     const actualForce=Math.min(force,G.army[fr]);
     if(actualForce<1){runPlayerNext();return;}
-    runBattle(fr,to,actualForce,G.playerNation,()=>{
+    runBattle(fr,to,actualForce,G.playerNation,!!multiFlank,()=>{
       scheduleDraw();updateHUD();chkVic();
-      setTimeout(runPlayerNext,400);
+      runPlayerNext(); // no extra setTimeout — prevents the flash between battles
     });
   }
 
@@ -522,7 +550,9 @@ window.skipBattleAnim=function(){
   if(window._battleSkipFn) window._battleSkipFn();
 };
 
-function runBattle(fr,to,atkF,atker,done){
+function runBattle(fr,to,atkF,atker,multiFlank,done){
+  // multiFlank=true when multiple provinces attacked same target — +10% atk bonus
+  if(typeof multiFlank==='function'){done=multiFlank;multiFlank=false;} // backward compat
   const df=G.army[to],isP=atker===G.playerNation;
   const io2=isP?ideol():IDEOLOGIES[NATIONS[atker]?.ideology||'nationalism'];
   const hasFort=(G.buildings[to]||[]).includes('fortress');
@@ -531,7 +561,8 @@ function runBattle(fr,to,atkF,atker,done){
   const capPen=G.capitalPenalty[atker]>0?.85:1.0;
   const hasArsenal=(G.buildings[fr]||[]).includes('arsenal');
   const resistBonus=isP?1+(G.resistance[to]/200):1.0;
-  const effAtk=atkF*io2.atk*instPen*capPen*(hasArsenal?1.2:1)*resistBonus;
+  const flankBonus=multiFlank?1.10:1.0;
+  const effAtk=atkF*io2.atk*instPen*capPen*(hasArsenal?1.2:1)*resistBonus*flankBonus;
   const effDef=Math.round(df*defM);
   const ap=effAtk/(effAtk+effDef)*100;
 
@@ -586,13 +617,12 @@ function runBattle(fr,to,atkF,atker,done){
 
   // Player battle — apply then show overlay
   applyOutcome();
-  showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done);
+  showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, multiFlank, done);
 }
 
 // ── BATTLE OVERLAY ────────────────────────────────────────────
-// Shown inline over the game map — no screen switch needed.
-// The s-battle screen is kept for legacy but we use an overlay div instead.
-function showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done){
+function showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, multiFlank, done){
+  if(typeof multiFlank==='function'){done=multiFlank;multiFlank=false;} // backward compat
   if(_fastMode){done();return;}
 
   // Build or reuse overlay div
@@ -629,6 +659,7 @@ function showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done){
   if((G.buildings[fr]||[]).includes('arsenal'))bonusTxt.push('⚙ Arsenal +20% atk');
   if((G.buildings[to]||[]).includes('fortress'))bonusTxt.push('🏰 Fortress ×1.6 def');
   if(G.resistance[to]>20)bonusTxt.push('🔥 Resistance +def');
+  if(multiFlank)bonusTxt.push('⚔⚔ Flanking +10% atk');
 
   ov.innerHTML=`<div style="
     background:linear-gradient(160deg,#1e1208,#0c0804);
@@ -693,7 +724,12 @@ function showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done){
     closed=true;
     ov.style.opacity='0';
     ov.style.transition='opacity .18s ease';
-    setTimeout(()=>{ov.style.display='none';ov.innerHTML='';done();},200);
+    // Hide fully before triggering next battle to prevent flash
+    setTimeout(()=>{
+      ov.style.display='none';
+      // Small rAF gap so DOM settles before next overlay renders
+      requestAnimationFrame(()=>{ ov.innerHTML=''; done(); });
+    },180);
   }
   const autoT=setTimeout(closeOverlay,2800);
   window._battleSkipFn=()=>{clearTimeout(autoT);closeOverlay();};

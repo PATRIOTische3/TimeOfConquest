@@ -90,22 +90,23 @@ function updateSP(i){
   sHTML('sp-bdg',bdg);
   sEl('sp-ow',(o>=0?ownerName(o):'Rebels')+' · '+(TERRAIN[p.terrain||'plains']?.name||'')+' · '+dateStr());
   const avArmy=G.owner[i]===G.playerNation?availableArmy(i):G.army[i];
-  // Army display: own = exact, enemy = fog-of-war intel
+  // Army: own=exact, ally/puppet=exact, enemy=fog-of-war intel
   let armyDisplay;
-  if(o===G.playerNation||(o>=0&&areAllies(G.playerNation,o))||G.puppet.includes(o)){
-    armyDisplay = G.owner[i]===G.playerNation&&avArmy<G.army[i]
+  if(o===G.playerNation){
+    armyDisplay=avArmy<G.army[i]
       ?`${fa(avArmy)} <span style="color:var(--dim);font-size:9px">(${fa(G.army[i])})</span>`
       :fa(G.army[i]);
+  } else if(o>=0&&(areAllies(G.playerNation,o)||G.puppet.includes(o))){
+    armyDisplay=fa(G.army[i]);
   } else {
     const intel=typeof getArmyIntel==='function'?getArmyIntel(i):{visible:false,value:null};
     if(!intel.visible||intel.value==null) armyDisplay='?';
     else {
-      // Show approximate with ~ prefix if it's a rounded/distorted value
       const isFar=(typeof _armyBFSDist==='function'?_armyBFSDist()[i]:99)>2;
       armyDisplay=(isFar?'~':'')+fm(intel.value);
     }
   }
-  sEl('sp-ar',armyDisplay);sEl('sp-pp',fm(G.pop[i]));sEl('sp-in',inc+'/mo');
+  sHTML('sp-ar',armyDisplay);sEl('sp-pp',fm(G.pop[i]));sEl('sp-in',inc+'/mo');
   sEl('sp-as',o===G.playerNation?Math.round(G.assim[i])+'%':'—');
   sHTML('sp-res',resHtml);sHTML('sp-blds',bldHtml);
   const spif=document.getElementById('sp-if'),spiv=document.getElementById('sp-iv');
@@ -228,8 +229,10 @@ function showProvPopup(i, screenX, screenY){
   const stats = [];
   const avail_army = isOurs ? availableArmy(i) : G.army[i];
   let armyStr;
-  if(isOurs||(o>=0&&areAllies(PN,o))||G.puppet.includes(o)){
-    armyStr = isOurs && avail_army < G.army[i] ? `${fm(avail_army)}/${fm(G.army[i])}` : fm(G.army[i]);
+  if(isOurs){
+    armyStr = avail_army < G.army[i] ? `${fm(avail_army)}/${fm(G.army[i])}` : fm(G.army[i]);
+  } else if(o>=0&&(areAllies(PN,o)||G.puppet.includes(o))){
+    armyStr = fm(G.army[i]);
   } else {
     const intel=typeof getArmyIntel==='function'?getArmyIntel(i):{visible:false,value:null};
     if(!intel.visible||intel.value==null) armyStr='?';
