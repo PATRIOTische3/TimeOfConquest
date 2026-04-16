@@ -382,9 +382,9 @@ function hexPath(ctx2, cx, cy, r){
 }
 
 // ── FOG OF WAR ────────────────────────────────────────────
-// ── FOG OF WAR ────────────────────────────────────────────
-// Intel cache key: stable per turn (month*4+week), not per render tick
-function _intelKey(){ return (G.month||0)*4+(G.week||0)+(G.year||0)*48; }
+// Intel cache key: stable per turn (not per render frame) to prevent flickering.
+// Recomputed only when month/week/year change (i.e. after endTurn).
+function _intelKey(){ return (G.year||0)*576+(G.month||0)*4+(G.week||0); }
 
 function _armyBFSDist(){
   const _ik=_intelKey();
@@ -410,15 +410,37 @@ function _armyBFSDist(){
   return dist;
 }
 
-// Distance thresholds:
-//   d<=2 : near  — 80% approx ±1k, 5% exact, 12.5% hidden, 2.5% phantom
-//   d=3   : mid   — 20% approx (±2k distortion)
-//   d=4   : far   — 20% heavily distorted (±3-4k)
-//   d>4   : unknown — always null
+// ── Watchtower sight set — provinces that get exact intel due to watchtower ──
+// Returns a Set of province indices that a watchtower covers (adjacent neighbours).
+function _watchtowerSightSet(){
+  const _ik=_intelKey();
+  if(window._wtSightTick===_ik && window._wtSight) return window._wtSight;
+  const sight=new Set();
+  for(let pi=0;pi<PROVINCES.length;pi++){
+    if(G.owner[pi]===G.playerNation && (G.buildings[pi]||[]).includes('watchtower')){
+      for(const nb of (NB[pi]||[])){
+        if(!PROVINCES[nb]?.isSea) sight.add(nb);
+      }
+    }
+  }
+  window._wtSight=sight; window._wtSightTick=_ik;
+  return sight;
+}
+
+// Distance thresholds (shifted closer vs before):
+//   d=1   : adjacent — 80% approx ±1k, 5% exact, 12.5% hidden, 2.5% phantom
+//   d=2   : near     — 20% approx ±2k distortion
+//   d=3   : far      — 20% approx ±3-4k distortion
+//   d>3   : unknown  — always null
+// Watchtower override: adjacent non-own provinces always get exact value.
 function getArmyIntel(i){
   const o=G.owner[i];
   if(o===G.playerNation||(o>=0&&areAllies(G.playerNation,o))||G.puppet.includes(o)){
     return {visible:true, value:G.army[i]};
+  }
+  // Watchtower: exact sight into adjacent enemy provinces
+  if(_watchtowerSightSet().has(i)){
+    return {visible:true, value:G.army[i], exact:true};
   }
   const _ik=_intelKey();
   if(window._armyIntelTick===_ik && window._armyIntel && i in window._armyIntel){
@@ -428,21 +450,21 @@ function getArmyIntel(i){
   const d=_armyBFSDist()[i];
   const trueArmy=G.army[i]||0;
   let intelArmy=null;
-  if(d<=2){
-    // Near: high quality intel
+  if(d===1){
+    // Adjacent: high quality intel
     const r=Math.random();
-    if(r<0.05){ intelArmy=trueArmy; }                                                         // 5% exact
+    if(r<0.05){ intelArmy=trueArmy; }                                                          // 5% exact
     else if(r<0.85){ const b=Math.round(trueArmy/1000)*1000; intelArmy=Math.max(0,b+(Math.floor(Math.random()*3)-1)*1000); } // 80% ±1k
-    else if(r<0.975){ intelArmy=null; }                                                        // 12.5% hidden
-    else { intelArmy=Math.floor(Math.random()*3+1)*1000; }                                    // 2.5% phantom
-  } else if(d===3){
-    // Mid: rough estimate with ±2k distortion
+    else if(r<0.975){ intelArmy=null; }                                                         // 12.5% hidden
+    else { intelArmy=Math.floor(Math.random()*3+1)*1000; }                                     // 2.5% phantom
+  } else if(d===2){
+    // Near: rough estimate ±2k
     if(Math.random()<0.20){
       const b=Math.round(trueArmy/1000)*1000;
       const dir=Math.random()<0.55?1:-1;
       intelArmy=Math.max(0,b+dir*Math.floor(Math.random()*3)*1000);
     }
-  } else if(d===4){
+  } else if(d===3){
     // Far: 20% chance, heavily distorted ±3-4k
     if(Math.random()<0.20){
       const b=Math.round(trueArmy/1000)*1000;
@@ -450,8 +472,9 @@ function getArmyIntel(i){
       intelArmy=Math.max(0,b+dir*(3+Math.floor(Math.random()*2))*1000);
     }
   }
-  // d>4: always null
-  if(!window._armyIntel) window._armyIntel={}; window._armyIntelTick=_ik;
+  // d>3: always null
+  if(!window._armyIntel) window._armyIntel={};
+  window._armyIntelTick=_ik;
   window._armyIntel[i]=intelArmy;
   return {visible:intelArmy!==null&&intelArmy>0, value:intelArmy};
 }
@@ -459,6 +482,7 @@ function getArmyIntel(i){
 function canSeeArmy(i){
   const o=G.owner[i];
   if(o===G.playerNation||(o>=0&&areAllies(G.playerNation,o))||G.puppet.includes(o)) return true;
+  if(_watchtowerSightSet().has(i)) return true;
   const intel=getArmyIntel(i);
   return intel.visible&&intel.value!==null;
 }
@@ -1278,8 +1302,9 @@ function drawMap(){
 
       // Army count — below name if name shown
       if(hasArmy){
-        const _isFarIntel=!_ownOrAlly&&(typeof _armyBFSDist==='function'?_armyBFSDist()[i]:99)>1;
-        const _dispVal=(_isFarIntel?'~':'')+fm(_armyShowVal);
+        const _isWTExact=!_ownOrAlly&&(typeof _watchtowerSightSet==='function'&&_watchtowerSightSet().has(i));
+        const _isFarIntel=!_ownOrAlly&&!_isWTExact&&(typeof _armyBFSDist==='function'?_armyBFSDist()[i]:99)>1;
+        const _dispVal=(_isFarIntel?'~':'')+fm(_armyShowVal)+(_isWTExact?'':'')
         ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;
         ctx.fillStyle=_ownOrAlly?'rgba(232,205,145,.85)':'rgba(200,160,100,.70)';
         ctx.textAlign='center';ctx.textBaseline='middle';

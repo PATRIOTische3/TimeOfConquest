@@ -48,6 +48,7 @@ if(typeof BUILD_TURNS==='undefined'){
     fort:8, factory:12, port:10, farm:6, mine:6,
     barracks:6, railroad:10, hospital:8, arsenal:10,
     fortification:8, airfield:10, naval_base:12,
+    watchtower:5,
   };
 }
 if(typeof BUILDINGS==='undefined'){
@@ -68,6 +69,7 @@ if(typeof BUILDINGS==='undefined'){
     granary:       {name:'Granary',       icon:'🌽',desc:'Increases grain output & pop growth',        cost:250},
     oilwell:       {name:'Oil Well',      icon:'🛢',desc:'Produces oil resources',                     cost:350},
     fortress:      {name:'Fortress',      icon:'🏯',desc:'Heavy defense bonus ×1.6',                  cost:450},
+    watchtower:    {name:'Watchtower',    icon:'🗼',desc:'Reveals exact enemy army in all adjacent provinces', cost:280},
     academy:       {name:'Academy',       icon:'🎓',desc:'Increases ideology spread speed',            cost:400, capitalOnly:true},
   };
 }

@@ -691,14 +691,13 @@ function showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done){
   function closeOverlay(){
     if(closed)return;
     closed=true;
+    window._battleSkipFn=null;
     ov.style.opacity='0';
     ov.style.transition='opacity .18s ease';
     setTimeout(()=>{
-      // Call done() first so next battle can populate the overlay div,
-      // then hide/clear — avoids the one-frame flash of empty overlay
-      done();
       ov.style.display='none';
       ov.innerHTML='';
+      done(); // call done AFTER hiding so next battle doesn't flash through
     },200);
   }
   const autoT=setTimeout(closeOverlay,2800);
