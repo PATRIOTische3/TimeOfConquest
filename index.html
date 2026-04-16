@@ -822,6 +822,9 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
         patchAndExec(src);
       }
     }catch(e){console.warn('Map load failed:',e);}
+    // Signal that map globals (NATIONS, PROVINCES, etc.) are now available
+    window._tocMapReady=true;
+    window.dispatchEvent(new Event('toc-map-ready'));
   }
   loadMaps();
 })();
@@ -846,6 +849,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 // Builds a list of {x,y,color} for all land hexes using HEX_GRID if available,
 // otherwise falls back to PROVINCES cx/cy centroids.
 function _buildMiniMapHexes(){
+  if(typeof NATIONS==='undefined'||!NATIONS) return [];
   const nc=NATIONS.map(n=>n.color);
   if(typeof HEX_GRID!=='undefined'&&HEX_GRID&&HEX_GRID.hexes){
     const hR=HEX_GRID.hexR,W=Math.sqrt(3)*hR,H=2*hR;
@@ -875,7 +879,7 @@ function _miniMapBounds(hexes){
   function hp(x,y,r){cx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/6+Math.PI/3*i;i?cx.lineTo(x+r*Math.cos(a),y+r*Math.sin(a)):cx.moveTo(x+r*Math.cos(a),y+r*Math.sin(a));}cx.closePath();}
   function rsz(){cv.width=cv.offsetWidth;cv.height=cv.offsetHeight;}
   function draw(){
-    if(!hexes){hexes=_buildMiniMapHexes();bnds=_miniMapBounds(hexes);}
+    if(!hexes){hexes=_buildMiniMapHexes();if(!hexes.length){raf=requestAnimationFrame(draw);return;}bnds=_miniMapBounds(hexes);}if(!bnds){raf=requestAnimationFrame(draw);return;}
     const cw=cv.width,ch=cv.height;cx.clearRect(0,0,cw,ch);
     const W=bnds.maxX-bnds.minX,H=bnds.maxY-bnds.minY;
     const sc=Math.max(ch/H*1.06,cw/W*1.06),sw=W*sc,mp=Math.max(0,sw-cw);
@@ -892,11 +896,16 @@ function _miniMapBounds(hexes){
   }
   function start(){rsz();hexes=null;if(raf)cancelAnimationFrame(raf);draw();}
   new MutationObserver(()=>{
-    document.getElementById('s-intro')?.classList.contains('on')?start():(cancelAnimationFrame(raf),raf=null);
+    if(document.getElementById('s-intro')?.classList.contains('on')){
+      if(window._tocMapReady){start();}
+      else{window.addEventListener('toc-map-ready',()=>start(),{once:true});}
+    }else{cancelAnimationFrame(raf);raf=null;}
   }).observe(document.getElementById('s-intro'),{attributes:true,attributeFilter:['class']});
   window.addEventListener('resize',()=>{if(raf)rsz();});
-  window.addEventListener('toc-map-changed',()=>{hexes=null;});
-  start();
+  window.addEventListener('toc-map-changed',()=>{hexes=null;if(raf){rsz();}});
+  // Wait for map globals before starting animation
+  if(window._tocMapReady){start();}
+  else{window.addEventListener('toc-map-ready',()=>start(),{once:true});}
 })();
 
 // ── WORLDS MAP BG ────────────────────────────────────────────
@@ -909,7 +918,7 @@ function _miniMapBounds(hexes){
   function hp(x,y,r){cx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/6+Math.PI/3*i;i?cx.lineTo(x+r*Math.cos(a),y+r*Math.sin(a)):cx.moveTo(x+r*Math.cos(a),y+r*Math.sin(a));}cx.closePath();}
   function rsz(){cv.width=cv.offsetWidth;cv.height=cv.offsetHeight;}
   function draw(){
-    if(!hexes){hexes=_buildMiniMapHexes();bnds=_miniMapBounds(hexes);}
+    if(!hexes){hexes=_buildMiniMapHexes();if(!hexes.length){raf=requestAnimationFrame(draw);return;}bnds=_miniMapBounds(hexes);}if(!bnds){raf=requestAnimationFrame(draw);return;}
     const cw=cv.width,ch=cv.height;cx.clearRect(0,0,cw,ch);
     const W=bnds.maxX-bnds.minX,H=bnds.maxY-bnds.minY;
     const sc=Math.max(ch/H*1.06,cw/W*1.06),sw=W*sc,mp=Math.max(0,sw-cw);
@@ -1789,11 +1798,14 @@ window.refreshWorldsList=function(){
 (function(){
   const cv=document.getElementById('mp-map-bg');if(!cv)return;
   cv.style.cssText='position:absolute;inset:0;width:100%;height:100%;opacity:.18;pointer-events:none';
-  const cx=cv.getContext('2d'),nc=NATIONS.map(n=>n.color),R=8/Math.sqrt(3)*1.14,W=560,H=500;
+  const cx=cv.getContext('2d'),R=8/Math.sqrt(3)*1.14,W=560,H=500;
+  let nc=null;
   let px=0,pd=1,raf;
   function rsz(){cv.width=cv.offsetWidth;cv.height=cv.offsetHeight;}
   function hp(x,y,r){cx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/6+Math.PI/3*i;i?cx.lineTo(x+r*Math.cos(a),y+r*Math.sin(a)):cx.moveTo(x+r*Math.cos(a),y+r*Math.sin(a));}cx.closePath();}
   function draw(){
+    if(!nc&&typeof NATIONS!=='undefined') nc=NATIONS.map(n=>n.color);
+    if(!nc)return;
     const cw=cv.width,ch=cv.height;cx.clearRect(0,0,cw,ch);
     const sc=Math.max(ch/H*1.06,cw/W*1.06),sw=W*sc,mp=Math.max(0,sw-cw);
     px+=.12*pd;if(px>=mp){px=mp;pd=-1;}if(px<=0){px=0;pd=1;}
@@ -1807,11 +1819,12 @@ window.refreshWorldsList=function(){
     cx.fillStyle=vg;cx.fillRect(0,0,cw,ch);
     raf=requestAnimationFrame(draw);
   }
-  function start(){rsz();if(raf)cancelAnimationFrame(raf);draw();}
+  function start(){rsz();nc=null;if(raf)cancelAnimationFrame(raf);draw();}
   new MutationObserver(()=>{
     document.getElementById('s-mp')?.classList.contains('on')?start():(raf&&(cancelAnimationFrame(raf),raf=null));
   }).observe(document.getElementById('s-mp'),{attributes:true,attributeFilter:['class']});
   window.addEventListener('resize',()=>{if(raf)rsz();});
+  window.addEventListener('toc-map-changed',()=>{nc=null;});
 })();
 
 let _mpHostNation = -1;
@@ -1964,7 +1977,7 @@ function _restoreSession(state){
     },80);
   }catch(e){console.warn('Restore failed',e);}
 }
-(function(){
+function _doSessionRestore(){
   try{
     const raw=localStorage.getItem('toc_live');
     if(!raw)return;
@@ -1990,7 +2003,9 @@ function _restoreSession(state){
       intro.appendChild(b);
     },400);
   }catch(e){}
-})();
+}
+if(window._tocMapReady){_doSessionRestore();}
+else{window.addEventListener('toc-map-ready',_doSessionRestore,{once:true});}
 </script>
 </body>
 </html>
