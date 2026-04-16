@@ -383,8 +383,12 @@ function hexPath(ctx2, cx, cy, r){
 
 // ── FOG OF WAR ────────────────────────────────────────────
 // ── FOG OF WAR ────────────────────────────────────────────
+// Intel cache key: stable per turn (month*4+week), not per render tick
+function _intelKey(){ return (G.month||0)*4+(G.week||0)+(G.year||0)*48; }
+
 function _armyBFSDist(){
-  if(window._armyDistTick===G.tick && window._armyDist) return window._armyDist;
+  const _ik=_intelKey();
+  if(window._armyDistTick===_ik && window._armyDist) return window._armyDist;
   const dist=new Int16Array(PROVINCES.length).fill(32767);
   const q=[];
   for(let pi=0;pi<PROVINCES.length;pi++){
@@ -402,7 +406,7 @@ function _armyBFSDist(){
       }
     }
   }
-  window._armyDist=dist; window._armyDistTick=G.tick;
+  window._armyDist=dist; window._armyDistTick=_ik;
   return dist;
 }
 
@@ -416,7 +420,8 @@ function getArmyIntel(i){
   if(o===G.playerNation||(o>=0&&areAllies(G.playerNation,o))||G.puppet.includes(o)){
     return {visible:true, value:G.army[i]};
   }
-  if(window._armyIntelTick===G.tick && window._armyIntel && i in window._armyIntel){
+  const _ik=_intelKey();
+  if(window._armyIntelTick===_ik && window._armyIntel && i in window._armyIntel){
     const v=window._armyIntel[i];
     return {visible:v!==null&&v>0, value:v};
   }
@@ -446,7 +451,7 @@ function getArmyIntel(i){
     }
   }
   // d>4: always null
-  if(!window._armyIntel) window._armyIntel={};
+  if(!window._armyIntel) window._armyIntel={}; window._armyIntelTick=_ik;
   window._armyIntel[i]=intelArmy;
   return {visible:intelArmy!==null&&intelArmy>0, value:intelArmy};
 }
@@ -842,7 +847,7 @@ function drawMap(){
     // PASS 2A: Army overlay — only in army mode
     if(G.mapMode === 'army'){
       const PN=G.playerNation;
-      if(window._armyIntelTick!==G.tick){ window._armyIntel={}; window._armyIntelTick=G.tick; }
+      if(window._armyIntelTick!==_intelKey()){ window._armyIntel={}; }
       const natMaxArmy={};
       for(let pi=0;pi<PROVINCES.length;pi++){
         const o2=G.owner[pi]; if(o2<0) continue;
