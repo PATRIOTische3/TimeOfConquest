@@ -620,13 +620,14 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
   <div id="hud">
     <span class="hud-season" id="h-season">☀️</span>
     <div class="hud-date" id="h-date">Jan 1936</div>
+    <div class="hstat"><div class="hsl">Nation</div><div class="hsv" id="h-nation" style="font-size:clamp(9px,1vw,14px)">—</div></div>
     <div class="hstat"><div class="hsl">Gold</div><div class="hsv" id="h-gld">—</div></div>
     <div class="hstat" id="h-loan-st" style="display:none"><div class="hsl">Debt</div><div class="hsv warn" id="h-debt">—</div></div>
     <div class="hstat"><div class="hsl">Pop.</div><div class="hsv" id="h-pop">—</div></div>
     <div class="hstat" id="h-sat-st"><div class="hsl">Satisf.</div><div class="hsv" id="h-sat">—</div></div>
     <div class="hstat" id="h-tax-st"><div class="hsl">Tax</div><div class="hsv" id="h-tax">25%</div></div>
     <div class="hstat" id="h-reform-st" style="display:none"><div class="hsl">Reform</div><div class="hsv warn" id="h-reform-txt">—</div></div>
-    <div class="hstat"><div class="hsl">Ideology</div><div class="hsv" id="hud-ideo" style="font-size:clamp(9px,1vw,14px)">—</div></div>
+    <div class="hstat"><div class="hsl">Ideology</div><div class="hsv" id="hud-ideo">—</div></div>
     <div class="hud-spacer"></div>
     <div id="mp-ingame-bar">
       <div id="mp-ig-dot"></div>
@@ -635,6 +636,11 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <button class="save-btn-hud" onclick="openSaveMenu()">💾 Save</button>
     <button class="save-btn-hud" onclick="saveAndExit()" style="border-color:rgba(180,80,80,.5);color:#c08080">💾 Exit</button>
     <button class="save-btn-hud" id="fast-mode-btn" onclick="toggleFastMode()" title="Fast mode — skip battle animations">▶▶</button>
+    <div class="zoom-btns">
+      <button class="zbtn" onclick="zoomBy(1.28)">+</button>
+      <button class="zbtn" onclick="zoomBy(1/1.28)">−</button>
+      <button class="zbtn" onclick="zoomReset()" style="font-size:10px">⊡</button>
+    </div>
   </div>
   <div id="map-mode-bar">
     <button class="mmbtn on" id="mm-political" onclick="setMapMode('political')">🗺 Political</button>
@@ -655,8 +661,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
         <div class="rt-row"><span class="rt-lbl">⚙️ Steel</span><span id="tt-steel">0</span></div>
       </div>
       <canvas id="map-canvas"></canvas>
-      <!-- Floating zoom buttons — always visible on map, especially on mobile -->
-      <div id="map-zoom-float" style="position:absolute;bottom:clamp(8px,1.5vh,18px);right:clamp(8px,1.2vw,16px);z-index:10;display:flex;flex-direction:column;gap:4px">
+      <div id="map-zoom-float" style="position:absolute;bottom:clamp(10px,2vh,20px);right:clamp(10px,1.5vw,18px);z-index:10;display:flex;flex-direction:column;gap:5px">
         <button class="zbtn" onclick="zoomBy(1.28)" title="Zoom in">+</button>
         <button class="zbtn" onclick="zoomReset()" title="Reset zoom" style="font-size:10px">⊡</button>
         <button class="zbtn" onclick="zoomBy(1/1.28)" title="Zoom out">−</button>
@@ -672,9 +677,9 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     </div>
     <div id="side-panel">
       <div id="sp-header">
-        <div class="sp-rsub" id="sp-ow" style="font-size:clamp(11px,1.1vw,15px);color:var(--text);font-style:normal;margin-bottom:1px"></div>
+        <div class="sp-rsub" id="sp-ow" style="font-size:clamp(10px,1vw,13px);color:var(--dim);font-style:normal;letter-spacing:.3px;margin-bottom:1px"></div>
         <div class="sp-rname" id="sp-nm">Select a territory</div>
-        <div id="sp-bdg" style="margin-bottom:3px"></div>
+        <div id="sp-bdg" style="margin:2px 0 3px"></div>
         <div class="sp-4">
           <div class="sp-box"><div class="sp-bl">Army</div><div class="sp-bv" id="sp-ar">—</div></div>
           <div class="sp-box"><div class="sp-bl">Pop.</div><div class="sp-bv" id="sp-pp">—</div></div>
@@ -694,9 +699,9 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
         <button class="abtn war-btn" id="sp-btn-atk" onclick="openAttack()" disabled><span class="ic">⚔</span><span class="al"><span class="am">Attack / Declare War</span><span class="as" id="sp-atk-sub">Select adjacent enemy territory</span></span></button>
         <button class="abtn" onclick="openDraft()"><span class="ic">🪖</span><span class="al"><span class="am">Conscript Soldiers</span><span class="as">1,000 pop · 1 gold per soldier</span></span></button>
         <button class="abtn" id="sp-btn-move" onclick="toggleMoveMode()" disabled><span class="ic">🚶</span><span class="al"><span class="am">Move Army</span><span class="as" id="sp-move-sub">Select your territory first</span></span></button>
-        <button class="abtn" id="sp-btn-naval" onclick="toggleNavalMode()" disabled><span class="ic">⚓</span><span class="al"><span class="am">Naval Transport</span><span class="as" id="sp-naval-sub">Needs port + coastal territory</span></span></button>
         <div class="sp-sec">🏗 Economy & Building</div>
-        <button class="abtn" onclick="openEconomy()"><span class="ic">💰</span><span class="al"><span class="am">Economy & Taxation</span><span class="as" id="sp-tax-sub">Set tax rates · Appease population</span></span></button>
+        <button class="abtn" onclick="openTaxMenu()"><span class="ic">💰</span><span class="al"><span class="am">Taxation</span><span class="as" id="sp-tax-sub">Set tax rate</span></span></button>
+        <button class="abtn" onclick="openAppease()"><span class="ic">🎉</span><span class="al"><span class="am">Appease Population</span><span class="as">Spend gold to boost satisfaction</span></span></button>
         <button class="abtn" onclick="openBuild()"><span class="ic">🏗</span><span class="al"><span class="am">Construct Building</span><span class="as" id="sp-bld-sub">Select your territory first</span></span></button>
         <button class="abtn" onclick="openLoan()"><span class="ic">🏦</span><span class="al"><span class="am">Take a Loan</span><span class="as" id="sp-loan-sub">World Bank · 500 / 1000 / 2000g</span></span></button>
         <div class="sp-sec">🤝 Diplomacy</div>
@@ -741,9 +746,9 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
         <button class="abtn" id="mob-btn-move" onclick="toggleMoveMode()" disabled><span class="ic">🚶</span><span class="al"><span class="am">Move Army</span></span></button>
         <button class="abtn war-btn" id="btn-atk" onclick="openAttack()" disabled><span class="ic">⚔</span><span class="al"><span class="am">Attack</span></span></button>
         <button class="abtn" onclick="openDraft()"><span class="ic">🪖</span><span class="al"><span class="am">Conscript</span></span></button>
-        <button class="abtn" onclick="openEconomy()"><span class="ic">💰</span><span class="al"><span class="am">Economy</span></span></button>
+        <button class="abtn" onclick="openTaxMenu()"><span class="ic">💰</span><span class="al"><span class="am">Tax</span></span></button>
         <button class="abtn" onclick="openBuild()"><span class="ic">🏗</span><span class="al"><span class="am">Build</span></span></button>
-        <button class="abtn" id="mob-btn-naval" onclick="toggleNavalMode()" disabled><span class="ic">⚓</span><span class="al"><span class="am">Naval</span></span></button>
+
         <button class="abtn" onclick="openSponsor()"><span class="ic">🔥</span><span class="al"><span class="am">Resistance</span></span></button>
         <button class="abtn" onclick="openLoan()"><span class="ic">🏦</span><span class="al"><span class="am">Take loan</span></span></button>
       </div>
