@@ -438,7 +438,10 @@ function executeMoveQueue(){
     const actual=Math.min(amount, G.army[from]);
     if(actual<=0) continue;
     const terrMod=s.winterTerrain&&s.winterTerrain.includes(PROVINCES[to]&&PROVINCES[to].terrain)?s.moveMod:1.0;
-    const moved=Math.round(actual*terrMod);
+    // Railroad: negates up to half of winter terrain penalty (no loss beyond actual count)
+    const hasRail=(G.buildings[from]||[]).includes('railroad')||(G.buildings[to]||[]).includes('railroad');
+    const effectiveMod=hasRail?Math.min(1.0, terrMod*1.5):terrMod;
+    const moved=Math.min(actual, Math.round(actual*effectiveMod));
     G.army[from]=Math.max(0,G.army[from]-actual);
     G.army[to]=(G.army[to]||0)+moved;
     if(moved<actual) addLog(`${s.icon} Winter: ${fa(actual-moved)} lost to cold!`,'season');
@@ -685,6 +688,9 @@ function showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done){
   </div>`;
 
   ov.style.display='flex';
+  // Reset opacity in case previous close left it faded
+  ov.style.opacity='1';
+  ov.style.transition='';
 
   // Auto-close after 2.8s, or on tap (skipBattleAnim)
   let closed=false;
@@ -692,16 +698,22 @@ function showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done){
     if(closed)return;
     closed=true;
     window._battleSkipFn=null;
-    ov.style.opacity='0';
+    ov.onclick=null;
     ov.style.transition='opacity .18s ease';
+    ov.style.opacity='0';
+    // Wait for fade, then hide and THEN call done() so the overlay is
+    // fully gone before the next battle tries to reuse the same div.
     setTimeout(()=>{
       ov.style.display='none';
       ov.innerHTML='';
-      done(); // call done AFTER hiding so next battle doesn't flash through
+      ov.style.opacity='1';
+      ov.style.transition='';
+      done();
     },200);
   }
   const autoT=setTimeout(closeOverlay,2800);
   window._battleSkipFn=()=>{clearTimeout(autoT);closeOverlay();};
+  ov.onclick=()=>{clearTimeout(autoT);closeOverlay();};
 }
 
 // ── ENEMY ATTACK OVERLAY ──────────────────────────────────────

@@ -45,32 +45,29 @@ if(typeof MAX_BLD_CAP==='undefined') window.MAX_BLD_CAP=4;
 if(typeof MAX_BLD_NORM==='undefined') window.MAX_BLD_NORM=2;
 if(typeof BUILD_TURNS==='undefined'){
   window.BUILD_TURNS={
-    fort:8, factory:12, port:10, farm:6, mine:6,
-    barracks:6, railroad:10, hospital:8, arsenal:10,
-    fortification:8, airfield:10, naval_base:12,
-    watchtower:5,
+    factory:4, fortress:3, barracks:2, arsenal:3,
+    port:3, railroad:4, palace:5, hospital:2,
+    mine:2, oilwell:2, granary:1, watchtower:3,
   };
 }
 if(typeof BUILDINGS==='undefined'){
   window.BUILDINGS={
-    fort:          {name:'Fort',          icon:'🏰',desc:'Doubles terrain defense bonus',             cost:400},
-    factory:       {name:'Factory',       icon:'🏭',desc:'Increases province income ×1.8',             cost:600},
-    port:          {name:'Port',          icon:'⚓',desc:'Enables naval transport from this province',  cost:500, needsCoast:true},
-    farm:          {name:'Farm',          icon:'🌾',desc:'Reduces instability & disease spread',        cost:250},
-    mine:          {name:'Mine',          icon:'⛏', desc:'Boosts coal/iron/oil resource output',       cost:350},
-    barracks:      {name:'Barracks',      icon:'🪖',desc:'Conscription 25% faster & cheaper',          cost:300},
-    hospital:      {name:'Hospital',      icon:'🏥',desc:'Reduces disease severity in province',        cost:350},
-    arsenal:       {name:'Arsenal',       icon:'⚙️', desc:'Increases army attack strength',             cost:500},
-    railroad:      {name:'Railroad',      icon:'🚂',desc:'Faster troop movement through province',     cost:450},
-    airfield:      {name:'Airfield',      icon:'✈️', desc:'Extends attack range by 1 hex',              cost:700, capitalOnly:true},
-    naval_base:    {name:'Naval Base',    icon:'🚢',desc:'Increases fleet capacity',                   cost:600, needsCoast:true},
-    fortification: {name:'Fortification',icon:'🧱',desc:'Permanent +20% defense in province',         cost:550},
-    palace:        {name:'Palace',        icon:'🏛',desc:'Boosts satisfaction & income',               cost:600, capitalOnly:true},
-    granary:       {name:'Granary',       icon:'🌽',desc:'Increases grain output & pop growth',        cost:250},
-    oilwell:       {name:'Oil Well',      icon:'🛢',desc:'Produces oil resources',                     cost:350},
-    fortress:      {name:'Fortress',      icon:'🏯',desc:'Heavy defense bonus ×1.6',                  cost:450},
-    watchtower:    {name:'Watchtower',    icon:'🗼',desc:'Reveals exact enemy army in all adjacent provinces', cost:280},
-    academy:       {name:'Academy',       icon:'🎓',desc:'Increases ideology spread speed',            cost:400, capitalOnly:true},
+    // ── Economy ──────────────────────────────────────────
+    factory:    {name:'Factory',     icon:'🏭', desc:'Province income ×1.8',                          cost:600,  slots:1},
+    mine:       {name:'Mine',        icon:'⛏',  desc:'+2 coal & +1 steel per month',                  cost:350,  slots:1},
+    oilwell:    {name:'Oil Well',    icon:'🛢',  desc:'+2 oil per month',                              cost:350,  slots:1},
+    granary:    {name:'Granary',     icon:'🌽',  desc:'Population growth ×1.15',                      cost:250,  slots:1},
+    // ── Military ─────────────────────────────────────────
+    fortress:   {name:'Fortress',    icon:'🏯',  desc:'Defense bonus ×1.6; costs 1 building slot on capture', cost:450, slots:1},
+    barracks:   {name:'Barracks',    icon:'🪖',  desc:'Conscription 25% faster & cheaper',            cost:300,  slots:1},
+    arsenal:    {name:'Arsenal',     icon:'⚙️',  desc:'Army attack strength +20%',                    cost:500,  slots:1},
+    watchtower: {name:'Watchtower',  icon:'🗼',  desc:'Exact enemy army count in all adjacent provinces', cost:280, slots:1},
+    // ── Infrastructure ───────────────────────────────────
+    port:       {name:'Port',        icon:'⚓',  desc:'Enables naval transport from this province',   cost:500,  slots:1, needsCoast:true},
+    railroad:   {name:'Railroad',    icon:'🚂',  desc:'Army move speed ×1.5; income +10% in province', cost:450, slots:1},
+    // ── Civil ────────────────────────────────────────────
+    palace:     {name:'Palace',      icon:'🏛',  desc:'Satisfaction +1-2/mo; income ×1.15',           cost:600,  slots:1, capitalOnly:true},
+    hospital:   {name:'Hospital',    icon:'🏥',  desc:'Pop growth ×1.1; disease spread -25%',         cost:350,  slots:1},
   };
 }
 

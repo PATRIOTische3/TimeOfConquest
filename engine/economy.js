@@ -146,7 +146,7 @@ window.appeasePop=function(cost, scale){
 
 // ── BUILD ─────────────────────────────────────────────────
 // Base build turns per building type (modified by satisfaction)
-if(typeof BUILD_TURNS==='undefined')window.BUILD_TURNS={factory:3,fortress:3,barracks:2,port:2,hospital:2,oilwell:2,mine:2,granary:1,palace:4,academy:4,arsenal:3};
+if(typeof BUILD_TURNS==='undefined')window.BUILD_TURNS={factory:4,fortress:3,barracks:2,arsenal:3,port:3,railroad:4,palace:5,hospital:2,mine:2,oilwell:2,granary:1,watchtower:3};
 
 function buildTurns(r, key){
   // Low satisfaction = longer construction

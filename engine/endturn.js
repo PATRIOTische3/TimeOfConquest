@@ -73,6 +73,7 @@ function endTurn(){
     let inc=G.income[r];
     if((G.buildings[r]||[]).includes('factory'))inc=Math.floor(inc*1.8);
     if((G.buildings[r]||[]).includes('palace'))inc=Math.floor(inc*1.15);
+    if((G.buildings[r]||[]).includes('railroad'))inc=Math.floor(inc*1.10);
     // Tax rate scales income: 25% base = full income, lower = less, higher = more
     const taxIncomeFactor=0.4+taxMod*2.4; // 0% tax→0.4x income, 25%→1.0x, 50%→1.6x, 100%→2.8x
     inc=Math.floor(inc*io.income*satIncomeMod*reformMod*(1-Math.min(.5,G.instab[r]/100))*s.incomeMod*taxIncomeFactor);
