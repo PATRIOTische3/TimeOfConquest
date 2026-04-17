@@ -182,7 +182,7 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .hsv{font-family:'Cinzel',serif;font-size:clamp(11px,1.3vw,18px);color:var(--gold);line-height:1.2}
 .hstat.warn .hsv{color:#ff8844}
 .hud-spacer{flex:1;min-width:4px}
-#hud-ideo{font-family:'Cinzel',serif;font-size:clamp(8px,.9vw,13px);padding:clamp(2px,.3vh,4px) clamp(6px,.7vw,10px);border:1px solid;letter-spacing:1px;flex-shrink:0;text-transform:uppercase;margin-right:clamp(3px,.4vw,6px)}
+
 .save-btn-hud{padding:0 clamp(6px,.8vw,12px);height:clamp(22px,2.8vh,34px);background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--dim);font-family:'Cinzel',serif;font-size:clamp(8px,.8vw,11px);letter-spacing:1px;cursor:pointer;transition:all .12s;flex-shrink:0;margin-right:clamp(3px,.4vw,6px);display:flex;align-items:center;gap:4px;text-transform:uppercase}
 .save-btn-hud:hover{border-color:var(--gold);color:var(--gold)}
 .zoom-btns{display:flex;gap:2px;flex-shrink:0}
@@ -626,6 +626,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <div class="hstat" id="h-sat-st"><div class="hsl">Satisf.</div><div class="hsv" id="h-sat">—</div></div>
     <div class="hstat" id="h-tax-st"><div class="hsl">Tax</div><div class="hsv" id="h-tax">25%</div></div>
     <div class="hstat" id="h-reform-st" style="display:none"><div class="hsl">Reform</div><div class="hsv warn" id="h-reform-txt">—</div></div>
+    <div class="hstat"><div class="hsl">Ideology</div><div class="hsv" id="hud-ideo" style="font-size:clamp(9px,1vw,14px)">—</div></div>
     <div class="hud-spacer"></div>
     <div id="mp-ingame-bar">
       <div id="mp-ig-dot"></div>
@@ -634,21 +635,14 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <button class="save-btn-hud" onclick="openSaveMenu()">💾 Save</button>
     <button class="save-btn-hud" onclick="saveAndExit()" style="border-color:rgba(180,80,80,.5);color:#c08080">💾 Exit</button>
     <button class="save-btn-hud" id="fast-mode-btn" onclick="toggleFastMode()" title="Fast mode — skip battle animations">▶▶</button>
-    <div id="hud-ideo"></div>
-    <div class="zoom-btns">
-      <button class="zbtn" onclick="zoomBy(1.28)">+</button>
-      <button class="zbtn" onclick="zoomBy(1/1.28)">−</button>
-      <button class="zbtn" onclick="zoomReset()" style="font-size:10px">⊡</button>
-    </div>
   </div>
   <div id="map-mode-bar">
     <button class="mmbtn on" id="mm-political" onclick="setMapMode('political')">🗺 Political</button>
-    <button class="mmbtn" id="mm-terrain" onclick="setMapMode('terrain')">🏔 Terrain</button>
     <button class="mmbtn" id="mm-army" onclick="setMapMode('army')">⚔ Army</button>
-    <button class="mmbtn" id="mm-resources" onclick="setMapMode('resources')">⛏ Resources</button>
-    <button class="mmbtn" id="mm-disease" onclick="setMapMode('disease')">☣ Disease</button>
     <button class="mmbtn" id="mm-instab" onclick="setMapMode('instab')">⚡ Unrest</button>
     <button class="mmbtn" id="mm-buildings" onclick="setMapMode('buildings')">🏛 Buildings</button>
+    <button class="mmbtn" id="mm-resources" onclick="setMapMode('resources')">⛏ Resources</button>
+    <button class="mmbtn" id="mm-terrain" onclick="setMapMode('terrain')">🏔 Terrain</button>
   </div>
   <div id="game-body">
     <div id="map-wrap">
@@ -661,6 +655,12 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
         <div class="rt-row"><span class="rt-lbl">⚙️ Steel</span><span id="tt-steel">0</span></div>
       </div>
       <canvas id="map-canvas"></canvas>
+      <!-- Floating zoom buttons — always visible on map, especially on mobile -->
+      <div id="map-zoom-float" style="position:absolute;bottom:clamp(8px,1.5vh,18px);right:clamp(8px,1.2vw,16px);z-index:10;display:flex;flex-direction:column;gap:4px">
+        <button class="zbtn" onclick="zoomBy(1.28)" title="Zoom in">+</button>
+        <button class="zbtn" onclick="zoomReset()" title="Reset zoom" style="font-size:10px">⊡</button>
+        <button class="zbtn" onclick="zoomBy(1/1.28)" title="Zoom out">−</button>
+      </div>
       <!-- Province info popup (appears above clicked hex) -->
       <div id="prov-popup" style="display:none;position:absolute;z-index:15;pointer-events:auto">
         <div id="prov-popup-inner"></div>
@@ -672,9 +672,9 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     </div>
     <div id="side-panel">
       <div id="sp-header">
+        <div class="sp-rsub" id="sp-ow" style="font-size:clamp(11px,1.1vw,15px);color:var(--text);font-style:normal;margin-bottom:1px"></div>
         <div class="sp-rname" id="sp-nm">Select a territory</div>
-        <div id="sp-bdg"></div>
-        <div class="sp-rsub" id="sp-ow"></div>
+        <div id="sp-bdg" style="margin-bottom:3px"></div>
         <div class="sp-4">
           <div class="sp-box"><div class="sp-bl">Army</div><div class="sp-bv" id="sp-ar">—</div></div>
           <div class="sp-box"><div class="sp-bl">Pop.</div><div class="sp-bv" id="sp-pp">—</div></div>
