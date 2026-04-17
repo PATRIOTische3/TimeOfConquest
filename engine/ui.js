@@ -9,8 +9,6 @@ function updateHUD(){
   const avgSat=mr.length?Math.round(tsat/mr.length):70;
   const debt=G.loans.reduce((s,l)=>s+l.amount,0);
   sEl('h-date',dateStr());
-  const _natEl=document.getElementById('h-nation');
-  if(_natEl)_natEl.textContent=NATIONS[G.playerNation]?.name||'';
   sEl('h-gld',fa(G.gold[G.playerNation]));
   sEl('h-pop',fm(tp));
   const loanSt=document.getElementById('h-loan-st');
@@ -42,7 +40,7 @@ function updateHUD(){
     if(G.reforming)sEl('h-reform-txt',`⚖ ${G.reformTurnsLeft}mo left`);
   }
 }
-function updateIdeoHUD(){const io=ideol(),el=document.getElementById('hud-ideo');if(!el)return;el.textContent=io.icon+' '+io.name;el.style.color=io.color;}
+function updateIdeoHUD(){const io=ideol(),el=document.getElementById('hud-ideo');if(!el)return;el.textContent=io.icon+' '+io.name;el.style.color=io.color;el.style.borderColor=io.border;}
 function updateSeasonUI(){
   const s=season();
   sEl('h-season',s.icon);
@@ -86,11 +84,11 @@ function updateSP(i){
   }
 
   const resHtml=Object.entries(G.resBase[i]||{}).filter(([,v])=>v>0).map(([k,v])=>`<span class="res-chip">${{oil:'🛢️',coal:'⚫',grain:'🌾',steel:'⚙️'}[k]||k} ${v}</span>`).join('');
-  const bldHtml=bldC?G.buildings[i].map(k=>`<span class="bld-tag">${BUILDINGS[k]?.icon||k}</span>`).join(''):'';
+  const bldHtml=bldC?G.buildings[i].map(k=>`<span class="bld-tag">${BUILDINGS[k]?.icon||k}</span>`).join(''):`<span style="font-size:8px;color:var(--dim)">${bldC}/${maxBld} buildings</span>`;
 
   sEl('sp-nm',p.name);
   sHTML('sp-bdg',bdg);
-  sEl('sp-ow', o<0?'Rebels':(NATIONS[o]?.name||ownerName(o)));
+  sEl('sp-ow',(o>=0?ownerName(o):'Rebels')+' · '+(TERRAIN[p.terrain||'plains']?.name||'')+' · '+dateStr());
   const avArmy=G.owner[i]===G.playerNation?availableArmy(i):G.army[i];
   // Army display: own/ally/puppet = exact, enemy = fog-of-war intel (matches map labels)
   let armyDisplay;

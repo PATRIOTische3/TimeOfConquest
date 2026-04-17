@@ -383,12 +383,8 @@ function hexPath(ctx2, cx, cy, r){
 
 // ── FOG OF WAR ────────────────────────────────────────────
 // ── FOG OF WAR ────────────────────────────────────────────
-// ── INTEL CACHE KEY ── stable per turn, never per render frame ──
-function _intelKey(){ return (G.year||0)*576+(G.month||0)*4+(G.week||0); }
-
 function _armyBFSDist(){
-  const _ik=_intelKey();
-  if(window._armyDistTick===_ik && window._armyDist) return window._armyDist;
+  if(window._armyDistTick===G.tick && window._armyDist) return window._armyDist;
   const dist=new Int16Array(PROVINCES.length).fill(32767);
   const q=[];
   for(let pi=0;pi<PROVINCES.length;pi++){
@@ -406,69 +402,51 @@ function _armyBFSDist(){
       }
     }
   }
-  window._armyDist=dist; window._armyDistTick=_ik;
+  window._armyDist=dist; window._armyDistTick=G.tick;
   return dist;
 }
 
-// Watchtower: player provinces with watchtower grant exact sight into adjacent provinces.
-function _watchtowerSightSet(){
-  const _ik=_intelKey();
-  if(window._wtSightTick===_ik && window._wtSight) return window._wtSight;
-  const sight=new Set();
-  for(let pi=0;pi<PROVINCES.length;pi++){
-    if(G.owner[pi]===G.playerNation && (G.buildings[pi]||[]).includes('watchtower')){
-      for(const nb of (NB[pi]||[])){
-        if(!PROVINCES[nb]?.isSea) sight.add(nb);
-      }
-    }
-  }
-  window._wtSight=sight; window._wtSightTick=_ik;
-  return sight;
-}
-
 // Distance thresholds:
-//   d=1 (adjacent) — 80% approx ±1k, 5% exact, 12.5% hidden, 2.5% phantom
-//   d=2 (near)     — 20% approx ±2k distortion
-//   d=3 (far)      — 20% approx ±3-4k distortion
-//   d>3            — always null
-// Watchtower → exact value regardless of distance.
-// Cache keyed by turn (year*576+month*4+week) — stable across all render frames.
+//   d<=2 : near  — 80% approx ±1k, 5% exact, 12.5% hidden, 2.5% phantom
+//   d=3   : mid   — 20% approx (±2k distortion)
+//   d=4   : far   — 20% heavily distorted (±3-4k)
+//   d>4   : unknown — always null
 function getArmyIntel(i){
   const o=G.owner[i];
   if(o===G.playerNation||(o>=0&&areAllies(G.playerNation,o))||G.puppet.includes(o)){
-    return {visible:true, value:G.army[i], exact:true};
+    return {visible:true, value:G.army[i]};
   }
-  if(_watchtowerSightSet().has(i)){
-    return {visible:true, value:G.army[i], exact:true, watchtower:true};
-  }
-  const _ik=_intelKey();
-  if(!window._armyIntel) window._armyIntel={};
-  if(window._armyIntelTick===_ik && i in window._armyIntel){
+  if(window._armyIntelTick===G.tick && window._armyIntel && i in window._armyIntel){
     const v=window._armyIntel[i];
     return {visible:v!==null&&v>0, value:v};
   }
-  // Cache miss — roll once, store permanently until next turn
-  if(window._armyIntelTick!==_ik){ window._armyIntel={}; window._armyIntelTick=_ik; }
   const d=_armyBFSDist()[i];
   const trueArmy=G.army[i]||0;
   let intelArmy=null;
-  if(d===1){
+  if(d<=2){
+    // Near: high quality intel
     const r=Math.random();
-    if(r<0.05) intelArmy=trueArmy;
-    else if(r<0.85){ const b=Math.round(trueArmy/1000)*1000; intelArmy=Math.max(0,b+(Math.floor(Math.random()*3)-1)*1000); }
-    else if(r<0.975) intelArmy=null;
-    else intelArmy=Math.floor(Math.random()*3+1)*1000;
-  } else if(d===2){
-    if(Math.random()<0.20){
-      const b=Math.round(trueArmy/1000)*1000;
-      intelArmy=Math.max(0,b+(Math.random()<0.55?1:-1)*Math.floor(Math.random()*3)*1000);
-    }
+    if(r<0.05){ intelArmy=trueArmy; }                                                         // 5% exact
+    else if(r<0.85){ const b=Math.round(trueArmy/1000)*1000; intelArmy=Math.max(0,b+(Math.floor(Math.random()*3)-1)*1000); } // 80% ±1k
+    else if(r<0.975){ intelArmy=null; }                                                        // 12.5% hidden
+    else { intelArmy=Math.floor(Math.random()*3+1)*1000; }                                    // 2.5% phantom
   } else if(d===3){
+    // Mid: rough estimate with ±2k distortion
     if(Math.random()<0.20){
       const b=Math.round(trueArmy/1000)*1000;
-      intelArmy=Math.max(0,b+(Math.random()<0.60?1:-1)*(3+Math.floor(Math.random()*2))*1000);
+      const dir=Math.random()<0.55?1:-1;
+      intelArmy=Math.max(0,b+dir*Math.floor(Math.random()*3)*1000);
+    }
+  } else if(d===4){
+    // Far: 20% chance, heavily distorted ±3-4k
+    if(Math.random()<0.20){
+      const b=Math.round(trueArmy/1000)*1000;
+      const dir=Math.random()<0.60?1:-1;
+      intelArmy=Math.max(0,b+dir*(3+Math.floor(Math.random()*2))*1000);
     }
   }
+  // d>4: always null
+  if(!window._armyIntel) window._armyIntel={};
   window._armyIntel[i]=intelArmy;
   return {visible:intelArmy!==null&&intelArmy>0, value:intelArmy};
 }
@@ -476,7 +454,6 @@ function getArmyIntel(i){
 function canSeeArmy(i){
   const o=G.owner[i];
   if(o===G.playerNation||(o>=0&&areAllies(G.playerNation,o))||G.puppet.includes(o)) return true;
-  if(_watchtowerSightSet().has(i)) return true;
   const intel=getArmyIntel(i);
   return intel.visible&&intel.value!==null;
 }
@@ -865,7 +842,7 @@ function drawMap(){
     // PASS 2A: Army overlay — only in army mode
     if(G.mapMode === 'army'){
       const PN=G.playerNation;
-      if(window._armyIntelTick!==_intelKey()){ window._armyIntel={}; }
+      if(window._armyIntelTick!==G.tick){ window._armyIntel={}; window._armyIntelTick=G.tick; }
       const natMaxArmy={};
       for(let pi=0;pi<PROVINCES.length;pi++){
         const o2=G.owner[pi]; if(o2<0) continue;
@@ -1296,13 +1273,12 @@ function drawMap(){
 
       // Army count — below name if name shown
       if(hasArmy){
-        const _isWT=!_ownOrAlly&&(typeof _watchtowerSightSet==='function'&&_watchtowerSightSet().has(i));
-        const _isFarIntel=!_ownOrAlly&&!_isWT&&(typeof _armyBFSDist==='function'?_armyBFSDist()[i]:99)>1;
+        const _isFarIntel=!_ownOrAlly&&(typeof _armyBFSDist==='function'?_armyBFSDist()[i]:99)>1;
         const _dispVal=(_isFarIntel?'~':'')+fm(_armyShowVal);
-        ctx.font=`bold ${Math.max(5,fs)}px Cinzel,serif`;
-        ctx.fillStyle=_ownOrAlly?'rgba(232,205,145,.95)':'rgba(255,255,255,.92)';
+        ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;
+        ctx.fillStyle=_ownOrAlly?'rgba(232,205,145,.85)':'rgba(200,160,100,.70)';
         ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=3;
+        ctx.shadowColor='rgba(0,0,0,.9)';ctx.shadowBlur=2;
         ctx.fillText(_dispVal, px, py+armyOffY);
         ctx.shadowBlur=0;
       }
@@ -1431,7 +1407,7 @@ function drawMap(){
 
 function drawMapOverlay(){
   // Shared panel style helpers
-  const PAD=14, LH=24, SW=240, CORNER_X=CW-SW-12, CORNER_Y=12;
+  const PAD=10, LH=17, SW=172, CORNER_X=CW-SW-8, CORNER_Y=8;
   const GOLD='#c9a84c', DIM='#7a6a40', TEXT='#ddd0b0', BG='rgba(5,7,12,.92)';
   const ACCENT_LINE='rgba(201,168,76,.18)';
 
@@ -1449,7 +1425,7 @@ function drawMapOverlay(){
   }
   function panelTitle(x,y,label){
     ctx.save();
-    ctx.font='bold 11px Cinzel,serif';ctx.fillStyle=GOLD;
+    ctx.font='bold 8px Cinzel,serif';ctx.fillStyle=GOLD;
     ctx.textAlign='left';ctx.textBaseline='top';
     ctx.letterSpacing='1px';
     ctx.fillText(label,x,y);
@@ -1458,7 +1434,7 @@ function drawMapOverlay(){
   function panelRow(x,y,label,value,valColor){
     ctx.save();
     ctx.textAlign='left';ctx.textBaseline='middle';
-    ctx.font='11px Cinzel,serif';ctx.fillStyle=TEXT;
+    ctx.font='8px Cinzel,serif';ctx.fillStyle=TEXT;
     ctx.fillText(label,x,y);
     ctx.textAlign='right';
     ctx.fillStyle=valColor||GOLD;
@@ -1484,14 +1460,14 @@ function drawMapOverlay(){
     panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(60,30,10,.55)');
     panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'⚔  ARMY STRENGTH');
     if(!top5.length){
-      ctx.save();ctx.font='11px Cinzel,serif';ctx.fillStyle=DIM;
+      ctx.save();ctx.font='8px Cinzel,serif';ctx.fillStyle=DIM;
       ctx.textAlign='left';ctx.textBaseline='top';
       ctx.fillText('No armies deployed',CORNER_X+PAD,CORNER_Y+PAD+14);
       ctx.restore();
     } else {
       const ty=CORNER_Y+PAD+14+LH/2;
       ctx.save();
-      ctx.font='bold 11px Cinzel,serif';ctx.fillStyle=GOLD;
+      ctx.font='bold 8px Cinzel,serif';ctx.fillStyle=GOLD;
       ctx.textAlign='left';ctx.textBaseline='middle';
       ctx.fillText('Total',CORNER_X+PAD,ty);
       ctx.textAlign='right';
@@ -1525,7 +1501,7 @@ function drawMapOverlay(){
     panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(180,60,30,.35)');
     panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'☣  EPIDEMICS');
     if(active.length===0){
-      ctx.save();ctx.font='11px Cinzel,serif';ctx.fillStyle=DIM;
+      ctx.save();ctx.font='8px Cinzel,serif';ctx.fillStyle=DIM;
       ctx.textAlign='left';ctx.textBaseline='top';
       ctx.fillText('No active epidemics',CORNER_X+PAD,CORNER_Y+PAD+14);
       ctx.restore();
@@ -1535,7 +1511,7 @@ function drawMapOverlay(){
         ctx.save();
         ctx.fillStyle=ep.color;
         ctx.beginPath();ctx.arc(CORNER_X+PAD+4,ey+LH/2,3.5,0,Math.PI*2);ctx.fill();
-        ctx.font='11px Cinzel,serif';ctx.fillStyle=TEXT;
+        ctx.font='8px Cinzel,serif';ctx.fillStyle=TEXT;
         ctx.textAlign='left';ctx.textBaseline='middle';
         ctx.fillText(`${ep.icon} ${ep.name}`,CORNER_X+PAD+13,ey+LH/2-3);
         ctx.fillStyle=DIM;ctx.font='7px serif';
@@ -1558,7 +1534,7 @@ function drawMapOverlay(){
     panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(40,80,60,.4)');
     panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'🏛  BUILDINGS');
     if(!entries.length&&!constCount){
-      ctx.save();ctx.font='11px Cinzel,serif';ctx.fillStyle=DIM;
+      ctx.save();ctx.font='8px Cinzel,serif';ctx.fillStyle=DIM;
       ctx.textAlign='left';ctx.textBaseline='top';
       ctx.fillText('No buildings constructed',CORNER_X+PAD,CORNER_Y+PAD+14);
       ctx.restore();
@@ -1570,7 +1546,7 @@ function drawMapOverlay(){
         ctx.font='10px serif';ctx.fillStyle=TEXT;
         ctx.textAlign='left';ctx.textBaseline='middle';
         ctx.fillText(b.icon||'?',CORNER_X+PAD,ey);
-        ctx.font='11px Cinzel,serif';
+        ctx.font='8px Cinzel,serif';
         ctx.fillText(b.name,CORNER_X+PAD+16,ey);
         ctx.fillStyle=GOLD;ctx.textAlign='right';
         ctx.fillText('×'+cnt,CORNER_X+SW-PAD,ey);
@@ -1578,7 +1554,7 @@ function drawMapOverlay(){
       });
       if(constCount){
         const ey=CORNER_Y+PAD+14+entries.length*LH+LH/2;
-        ctx.save();ctx.font='11px Cinzel,serif';ctx.fillStyle=DIM;
+        ctx.save();ctx.font='8px Cinzel,serif';ctx.fillStyle=DIM;
         ctx.textAlign='left';ctx.textBaseline='middle';
         ctx.fillText('🏗 Under construction',CORNER_X+PAD,ey);
         ctx.fillStyle=GOLD;ctx.textAlign='right';
@@ -1597,14 +1573,14 @@ function drawMapOverlay(){
     const sh=TITLE_H+VAL_H+BAR_H+PAD+8;
     panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(180,120,20,.3)');
     // Title
-    panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'⚡  UNREST');
+    panelTitle(CORNER_X+PAD,CORNER_Y+7,'⚡  UNREST');
     // Value row
     const vy=CORNER_Y+TITLE_H+VAL_H/2+2;
     ctx.save();
-    ctx.font='11px Cinzel,serif';ctx.fillStyle=TEXT;
+    ctx.font='8px Cinzel,serif';ctx.fillStyle=TEXT;
     ctx.textAlign='left';ctx.textBaseline='middle';
     ctx.fillText('Avg. satisfaction',CORNER_X+PAD,vy);
-    ctx.font='bold 11px Cinzel,serif';ctx.fillStyle=satColor;
+    ctx.font='bold 9px Cinzel,serif';ctx.fillStyle=satColor;
     ctx.textAlign='right';
     ctx.fillText(avgSat+'%',CORNER_X+SW-PAD,vy);
     ctx.restore();
@@ -1645,7 +1621,7 @@ function drawMapOverlay(){
       // Small terrain color swatch
       ctx.fillStyle=TC[t]||'#444';
       ctx.beginPath();ctx.rect(CORNER_X+PAD,ey-4,8,8);ctx.fill();
-      ctx.font='11px Cinzel,serif';ctx.fillStyle=TEXT;
+      ctx.font='8px Cinzel,serif';ctx.fillStyle=TEXT;
       ctx.textAlign='left';ctx.textBaseline='middle';
       ctx.fillText(label,CORNER_X+PAD+12,ey);
       ctx.fillStyle=DIM;ctx.textAlign='right';
@@ -1653,7 +1629,7 @@ function drawMapOverlay(){
       ctx.restore();
     });
     if(!sorted.length){
-      ctx.save();ctx.font='11px Cinzel,serif';ctx.fillStyle=DIM;
+      ctx.save();ctx.font='8px Cinzel,serif';ctx.fillStyle=DIM;
       ctx.textAlign='left';ctx.textBaseline='top';
       ctx.fillText('No territories',CORNER_X+PAD,CORNER_Y+PAD+14);
       ctx.restore();
@@ -1689,7 +1665,7 @@ function drawMapOverlay(){
       ctx.globalAlpha=active?1:0.35;
       ctx.fillStyle=`rgb(${dot[0]},${dot[1]},${dot[2]})`;
       ctx.beginPath();ctx.arc(CORNER_X+PAD+4,ey,4,0,Math.PI*2);ctx.fill();
-      ctx.font='11px Cinzel,serif';
+      ctx.font='8px Cinzel,serif';
       ctx.fillStyle=active?TEXT:'rgba(180,160,120,.5)';
       ctx.textAlign='left';ctx.textBaseline='middle';
       ctx.fillText(label,CORNER_X+PAD+13,ey);
