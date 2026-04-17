@@ -9,6 +9,8 @@ function updateHUD(){
   const avgSat=mr.length?Math.round(tsat/mr.length):70;
   const debt=G.loans.reduce((s,l)=>s+l.amount,0);
   sEl('h-date',dateStr());
+  const _natEl=document.getElementById('h-nation');
+  if(_natEl)_natEl.textContent=NATIONS[G.playerNation]?.name||'';
   sEl('h-gld',fa(G.gold[G.playerNation]));
   sEl('h-pop',fm(tp));
   const loanSt=document.getElementById('h-loan-st');
@@ -64,12 +66,9 @@ function updateSP(i){
   const allyIdx=o>=0?G.allianceOf[o]:-1;
   const allyName=allyIdx>=0?G.alliance[allyIdx]?.name:'';
 
-  const ownerLabel=o<0?'Rebels':(NATIONS[o]?.name||ownerName(o));
-  sEl('sp-ow', ownerLabel);
-
-  // Badges — no "Yours", Capital/Unstable/Resist/War etc
   let bdg='';
   if(o===G.playerNation){
+    bdg='<span class="badge ours">★ Yours</span>';
     if(p.isCapital)bdg+='<span class="badge cap">★ Capital</span>';
     if(inst>40)bdg+='<span class="badge war">⚡ Unstable</span>';
   } else if(o<0)bdg='';
@@ -77,22 +76,23 @@ function updateSP(i){
   else if(G.pact[G.playerNation][o])bdg=`<span class="badge pact">🤝 Pact(${G.pLeft[G.playerNation][o]}mo)</span>`;
   else if(areAllies(G.playerNation,o))bdg=`<span class="badge ally">🤝 ${allyName}</span>`;
   else bdg='<span class="badge neut">○ Neutral</span>';
-  // Resist badge — "Resist" = active partisan/insurgency activity in the province
   if(resist>20)bdg+=`<span class="badge resist">🔥 Resist ${Math.round(resist)}%</span>`;
   if(G.puppet.includes(o))bdg+='<span class="badge pact">🎭 Puppet</span>';
+  // Disease badge
   const epId=G.provDisease?.[i];
   if(epId){
     const ep=G.epidemics?.find(e=>e.id===epId&&e.active);
     if(ep)bdg+=`<span class="badge war" style="border-color:${ep.color};color:${ep.color}">${ep.icon} ${ep.name}</span>`;
   }
-  sHTML('sp-bdg',bdg);
 
   const resHtml=Object.entries(G.resBase[i]||{}).filter(([,v])=>v>0).map(([k,v])=>`<span class="res-chip">${{oil:'🛢️',coal:'⚫',grain:'🌾',steel:'⚙️'}[k]||k} ${v}</span>`).join('');
-  // Only show buildings if any exist — never show "0/N buildings"
   const bldHtml=bldC?G.buildings[i].map(k=>`<span class="bld-tag">${BUILDINGS[k]?.icon||k}</span>`).join(''):'';
 
   sEl('sp-nm',p.name);
+  sHTML('sp-bdg',bdg);
+  sEl('sp-ow', o<0?'Rebels':(NATIONS[o]?.name||ownerName(o)));
   const avArmy=G.owner[i]===G.playerNation?availableArmy(i):G.army[i];
+  // Army display: own/ally/puppet = exact, enemy = fog-of-war intel (matches map labels)
   let armyDisplay;
   if(o===G.playerNation){
     armyDisplay=avArmy<G.army[i]
