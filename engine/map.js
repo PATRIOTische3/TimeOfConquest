@@ -406,11 +406,11 @@ function _armyBFSDist(){
   return dist;
 }
 
-// Distance thresholds:
-//   d<=2 : near  — 80% approx ±1k, 5% exact, 12.5% hidden, 2.5% phantom
-//   d=3   : mid   — 20% approx (±2k distortion)
-//   d=4   : far   — 20% heavily distorted (±3-4k)
-//   d>4   : unknown — always null
+// Distance thresholds (distance = number of province hops from your territory):
+//   d=1 : near  — 80% approx ±1k, 5% exact, 12.5% hidden, 2.5% phantom
+//   d=2 : mid   — 20% approx (±2k distortion)
+//   d=3 : far   — 20% heavily distorted (±3-4k)
+//   d>3 : unknown — always null
 function getArmyIntel(i){
   const o=G.owner[i];
   if(o===G.playerNation||(o>=0&&areAllies(G.playerNation,o))||G.puppet.includes(o)){
@@ -420,32 +420,41 @@ function getArmyIntel(i){
     const v=window._armyIntel[i];
     return {visible:v!==null&&v>0, value:v};
   }
+  // Watchtower: exact intel for provinces adjacent to one of player's watchtower provinces
+  const hasWatchtowerCoverage=(NB[i]||[]).some(nb=>
+    G.owner[nb]===G.playerNation && (G.buildings[nb]||[]).includes('watchtower')
+  );
+  if(hasWatchtowerCoverage){
+    if(!window._armyIntel) window._armyIntel={};
+    window._armyIntel[i]=G.army[i];
+    return {visible:true, value:G.army[i]};
+  }
   const d=_armyBFSDist()[i];
   const trueArmy=G.army[i]||0;
   let intelArmy=null;
-  if(d<=2){
-    // Near: high quality intel
+  if(d<=1){
+    // 1 province away: high quality intel
     const r=Math.random();
-    if(r<0.05){ intelArmy=trueArmy; }                                                         // 5% exact
-    else if(r<0.85){ const b=Math.round(trueArmy/1000)*1000; intelArmy=Math.max(0,b+(Math.floor(Math.random()*3)-1)*1000); } // 80% ±1k
-    else if(r<0.975){ intelArmy=null; }                                                        // 12.5% hidden
-    else { intelArmy=Math.floor(Math.random()*3+1)*1000; }                                    // 2.5% phantom
-  } else if(d===3){
-    // Mid: rough estimate with ±2k distortion
+    if(r<0.05){ intelArmy=trueArmy; }
+    else if(r<0.85){ const b=Math.round(trueArmy/1000)*1000; intelArmy=Math.max(0,b+(Math.floor(Math.random()*3)-1)*1000); }
+    else if(r<0.975){ intelArmy=null; }
+    else { intelArmy=Math.floor(Math.random()*3+1)*1000; }
+  } else if(d===2){
+    // 2 provinces: rough ±2k
     if(Math.random()<0.20){
       const b=Math.round(trueArmy/1000)*1000;
       const dir=Math.random()<0.55?1:-1;
       intelArmy=Math.max(0,b+dir*Math.floor(Math.random()*3)*1000);
     }
-  } else if(d===4){
-    // Far: 20% chance, heavily distorted ±3-4k
+  } else if(d===3){
+    // 3 provinces: 20% chance, heavily distorted ±3-4k
     if(Math.random()<0.20){
       const b=Math.round(trueArmy/1000)*1000;
       const dir=Math.random()<0.60?1:-1;
       intelArmy=Math.max(0,b+dir*(3+Math.floor(Math.random()*2))*1000);
     }
   }
-  // d>4: always null
+  // d>3: always null
   if(!window._armyIntel) window._armyIntel={};
   window._armyIntel[i]=intelArmy;
   return {visible:intelArmy!==null&&intelArmy>0, value:intelArmy};
@@ -1222,8 +1231,16 @@ function drawMap(){
       let _armyShowVal=null;
       if(G.army[i]>0 && vp.scale>1.0 && G.mapMode!=='instab' && G.mapMode!=='disease' && G.mapMode!=='buildings'){
         if(_ownOrAlly){ _armyShowVal=G.army[i]; }
-        else if(G.mapMode==='army'){ const _intel=getArmyIntel(i); if(_intel.visible&&_intel.value>0) _armyShowVal=_intel.value; }
-        else if(canSeeArmy(i)){ _armyShowVal=G.army[i]; }
+        else if(G.mapMode==='army'){
+          // Ensure intel cache is valid for this tick before reading
+          if(window._armyIntelTick!==G.tick){ window._armyIntel={}; window._armyIntelTick=G.tick; }
+          const _intel=getArmyIntel(i); if(_intel.visible&&_intel.value>0) _armyShowVal=_intel.value;
+        }
+        // On political/terrain/etc: show enemy army only if adjacent (d<=1) — no random flicker
+        else if(G.mapMode==='political'){
+          const d=_armyBFSDist()[i];
+          if(d<=1) _armyShowVal=G.army[i];
+        }
       }
       const hasArmy=_armyShowVal!==null;
       const _draftEntry = (G.draftQueue||[]).find(d=>d.prov===i&&d.nation===G.playerNation);
@@ -1275,8 +1292,8 @@ function drawMap(){
       if(hasArmy){
         const _isFarIntel=!_ownOrAlly&&(typeof _armyBFSDist==='function'?_armyBFSDist()[i]:99)>1;
         const _dispVal=(_isFarIntel?'~':'')+fm(_armyShowVal);
-        ctx.font=`${Math.max(3.5,fs-1.5)}px Cinzel,serif`;
-        ctx.fillStyle=_ownOrAlly?'rgba(232,205,145,.85)':'rgba(200,160,100,.70)';
+        ctx.font=`${Math.max(4,fs-1)}px Cinzel,serif`;
+        ctx.fillStyle=_ownOrAlly?'rgba(232,205,145,.92)':'rgba(255,255,255,.82)';
         ctx.textAlign='center';ctx.textBaseline='middle';
         ctx.shadowColor='rgba(0,0,0,.9)';ctx.shadowBlur=2;
         ctx.fillText(_dispVal, px, py+armyOffY);
@@ -1407,7 +1424,7 @@ function drawMap(){
 
 function drawMapOverlay(){
   // Shared panel style helpers
-  const PAD=10, LH=17, SW=172, CORNER_X=CW-SW-8, CORNER_Y=8;
+  const PAD=12, LH=20, SW=210, CORNER_X=CW-SW-10, CORNER_Y=10;
   const GOLD='#c9a84c', DIM='#7a6a40', TEXT='#ddd0b0', BG='rgba(5,7,12,.92)';
   const ACCENT_LINE='rgba(201,168,76,.18)';
 
@@ -1425,7 +1442,7 @@ function drawMapOverlay(){
   }
   function panelTitle(x,y,label){
     ctx.save();
-    ctx.font='bold 8px Cinzel,serif';ctx.fillStyle=GOLD;
+    ctx.font='bold 9px Cinzel,serif';ctx.fillStyle=GOLD;
     ctx.textAlign='left';ctx.textBaseline='top';
     ctx.letterSpacing='1px';
     ctx.fillText(label,x,y);
@@ -1434,7 +1451,7 @@ function drawMapOverlay(){
   function panelRow(x,y,label,value,valColor){
     ctx.save();
     ctx.textAlign='left';ctx.textBaseline='middle';
-    ctx.font='8px Cinzel,serif';ctx.fillStyle=TEXT;
+    ctx.font='9px Cinzel,serif';ctx.fillStyle=TEXT;
     ctx.fillText(label,x,y);
     ctx.textAlign='right';
     ctx.fillStyle=valColor||GOLD;
