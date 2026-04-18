@@ -4,13 +4,25 @@
 
 // ── HUD / UI ──────────────────────────────────────────────
 function updateHUD(){
-  const mr=regsOf(G.playerNation);let ta=0,tp=0,tsat=0;
-  mr.forEach(r=>{ta+=G.army[r];tp+=G.pop[r];tsat+=G.satisfaction[r]??70;});
+  const mr=regsOf(G.playerNation);let ta=0,tp=0,tsat=0,tinc=0;
+  const io=ideol();
+  const curTax=G.taxRate??25;
+  const taxFactor=0.4+(curTax/100)*2.4;
+  mr.forEach(r=>{
+    ta+=G.army[r];tp+=G.pop[r];tsat+=G.satisfaction[r]??70;
+    let inc=G.income[r];
+    if((G.buildings[r]||[]).includes('factory'))inc=Math.floor(inc*1.8);
+    if((G.buildings[r]||[]).includes('palace'))inc=Math.floor(inc*1.15);
+    tinc+=Math.floor(inc*io.income*taxFactor);
+  });
   const avgSat=mr.length?Math.round(tsat/mr.length):70;
   const debt=G.loans.reduce((s,l)=>s+l.amount,0);
   sEl('h-date',dateStr());
   sEl('h-gld',fa(G.gold[G.playerNation]));
   sEl('h-pop',fm(tp));
+  // Income
+  const incEl=document.getElementById('h-inc');
+  if(incEl){incEl.textContent='+'+fa(tinc)+'g';incEl.style.color='#6ed46e';}
   const loanSt=document.getElementById('h-loan-st');
   if(loanSt){loanSt.style.display=debt>0?'flex':'none';sEl('h-debt',fa(debt));}
   // Satisfaction display

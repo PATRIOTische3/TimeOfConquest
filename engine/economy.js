@@ -12,7 +12,10 @@ var TAX_MAX={
 
 function taxMax(){ return TAX_MAX[G.ideology]||60; }
 
-function openEconomy(){
+// openEconomy — alias for backward compat (mobile panel)
+function openEconomy(){ openTaxation(); }
+
+function openTaxation(){
   const PN=G.playerNation;
   const io=ideol();
   const mr=regsOf(PN);
@@ -31,13 +34,10 @@ function openEconomy(){
   const taxLabel=curTax<=10?'🟢 Very Low':curTax<=25?'🟢 Low':curTax<=40?'🟡 Moderate':curTax<=60?'🟠 High':curTax<=80?'🔴 Very High':'💀 Extreme';
   const satEffect=curTax<=10?'+15% sat':curTax<=25?'+5% sat':curTax<=40?'neutral':curTax<=60?'−10% sat':curTax<=80?'−25% sat':'−40% sat';
 
-  // Appease cost: 50g per province, boosts satisfaction by 5-12
-  const appeaseCost=Math.max(50,mr.length*20);
-
   const html=`
-    <p class="mx" style="margin-bottom:10px">Manage your empire's economy. Tax rates affect both income and popular opinion.</p>
+    <p class="mx" style="margin-bottom:10px">Tax rates affect both income and popular opinion.</p>
 
-    <div style="background:rgba(201,168,76,.05);border:1px solid var(--border2);padding:12px;margin-bottom:10px">
+    <div style="background:rgba(201,168,76,.05);border:1px solid var(--border2);padding:12px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <span style="font-family:Cinzel,serif;font-size:11px;color:var(--gold)">TAX RATE</span>
         <span style="font-size:10px;color:var(--dim)">${io.icon} Max: <b style="color:var(--gold)">${maxTax}%</b></span>
@@ -56,21 +56,27 @@ function openEconomy(){
       </div>
       <button class="btn grn" style="width:100%;padding:8px" onclick="applyTaxRate()">✓ Apply Tax Rate</button>
     </div>
-
-    <div style="background:rgba(100,50,200,.05);border:1px solid rgba(100,50,200,.3);padding:12px">
-      <div style="font-family:Cinzel,serif;font-size:11px;color:#b090ff;margin-bottom:6px">🎁 APPEASE POPULATION</div>
-      <p class="mx" style="font-size:9px;margin-bottom:8px">Distribute bread, gold, and entertainment to raise satisfaction across all provinces. One-time effect.</p>
-      <div style="display:flex;gap:6px">
-        <button class="btn" style="flex:1;padding:8px;border-color:rgba(100,50,200,.5);color:#b090ff" onclick="appeasePop(100,'small')">🍞 Small<br><span style="font-size:8px;color:var(--dim)">${fa(appeaseCost/2)}g · +${ri(3,6)}% sat</span></button>
-        <button class="btn" style="flex:1;padding:8px;border-color:rgba(100,50,200,.5);color:#b090ff" onclick="appeasePop(100,'medium')">🎪 Festival<br><span style="font-size:8px;color:var(--dim)">${fa(appeaseCost)}g · +${ri(6,12)}% sat</span></button>
-        <button class="btn" style="flex:1;padding:8px;border-color:rgba(100,50,200,.5);color:#b090ff" onclick="appeasePop(100,'grand')">👑 Grand<br><span style="font-size:8px;color:var(--dim)">${fa(appeaseCost*2)}g · +${ri(12,20)}% sat</span></button>
-      </div>
-    </div>
-  `;
+  \`;
   openMo('💰 ECONOMY & TAXATION', html, [{lbl:'Close',cls:'dim'}]);
-  // store for preview
   window._econMr=mr;
   window._econIo=io;
+}
+
+function openAppease(){
+  const PN=G.playerNation;
+  const mr=regsOf(PN);
+  const avgSat=mr.length?Math.round(mr.reduce((s,r)=>s+(G.satisfaction[r]??70),0)/mr.length):70;
+  const appeaseCost=Math.max(50,mr.length*20);
+  const html=\`
+    <p class="mx" style="margin-bottom:10px">Distribute bread, gold, and entertainment to raise satisfaction across all provinces.</p>
+    <p class="mx" style="margin-bottom:12px">Avg. satisfaction: <b style="color:\${avgSat<40?'#ff6040':avgSat<60?'#c08020':'#40c040'}">\${avgSat}%</b> · Treasury: <b>\${fa(G.gold[PN])}g</b></p>
+    <div style="display:flex;gap:6px">
+      <button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'small')">🍞<br><b style="font-size:10px">Small</b><br><span style="font-size:8px;color:var(--dim)">\${fa(appeaseCost/2)}g · +4–8% sat</span></button>
+      <button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'medium')">🎪<br><b style="font-size:10px">Festival</b><br><span style="font-size:8px;color:var(--dim)">\${fa(appeaseCost)}g · +8–15% sat</span></button>
+      <button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'grand')">👑<br><b style="font-size:10px">Grand</b><br><span style="font-size:8px;color:var(--dim)">\${fa(appeaseCost*2)}g · +14–22% sat</span></button>
+    </div>
+  \`;
+  openMo('🎁 APPEASE POPULATION', html, [{lbl:'Close',cls:'dim'}]);
 }
 
 window.updTaxPreview=function(){
