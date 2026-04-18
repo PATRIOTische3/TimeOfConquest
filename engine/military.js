@@ -579,7 +579,10 @@ function runBattle(fr,to,atkF,atker,done){
         if(PROVINCES[to].isCapital&&prev>=0){G.capitalPenalty[atker]=3;addLog(`★ ${PROVINCES[to].name} captured!`,'war');}
         G.resistance[to]=ri(20,50);
       }
-      if(isP)addLog(`✦ ${PROVINCES[to].name} taken! Lost ${fa(al)}.`,'vic');
+      if(isP){
+        addLog(`✦ ${PROVINCES[to].name} taken! Lost ${fa(al)}.`,'vic');
+        if(!_fastMode) setTimeout(function(){_animZoomTo(fr,to,0.40);},80);
+      }
       if(prev>=0&&regsOf(prev).length===0){
         G.war[atker][prev]=G.war[prev][atker]=false;
         if(isP)addLog(`${ownerName(prev)} eliminated.`,'war');
@@ -696,23 +699,28 @@ function showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done){
     </div>
   </div>`;
 
+  // Cancel any in-flight close from previous battle
+  if(window._battleSkipFn){ window._battleSkipFn=null; }
+  // Reset state before showing
+  ov.style.transition='none';
+  ov.style.opacity='1';
   ov.style.display='flex';
 
-  // Auto-close after 2.8s, or on tap (skipBattleAnim)
   let closed=false;
   function closeOverlay(){
     if(closed)return;
     closed=true;
-    ov.style.opacity='0';
+    window._battleSkipFn=null;
     ov.style.transition='opacity .18s ease';
-    setTimeout(()=>{
+    ov.style.opacity='0';
+    setTimeout(function(){
       ov.style.display='none';
       ov.innerHTML='';
       done();
     },220);
   }
   const autoT=setTimeout(closeOverlay,2800);
-  window._battleSkipFn=()=>{clearTimeout(autoT);closeOverlay();};
+  window._battleSkipFn=function(){clearTimeout(autoT);closeOverlay();};
 }
 
 // ── ENEMY ATTACK OVERLAY ──────────────────────────────────────
