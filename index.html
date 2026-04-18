@@ -209,8 +209,8 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .rt-lbl{color:var(--dim)}
 #side-panel{width:clamp(260px,22vw,380px);min-width:230px;background:rgba(8,6,16,0.55);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-left:1px solid rgba(201,168,76,.18);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
 #sp-header{background:rgba(14,8,4,0.60);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(201,168,76,.15);padding:clamp(7px,1vh,13px) clamp(9px,1vw,16px);flex-shrink:0}
-.sp-rname{font-family:'Cinzel',serif;font-size:clamp(12px,1.2vw,18px);color:var(--gold);margin-bottom:2px}
-.sp-rsub{font-size:clamp(8px,.8vw,12px);color:var(--dim);font-style:italic;margin-bottom:3px}
+.sp-rname{font-family:'Cinzel',serif;font-size:clamp(10px,1vw,14px);color:var(--dim);letter-spacing:.5px;margin-bottom:1px}
+.sp-rsub{font-size:clamp(12px,1.15vw,17px);color:var(--text);font-family:'Cinzel',serif;font-weight:600;margin-bottom:3px}
 .sp-4{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin-bottom:4px}
 .sp-box{background:rgba(0,0,0,.28);border:1px solid rgba(42,36,24,.5);padding:clamp(2px,.3vh,5px) clamp(3px,.4vw,6px);text-align:center}
 .sp-bl{font-size:clamp(6px,.6vw,9px);color:var(--dim);text-transform:uppercase;letter-spacing:.3px}
@@ -225,11 +225,11 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .ibar-fill{height:100%;border-radius:2px;transition:width .35s}
 .bld-row{display:flex;gap:3px;margin-top:3px;flex-wrap:wrap}
 .bld-tag{font-size:clamp(7px,.7vw,10px);padding:2px 5px;border:1px solid var(--border);color:var(--dim)}
-#sp-actions{flex:1;overflow-y:auto;padding:clamp(4px,.6vh,8px) clamp(8px,.9vw,14px);display:flex;flex-direction:column;gap:2px;background:rgba(4,3,10,0.35)}
+#sp-actions{flex:1;overflow-y:auto;padding:clamp(4px,.6vh,8px) clamp(8px,.9vw,14px);display:flex;flex-direction:column;gap:2px;background:rgba(4,3,10,0.22)}
 #sp-actions::-webkit-scrollbar{width:2px}
 #sp-actions::-webkit-scrollbar-thumb{background:var(--border)}
-.sp-sec{font-family:'Cinzel',serif;font-size:clamp(7px,.7vw,11px);color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;padding:clamp(4px,.5vh,7px) 0 3px;border-bottom:1px solid rgba(201,168,76,.18);margin-top:4px}
-.abtn{width:100%;padding:clamp(6px,.8vh,10px) clamp(6px,.7vw,10px);background:rgba(255,255,255,0.04);border:1px solid rgba(201,168,76,.14);color:var(--text);font-family:'IM Fell English',serif;font-size:clamp(10px,1vw,14px);cursor:pointer;transition:all .11s;text-align:left;display:flex;align-items:center;gap:clamp(4px,.5vw,8px);min-height:0;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.sp-sec{font-family:'Cinzel',serif;font-size:clamp(7px,.7vw,10px);color:rgba(201,168,76,.7);letter-spacing:1.5px;text-transform:uppercase;padding:clamp(5px,.6vh,8px) 0 4px;border-bottom:1px solid rgba(201,168,76,.15);margin-top:6px}
+.abtn{width:100%;padding:clamp(6px,.8vh,10px) clamp(6px,.7vw,10px);background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,.07);color:var(--text);font-family:'IM Fell English',serif;font-size:clamp(10px,1vw,14px);cursor:pointer;transition:all .14s;text-align:left;display:flex;align-items:center;gap:clamp(4px,.5vw,8px);min-height:0;backdrop-filter:blur(8px) saturate(1.2);-webkit-backdrop-filter:blur(8px) saturate(1.2);border-radius:2px}
 .abtn:hover:not(:disabled){background:rgba(201,168,76,.06);border-color:var(--gold);color:var(--gold)}
 .abtn:disabled{opacity:.22;cursor:not-allowed}
 .abtn.war-btn:hover:not(:disabled){border-color:var(--red2);color:#ff7070;background:rgba(130,26,26,.09)}
@@ -623,6 +623,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <span class="hud-season" id="h-season">☀️</span>
     <div class="hud-date" id="h-date">Jan 1936</div>
     <div class="hstat"><div class="hsl">Gold</div><div class="hsv" id="h-gld">—</div></div>
+    <div class="hstat"><div class="hsl">Income</div><div class="hsv" id="h-inc">—</div></div>
     <div class="hstat" id="h-loan-st" style="display:none"><div class="hsl">Debt</div><div class="hsv warn" id="h-debt">—</div></div>
     <div class="hstat"><div class="hsl">Pop.</div><div class="hsv" id="h-pop">—</div></div>
     <div class="hstat" id="h-sat-st"><div class="hsl">Satisf.</div><div class="hsv" id="h-sat">—</div></div>
@@ -651,11 +652,11 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <div id="map-wrap">
       <div id="move-banner">🚶 MOVE MODE</div>
       <div id="season-banner">☀️ Summer</div>
-      <!-- Zoom buttons overlaid on map corner -->
-      <div id="map-zoom-btns" style="position:absolute;top:8px;right:8px;z-index:10;display:flex;flex-direction:column;gap:3px">
-        <button class="zbtn" onclick="zoomBy(1.28)" style="width:28px;height:28px;font-size:16px">+</button>
-        <button class="zbtn" onclick="zoomBy(1/1.28)" style="width:28px;height:28px;font-size:16px">−</button>
-        <button class="zbtn" onclick="zoomReset()" style="width:28px;height:28px;font-size:10px">⊡</button>
+      <!-- Zoom buttons overlaid on map — bottom left -->
+      <div id="map-zoom-btns" style="position:absolute;bottom:10px;left:8px;z-index:10;display:flex;flex-direction:row;gap:4px">
+        <button class="zbtn" onclick="zoomBy(1.28)" style="width:30px;height:30px;font-size:17px">+</button>
+        <button class="zbtn" onclick="zoomBy(1/1.28)" style="width:30px;height:30px;font-size:17px">−</button>
+        <button class="zbtn" onclick="zoomReset()" style="width:30px;height:30px;font-size:11px">⊡</button>
       </div>
       <div id="res-tooltip">
         <div class="rt-row"><span class="rt-lbl">🛢️ Oil</span><span id="tt-oil">0</span></div>
@@ -675,9 +676,9 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     </div>
     <div id="side-panel">
       <div id="sp-header">
-        <div id="sp-bdg"></div>
         <div class="sp-rname" id="sp-nm">Select a territory</div>
-        <div class="sp-rsub" id="sp-ow" style="font-size:clamp(11px,1.1vw,15px);font-weight:600;color:var(--text);margin-bottom:2px"></div>
+        <div class="sp-rsub" id="sp-ow"></div>
+        <div id="sp-bdg" style="margin-bottom:4px"></div>
         <div class="sp-4">
           <div class="sp-box"><div class="sp-bl">Army</div><div class="sp-bv" id="sp-ar">—</div></div>
           <div class="sp-box"><div class="sp-bl">Pop.</div><div class="sp-bv" id="sp-pp">—</div></div>
@@ -697,9 +698,10 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
         <button class="abtn war-btn" id="sp-btn-atk" onclick="openAttack()" disabled><span class="ic">⚔</span><span class="al"><span class="am">Attack / Declare War</span><span class="as" id="sp-atk-sub">Select adjacent enemy territory</span></span></button>
         <button class="abtn" onclick="openDraft()"><span class="ic">🪖</span><span class="al"><span class="am">Conscript Soldiers</span><span class="as">1,000 pop · 1 gold per soldier</span></span></button>
         <button class="abtn" id="sp-btn-move" onclick="toggleMoveMode()" disabled><span class="ic">🚶</span><span class="al"><span class="am">Move Army</span><span class="as" id="sp-move-sub">Select your territory first</span></span></button>
-        <button class="abtn" id="sp-btn-naval" onclick="toggleNavalMode()" disabled><span class="ic">⚓</span><span class="al"><span class="am">Naval Transport</span><span class="as" id="sp-naval-sub">Needs port + coastal territory</span></span></button>
-        <div class="sp-sec">🏗 Economy & Building</div>
-        <button class="abtn" onclick="openEconomy()"><span class="ic">💰</span><span class="al"><span class="am">Economy & Taxation</span><span class="as" id="sp-tax-sub">Set tax rates · Appease population</span></span></button>
+        <div class="sp-sec">🎁 Appease Population</div>
+        <button class="abtn" onclick="openAppease()"><span class="ic">🎁</span><span class="al"><span class="am">Appease Population</span><span class="as">Raise satisfaction in all provinces</span></span></button>
+        <div class="sp-sec">🏗 Economy &amp; Building</div>
+        <button class="abtn" onclick="openTaxation()"><span class="ic">💰</span><span class="al"><span class="am">Economy &amp; Taxation</span><span class="as" id="sp-tax-sub">Set tax rates</span></span></button>
         <button class="abtn" onclick="openBuild()"><span class="ic">🏗</span><span class="al"><span class="am">Construct Building</span><span class="as" id="sp-bld-sub">Select your territory first</span></span></button>
         <button class="abtn" onclick="openLoan()"><span class="ic">🏦</span><span class="al"><span class="am">Take a Loan</span><span class="as" id="sp-loan-sub">World Bank · 500 / 1000 / 2000g</span></span></button>
         <div class="sp-sec">🤝 Diplomacy</div>
@@ -744,9 +746,9 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
         <button class="abtn" id="mob-btn-move" onclick="toggleMoveMode()" disabled><span class="ic">🚶</span><span class="al"><span class="am">Move Army</span></span></button>
         <button class="abtn war-btn" id="btn-atk" onclick="openAttack()" disabled><span class="ic">⚔</span><span class="al"><span class="am">Attack</span></span></button>
         <button class="abtn" onclick="openDraft()"><span class="ic">🪖</span><span class="al"><span class="am">Conscript</span></span></button>
-        <button class="abtn" onclick="openEconomy()"><span class="ic">💰</span><span class="al"><span class="am">Economy</span></span></button>
+        <button class="abtn" onclick="openTaxation()"><span class="ic">💰</span><span class="al"><span class="am">Economy</span></span></button>
+        <button class="abtn" onclick="openAppease()"><span class="ic">🎁</span><span class="al"><span class="am">Appease</span></span></button>
         <button class="abtn" onclick="openBuild()"><span class="ic">🏗</span><span class="al"><span class="am">Build</span></span></button>
-        <button class="abtn" id="mob-btn-naval" onclick="toggleNavalMode()" disabled><span class="ic">⚓</span><span class="al"><span class="am">Naval</span></span></button>
         <button class="abtn" onclick="openSponsor()"><span class="ic">🔥</span><span class="al"><span class="am">Resistance</span></span></button>
         <button class="abtn" onclick="openLoan()"><span class="ic">🏦</span><span class="al"><span class="am">Take loan</span></span></button>
       </div>
