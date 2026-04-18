@@ -73,9 +73,9 @@ function openAppease(){
   var html='<p class="mx" style="margin-bottom:10px">Distribute bread, gold, and entertainment to raise satisfaction across all provinces.</p>'+
     '<p class="mx" style="margin-bottom:12px">Avg. satisfaction: <b style="color:'+satCol+'">'+avgSat+'%</b> &middot; Treasury: <b>'+fa(G.gold[PN])+'g</b></p>'+
     '<div style="display:flex;gap:6px">'+
-    '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'small')">&#x1F35E;<br><b style="font-size:10px">Small</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost/2)+'g &middot; +4-8% sat</span></button>'+
-    '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'medium')">&#x1F3AA;<br><b style="font-size:10px">Festival</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost)+'g &middot; +8-15% sat</span></button>'+
-    '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'grand')">&#x1F451;<br><b style="font-size:10px">Grand</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost*2)+'g &middot; +14-22% sat</span></button>'+
+    '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,\'small\')">&#x1F35E;<br><b style="font-size:10px">Small</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost/2)+'g &middot; +4-8% sat</span></button>'+
+    '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,\'medium\')">&#x1F3AA;<br><b style="font-size:10px">Festival</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost)+'g &middot; +8-15% sat</span></button>'+
+    '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,\'grand\')">&#x1F451;<br><b style="font-size:10px">Grand</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost*2)+'g &middot; +14-22% sat</span></button>'+
     '</div>';
   openMo('APPEASE POPULATION', html, [{lbl:'Close',cls:'dim'}]);
 }
