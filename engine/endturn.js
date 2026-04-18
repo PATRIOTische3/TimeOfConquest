@@ -25,11 +25,7 @@ function endTurn(){
     doAI(false); // weekly — attacks, retreats only
     scheduleDraw();updateHUD();updateSeasonUI();
     if(G.sel>=0)updateSP(G.sel);chkBtns();
-    // battle queue runs after try/catch closes (see bottom)
-    G._pendingBattleQueue=true;
-    return;
-  }
-
+  } else {
   // ════════════════════════════════════════════
   //  MONTHLY PROCESSING (only on new month)
   // ════════════════════════════════════════════
@@ -199,6 +195,7 @@ function endTurn(){
 
   scheduleDraw();updateHUD();updateSeasonUI();
   if(G.sel>=0)updateSP(G.sel);chkBtns();checkDefeat();
+  } // end else (monthly)
   }catch(e){console.error('endTurn error:',e);}
   // Run queued player battles (async, battle animations), then re-enable button
   executeBattleQueue(()=>{

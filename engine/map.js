@@ -1424,7 +1424,7 @@ function drawMap(){
 
 function drawMapOverlay(){
   // Shared panel style helpers
-  const PAD=12, LH=20, SW=210, CORNER_X=CW-SW-10, CORNER_Y=10;
+  const PAD=12, LH=20, SW=210, CORNER_X=8, CORNER_Y=54;
   const GOLD='#c9a84c', DIM='#7a6a40', TEXT='#ddd0b0', BG='rgba(5,7,12,.92)';
   const ACCENT_LINE='rgba(201,168,76,.18)';
 

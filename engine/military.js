@@ -699,9 +699,8 @@ function showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done){
     </div>
   </div>`;
 
-  // Cancel any in-flight close from previous battle
-  if(window._battleSkipFn){ window._battleSkipFn=null; }
-  // Reset state before showing
+  // Force-close any previous overlay synchronously before showing new one
+  if(window._battleSkipFn){ window._battleSkipFn(); window._battleSkipFn=null; }
   ov.style.transition='none';
   ov.style.opacity='1';
   ov.style.display='flex';
