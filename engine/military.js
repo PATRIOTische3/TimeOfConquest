@@ -485,14 +485,12 @@ function executeBattleQueue(onAllDone){
 
   if(!rawQueue.length&&!enemyQueue.length){onAllDone();return;}
 
-  // Merge multi-province attacks on the same target into a single battle
-  // Attackers array: [{fr, force}] — all contribute, first valid fr is the "primary" for display
+  // Merge multi-province attacks on the same target into one battle
   const mergedMap={};
-  rawQueue.forEach(b=>{
-    const key=b.to;
-    if(!mergedMap[key]) mergedMap[key]={to:b.to,attackers:[],totalForce:0};
-    mergedMap[key].attackers.push({fr:b.fr,force:b.force});
-    mergedMap[key].totalForce+=b.force;
+  rawQueue.forEach(function(b){
+    if(!mergedMap[b.to]) mergedMap[b.to]={to:b.to,attackers:[],totalForce:0};
+    mergedMap[b.to].attackers.push({fr:b.fr,force:b.force});
+    mergedMap[b.to].totalForce+=b.force;
   });
   const playerQueue=Object.values(mergedMap);
 
@@ -502,21 +500,16 @@ function executeBattleQueue(onAllDone){
   function runPlayerNext(){
     if(pidx>=playerQueue.length){runEnemyQueue(onAllDone);return;}
     const battle=playerQueue[pidx++];
-    const {to,attackers}=battle;
-    // Filter valid attackers (still own province, have troops)
-    const validAtks=attackers.filter(a=>G.owner[a.fr]===G.playerNation&&G.army[a.fr]>0);
-    if(!validAtks.length){runPlayerNext();return;}
-    // Already ours?
+    const to=battle.to;
     if(G.owner[to]===G.playerNation&&(!G.occupied||!G.occupied[to])){runPlayerNext();return;}
-    // Compute actual forces (capped by available army)
+    const valid=battle.attackers.filter(function(a){return G.owner[a.fr]===G.playerNation&&G.army[a.fr]>0;});
+    if(!valid.length){runPlayerNext();return;}
     let totalForce=0;
-    validAtks.forEach(a=>{ const af=Math.min(a.force,G.army[a.fr]); a.actual=af; totalForce+=af; });
+    valid.forEach(function(a){a.actual=Math.min(a.force,G.army[a.fr]);totalForce+=a.actual;});
     if(totalForce<1){runPlayerNext();return;}
-    // Primary fr = first valid attacker (for display/origin)
-    const fr=validAtks[0].fr;
-    // Deduct troops from ALL attackers now (runBattle only deducts from fr)
-    validAtks.slice(1).forEach(a=>{ G.army[a.fr]=Math.max(0,G.army[a.fr]-a.actual); });
-    runBattle(fr,to,totalForce,G.playerNation,()=>{
+    const fr=valid[0].fr;
+    valid.slice(1).forEach(function(a){G.army[a.fr]=Math.max(0,G.army[a.fr]-a.actual);});
+    runBattle(fr,to,totalForce,G.playerNation,function(){
       scheduleDraw();updateHUD();chkVic();
       setTimeout(runPlayerNext,600);
     });
@@ -716,9 +709,7 @@ function showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done){
       ov.style.display='none';
       ov.innerHTML='';
       done();
-    },200);
-  }
-    },200);
+    },220);
   }
   const autoT=setTimeout(closeOverlay,2800);
   window._battleSkipFn=()=>{clearTimeout(autoT);closeOverlay();};

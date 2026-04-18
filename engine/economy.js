@@ -33,7 +33,6 @@ function openTaxation(){
   const taxLabel=curTax<=10?'🟢 Very Low':curTax<=25?'🟢 Low':curTax<=40?'🟡 Moderate':curTax<=60?'🟠 High':curTax<=80?'🔴 Very High':'💀 Extreme';
   const satEffect=curTax<=10?'+15% sat':curTax<=25?'+5% sat':curTax<=40?'neutral':curTax<=60?'−10% sat':curTax<=80?'−25% sat':'−40% sat';
 
-
   const html=`
     <p class="mx" style="margin-bottom:10px">Tax rates affect both income and popular opinion.</p>
 
@@ -63,97 +62,6 @@ function openTaxation(){
   window._econMr=mr;
   window._econIo=io;
 }
-
-function openAppease(){
-  var PN=G.playerNation;
-  var mr=regsOf(PN);
-  var avgSat=mr.length?Math.round(mr.reduce(function(s,r){return s+(G.satisfaction[r]||70);},0)/mr.length):70;
-  var appeaseCost=Math.max(50,mr.length*20);
-  var satCol=avgSat<40?'#ff6040':avgSat<60?'#c08020':'#40c040';
-  var html='<p class="mx" style="margin-bottom:10px">Distribute bread, gold, and entertainment to raise satisfaction across all provinces.</p>'+
-    '<p class="mx" style="margin-bottom:12px">Avg. satisfaction: <b style="color:'+satCol+'">'+avgSat+'%</b> &middot; Treasury: <b>'+fa(G.gold[PN])+'g</b></p>'+
-    '<div style="display:flex;gap:6px">'+
-    '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'small')">&#x1F35E;<br><b style="font-size:10px">Small</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost/2)+'g &middot; +4-8% sat</span></button>'+
-    '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'medium')">&#x1F3AA;<br><b style="font-size:10px">Festival</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost)+'g &middot; +8-15% sat</span></button>'+
-    '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'grand')">&#x1F451;<br><b style="font-size:10px">Grand</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost*2)+'g &middot; +14-22% sat</span></button>'+
-    '</div>';
-  openMo('APPEASE POPULATION', html, [{lbl:'Close',cls:'dim'}]);
-}
-
-window.updTaxPreview=function(){
-  const sl=document.getElementById('tax-sl');
-  const val=parseInt(sl.value);
-  document.getElementById('tax-val').textContent=val+'%';
-  const mr=window._econMr||[];
-  const io=window._econIo||ideol();
-  const taxFactor=0.4+(val/100)*2.4;
-  const est=mr.reduce((s,r)=>{
-    let inc=G.income[r];
-    if((G.buildings[r]||[]).includes('factory'))inc=Math.floor(inc*1.8);
-    if((G.buildings[r]||[]).includes('palace'))inc=Math.floor(inc*1.15);
-    return s+Math.floor(inc*io.income*taxFactor);
-  },0);
-  const incEl=document.getElementById('tax-inc-preview');
-  if(incEl)incEl.textContent=fa(est)+'g';
-  const moodEl=document.getElementById('tax-mood-lbl');
-  if(moodEl){
-    const lbl=val<=10?'+15% sat':val<=25?'+5% sat':val<=40?'neutral':val<=60?'−10% sat':val<=80?'−25% sat':'−40% sat';
-    const col=val<=25?'#40c040':val<=40?'var(--gold)':val<=60?'#c08020':val<=80?'#c04020':'#ff2020';
-    moodEl.textContent=lbl;moodEl.style.color=col;
-  }
-};
-
-window.applyTaxRate=function(){
-  const sl=document.getElementById('tax-sl');
-  if(!sl)return;
-  const newTax=parseInt(sl.value);
-  const oldTax=G.taxRate??25;
-  const diff=newTax-oldTax;
-  if(diff===0){popup('Tax rate unchanged.');return;}
-  G.taxRate=newTax;
-  // Apply taxMood shock proportional to change
-  // Big increase → big negative shock; decrease → positive shock
-  const shock=diff*1.2; // each % point of change = 1.2 taxMood points
-  const PN=G.playerNation;
-  if(!G.taxMood) G.taxMood=PROVINCES.map(()=>0);
-  regsOf(PN).forEach(r=>{
-    G.taxMood[r]=(G.taxMood[r]||0)-shock; // negative = sad about taxes
-  });
-  closeMo();
-  const dir=diff>0?'▲':'▼';
-  const col=diff>0?'#ff8040':'#40e060';
-  addLog(`💰 Tax rate ${dir} ${oldTax}% → <b style="color:${col}">${newTax}%</b>. Population reacts…`,'event');
-  popup(`Tax rate set to ${newTax}%`);
-  updateHUD();scheduleDraw();
-};
-
-window.appeasePop=function(cost, scale){
-  const PN=G.playerNation;
-  const mr=regsOf(PN);
-  const costs={small:Math.max(50,mr.length*10),medium:Math.max(100,mr.length*20),grand:Math.max(200,mr.length*40)};
-  const boosts={small:[4,8],medium:[8,15],grand:[14,22]};
-  const realCost=costs[scale]||costs.medium;
-  if(G.gold[PN]<realCost){popup(`Not enough gold! Need ${fa(realCost)}g`);return;}
-  G.gold[PN]-=realCost;
-  const [minB,maxB]=boosts[scale]||boosts.medium;
-  mr.forEach(r=>{
-    const boost=ri(minB,maxB);
-    G.satisfaction[r]=Math.min(100,G.satisfaction[r]+boost);
-    // Positive taxMood boost too
-    if(G.taxMood) G.taxMood[r]=(G.taxMood[r]||0)+boost*0.5;
-  });
-  closeMo();
-  const icons={small:'🍞',medium:'🎪',grand:'👑'};
-  const avgBoost=Math.round((minB+maxB)/2);
-  addLog(`${icons[scale]} ${scale.charAt(0).toUpperCase()+scale.slice(1)} appeasement: −${fa(realCost)}g, avg +${avgBoost}% satisfaction.`,'event');
-  popup(`${icons[scale]} People rejoice! +${avgBoost}% satisfaction`);
-  updateHUD();scheduleDraw();
-};
-
-
-// ── BUILD ─────────────────────────────────────────────────
-// Base build turns per building type (modified by satisfaction)
-if(typeof BUILD_TURNS==='undefined')window.BUILD_TURNS={factory:3,fortress:3,barracks:2,port:2,hospital:2,oilwell:2,mine:2,granary:1,palace:4,academy:4,arsenal:3};
 
 function buildTurns(r, key){
   // Low satisfaction = longer construction
@@ -321,3 +229,22 @@ function gatherResources(){
 
 
 // NOTE: openSponsor() and processResistance() live in events.js — not duplicated here.
+
+function openAppease(){
+  var PN=G.playerNation;
+  var mr=regsOf(PN);
+  var avgSat=mr.length?Math.round(mr.reduce(function(s,r){return s+(G.satisfaction[r]||70);},0)/mr.length):70;
+  var cost1=Math.max(25,mr.length*10);
+  var cost2=Math.max(50,mr.length*20);
+  var cost3=Math.max(100,mr.length*40);
+  var satCol=avgSat<40?'#ff6040':avgSat<60?'#c08020':'#40c040';
+  var g=G.gold[PN];
+  var h='<p class="mx" style="margin-bottom:8px">Raise satisfaction across all provinces.</p>';
+  h+='<p class="mx" style="margin-bottom:12px">Avg sat: <b style="color:'+satCol+'">'+avgSat+'%</b> &middot; Gold: <b>'+fa(g)+'g</b></p>';
+  h+='<div style="display:flex;gap:6px">';
+  h+='<button class="btn" style="flex:1;padding:10px 4px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center;opacity:'+(g>=cost1?1:0.4)+'" onclick="appeasePop(100,\'small\')">&#x1F35E;<br><b>Small</b><br><span style="font-size:8px;color:var(--dim)">'+fa(cost1)+'g +4-8%</span></button>';
+  h+='<button class="btn" style="flex:1;padding:10px 4px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center;opacity:'+(g>=cost2?1:0.4)+'" onclick="appeasePop(100,\'medium\')">&#x1F3AA;<br><b>Festival</b><br><span style="font-size:8px;color:var(--dim)">'+fa(cost2)+'g +8-15%</span></button>';
+  h+='<button class="btn" style="flex:1;padding:10px 4px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center;opacity:'+(g>=cost3?1:0.4)+'" onclick="appeasePop(100,\'grand\')">&#x1F451;<br><b>Grand</b><br><span style="font-size:8px;color:var(--dim)">'+fa(cost3)+'g +14-22%</span></button>';
+  h+='</div>';
+  openMo('APPEASE POPULATION', h, [{lbl:'Close',cls:'dim'}]);
+}
