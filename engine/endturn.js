@@ -25,11 +25,8 @@ function endTurn(){
     doAI(false); // weekly — attacks, retreats only
     scheduleDraw();updateHUD();updateSeasonUI();
     if(G.sel>=0)updateSP(G.sel);chkBtns();
-    }catch(e){console.error('endTurn error:',e);}
-    executeBattleQueue(()=>{
-      scheduleDraw();updateHUD();if(G.sel>=0)updateSP(G.sel);chkBtns();chkVic();checkDefeat();
-      setEB(false);
-    });
+    // battle queue runs after try/catch closes (see bottom)
+    G._pendingBattleQueue=true;
     return;
   }
 

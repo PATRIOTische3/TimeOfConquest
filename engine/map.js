@@ -337,9 +337,7 @@ var _drawPending = false;
 
 function buildCanvas(){
   const wrap = document.getElementById('map-wrap');
-  const panel = document.getElementById('side-panel');
-  const panelW = (panel && window.innerWidth > 700) ? (panel.offsetWidth || 0) : 0;
-  CW = (wrap.clientWidth + panelW) || window.innerWidth;
+  CW = wrap.clientWidth || window.innerWidth;
   CH = wrap.clientHeight || Math.floor(window.innerHeight * .55);
   if(CW < 10 || CH < 10){ setTimeout(buildCanvas, 60); return; }
   canvas.width = CW; canvas.height = CH;
@@ -349,9 +347,7 @@ function buildCanvas(){
 window.addEventListener('resize', () => {
   if(!document.getElementById('s-game')?.classList.contains('on')) return;
   const wrap = document.getElementById('map-wrap'); if(!wrap) return;
-  const panel2 = document.getElementById('side-panel');
-  const panelW2 = (panel2 && window.innerWidth > 700) ? (panel2.offsetWidth || 0) : 0;
-  CW = (wrap.clientWidth + panelW2) || window.innerWidth;
+  CW = wrap.clientWidth || window.innerWidth;
   CH = wrap.clientHeight || Math.floor(window.innerHeight * .55);
   if(CW < 10 || CH < 10) return;
   canvas.width = CW; canvas.height = CH;
