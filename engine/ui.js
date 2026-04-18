@@ -95,12 +95,17 @@ function updateSP(i){
     if(ep)bdg+=`<span class="badge war" style="border-color:${ep.color};color:${ep.color}">${ep.icon} ${ep.name}</span>`;
   }
 
-  const resHtml=Object.entries(G.resBase[i]||{}).filter(([,v])=>v>0).map(([k,v])=>`<span class="res-chip">${{oil:'🛢️',coal:'⚫',grain:'🌾',steel:'⚙️'}[k]||k} ${v}</span>`).join('');
+  const RES_ICONS={oil:'🛢️',coal:'⚫',grain:'🌾',steel:'⚙️',iron:'🔩',wood:'🪵',stone:'🪨',gold:'🥇'};
+  const resHtml=Object.entries(G.resBase[i]||{}).filter(([,v])=>v>0).map(([k,v])=>`<span class="res-chip">${RES_ICONS[k]||k} ${v}</span>`).join('');
   const bldHtml=bldC?G.buildings[i].map(k=>`<span class="bld-tag">${BUILDINGS[k]?.icon||k}</span>`).join(''):'';
 
   sEl('sp-nm',p.name);
   sHTML('sp-bdg',bdg);
-  sEl('sp-ow',o>=0?ownerName(o):'Rebels');
+  const owEl=document.getElementById('sp-ow');
+  if(owEl){
+    owEl.textContent=o>=0?ownerName(o):'Rebels';
+    owEl.style.color=o===G.playerNation?'rgba(100,210,120,.75)':'rgba(201,168,76,.40)';
+  }
   const avArmy=G.owner[i]===G.playerNation?availableArmy(i):G.army[i];
   // Army display: own/ally/puppet = exact, enemy = fog-of-war intel (matches map labels)
   let armyDisplay;

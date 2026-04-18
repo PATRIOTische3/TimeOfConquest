@@ -63,20 +63,19 @@ function openTaxation(){
 }
 
 function openAppease(){
-  const PN=G.playerNation;
-  const mr=regsOf(PN);
-  const avgSat=mr.length?Math.round(mr.reduce((s,r)=>s+(G.satisfaction[r]??70),0)/mr.length):70;
-  const appeaseCost=Math.max(50,mr.length*20);
-  const html=\`
-    <p class="mx" style="margin-bottom:10px">Distribute bread, gold, and entertainment to raise satisfaction across all provinces.</p>
-    <p class="mx" style="margin-bottom:12px">Avg. satisfaction: <b style="color:\${avgSat<40?'#ff6040':avgSat<60?'#c08020':'#40c040'}">\${avgSat}%</b> · Treasury: <b>\${fa(G.gold[PN])}g</b></p>
-    <div style="display:flex;gap:6px">
-      <button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'small')">🍞<br><b style="font-size:10px">Small</b><br><span style="font-size:8px;color:var(--dim)">\${fa(appeaseCost/2)}g · +4–8% sat</span></button>
-      <button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'medium')">🎪<br><b style="font-size:10px">Festival</b><br><span style="font-size:8px;color:var(--dim)">\${fa(appeaseCost)}g · +8–15% sat</span></button>
-      <button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'grand')">👑<br><b style="font-size:10px">Grand</b><br><span style="font-size:8px;color:var(--dim)">\${fa(appeaseCost*2)}g · +14–22% sat</span></button>
-    </div>
-  \`;
-  openMo('🎁 APPEASE POPULATION', html, [{lbl:'Close',cls:'dim'}]);
+  var PN=G.playerNation;
+  var mr=regsOf(PN);
+  var avgSat=mr.length?Math.round(mr.reduce(function(s,r){return s+(G.satisfaction[r]||70);},0)/mr.length):70;
+  var appeaseCost=Math.max(50,mr.length*20);
+  var satCol=avgSat<40?'#ff6040':avgSat<60?'#c08020':'#40c040';
+  var html='<p class="mx" style="margin-bottom:10px">Distribute bread, gold, and entertainment to raise satisfaction across all provinces.</p>'+
+    '<p class="mx" style="margin-bottom:12px">Avg. satisfaction: <b style="color:'+satCol+'">'+avgSat+'%</b> &middot; Treasury: <b>'+fa(G.gold[PN])+'g</b></p>'+
+    '<div style="display:flex;gap:6px">'+
+      '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'small')">\uD83C\uDF5E<br><b style="font-size:10px">Small</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost/2)+'g &middot; +4–8% sat</span></button>'+
+      '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'medium')">\uD83C\uDFAA<br><b style="font-size:10px">Festival</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost)+'g &middot; +8–15% sat</span></button>'+
+      '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'grand')">\uD83D\uDC51<br><b style="font-size:10px">Grand</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost*2)+'g &middot; +14–22% sat</span></button>'+
+    '</div>';
+  openMo('APPEASE POPULATION', html, [{lbl:'Close',cls:'dim'}]);
 }
 
 window.updTaxPreview=function(){
