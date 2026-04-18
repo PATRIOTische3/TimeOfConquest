@@ -478,26 +478,45 @@ function approxForce(real){
 }
 
 function executeBattleQueue(onAllDone){
-  const playerQueue=G.battleQueue&&G.battleQueue.length?[...G.battleQueue]:[];
+  const rawQueue=G.battleQueue&&G.battleQueue.length?[...G.battleQueue]:[];
   G.battleQueue=[];
   const enemyQueue=G._enemyAttackQueue&&G._enemyAttackQueue.length?[...G._enemyAttackQueue]:[];
   G._enemyAttackQueue=[];
 
-  if(!playerQueue.length&&!enemyQueue.length){onAllDone();return;}
+  if(!rawQueue.length&&!enemyQueue.length){onAllDone();return;}
+
+  // Merge multi-province attacks on the same target into a single battle
+  // Attackers array: [{fr, force}] — all contribute, first valid fr is the "primary" for display
+  const mergedMap={};
+  rawQueue.forEach(b=>{
+    const key=b.to;
+    if(!mergedMap[key]) mergedMap[key]={to:b.to,attackers:[],totalForce:0};
+    mergedMap[key].attackers.push({fr:b.fr,force:b.force});
+    mergedMap[key].totalForce+=b.force;
+  });
+  const playerQueue=Object.values(mergedMap);
 
   window._preBattleVP={scale:vp.scale,tx:vp.tx,ty:vp.ty};
   let pidx=0;
 
   function runPlayerNext(){
     if(pidx>=playerQueue.length){runEnemyQueue(onAllDone);return;}
-    const {fr,to,force}=playerQueue[pidx++];
-    // Skip if attacker lost their province
-    if(G.owner[fr]!==G.playerNation){runPlayerNext();return;}
-    // Skip if target is already fully ours (could happen if two attacks queued at same target)
+    const battle=playerQueue[pidx++];
+    const {to,attackers}=battle;
+    // Filter valid attackers (still own province, have troops)
+    const validAtks=attackers.filter(a=>G.owner[a.fr]===G.playerNation&&G.army[a.fr]>0);
+    if(!validAtks.length){runPlayerNext();return;}
+    // Already ours?
     if(G.owner[to]===G.playerNation&&(!G.occupied||!G.occupied[to])){runPlayerNext();return;}
-    const actualForce=Math.min(force,G.army[fr]);
-    if(actualForce<1){runPlayerNext();return;}
-    runBattle(fr,to,actualForce,G.playerNation,()=>{
+    // Compute actual forces (capped by available army)
+    let totalForce=0;
+    validAtks.forEach(a=>{ const af=Math.min(a.force,G.army[a.fr]); a.actual=af; totalForce+=af; });
+    if(totalForce<1){runPlayerNext();return;}
+    // Primary fr = first valid attacker (for display/origin)
+    const fr=validAtks[0].fr;
+    // Deduct troops from ALL attackers now (runBattle only deducts from fr)
+    validAtks.slice(1).forEach(a=>{ G.army[a.fr]=Math.max(0,G.army[a.fr]-a.actual); });
+    runBattle(fr,to,totalForce,G.playerNation,()=>{
       scheduleDraw();updateHUD();chkVic();
       setTimeout(runPlayerNext,400);
     });
@@ -694,10 +713,11 @@ function showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done){
     ov.style.opacity='0';
     ov.style.transition='opacity .18s ease';
     setTimeout(()=>{
+      // Call done() first so next battle can populate the overlay div,
+      // then hide/clear — avoids the one-frame flash of empty overlay
+      done();
       ov.style.display='none';
       ov.innerHTML='';
-      // done() AFTER hiding — prevents next battle writing into still-visible overlay
-      done();
     },200);
   }
   const autoT=setTimeout(closeOverlay,2800);

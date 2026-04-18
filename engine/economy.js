@@ -12,7 +12,6 @@ var TAX_MAX={
 
 function taxMax(){ return TAX_MAX[G.ideology]||60; }
 
-// openEconomy — alias for backward compat (mobile panel)
 function openEconomy(){ openTaxation(); }
 
 function openTaxation(){
@@ -33,6 +32,7 @@ function openTaxation(){
   // Tax mood description
   const taxLabel=curTax<=10?'🟢 Very Low':curTax<=25?'🟢 Low':curTax<=40?'🟡 Moderate':curTax<=60?'🟠 High':curTax<=80?'🔴 Very High':'💀 Extreme';
   const satEffect=curTax<=10?'+15% sat':curTax<=25?'+5% sat':curTax<=40?'neutral':curTax<=60?'−10% sat':curTax<=80?'−25% sat':'−40% sat';
+
 
   const html=`
     <p class="mx" style="margin-bottom:10px">Tax rates affect both income and popular opinion.</p>
@@ -56,8 +56,10 @@ function openTaxation(){
       </div>
       <button class="btn grn" style="width:100%;padding:8px" onclick="applyTaxRate()">✓ Apply Tax Rate</button>
     </div>
-  \`;
+
+  `;
   openMo('💰 ECONOMY & TAXATION', html, [{lbl:'Close',cls:'dim'}]);
+  // store for preview
   window._econMr=mr;
   window._econIo=io;
 }
@@ -71,9 +73,9 @@ function openAppease(){
   var html='<p class="mx" style="margin-bottom:10px">Distribute bread, gold, and entertainment to raise satisfaction across all provinces.</p>'+
     '<p class="mx" style="margin-bottom:12px">Avg. satisfaction: <b style="color:'+satCol+'">'+avgSat+'%</b> &middot; Treasury: <b>'+fa(G.gold[PN])+'g</b></p>'+
     '<div style="display:flex;gap:6px">'+
-      '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'small')">\uD83C\uDF5E<br><b style="font-size:10px">Small</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost/2)+'g &middot; +4–8% sat</span></button>'+
-      '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'medium')">\uD83C\uDFAA<br><b style="font-size:10px">Festival</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost)+'g &middot; +8–15% sat</span></button>'+
-      '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'grand')">\uD83D\uDC51<br><b style="font-size:10px">Grand</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost*2)+'g &middot; +14–22% sat</span></button>'+
+    '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'small')">&#x1F35E;<br><b style="font-size:10px">Small</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost/2)+'g &middot; +4-8% sat</span></button>'+
+    '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'medium')">&#x1F3AA;<br><b style="font-size:10px">Festival</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost)+'g &middot; +8-15% sat</span></button>'+
+    '<button class="btn" style="flex:1;padding:10px 6px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center" onclick="appeasePop(100,'grand')">&#x1F451;<br><b style="font-size:10px">Grand</b><br><span style="font-size:8px;color:var(--dim)">'+fa(appeaseCost*2)+'g &middot; +14-22% sat</span></button>'+
     '</div>';
   openMo('APPEASE POPULATION', html, [{lbl:'Close',cls:'dim'}]);
 }
