@@ -23,12 +23,13 @@ function endTurn(){
 
   if(!newMonth){
     doAI(false); // weekly — attacks, retreats only
-    executeBattleQueue(()=>{
-      scheduleDraw();updateHUD();if(G.sel>=0)updateSP(G.sel);chkBtns();chkVic();
-      setEB(false);
-    });
     scheduleDraw();updateHUD();updateSeasonUI();
     if(G.sel>=0)updateSP(G.sel);chkBtns();
+    }catch(e){console.error('endTurn error:',e);}
+    executeBattleQueue(()=>{
+      scheduleDraw();updateHUD();if(G.sel>=0)updateSP(G.sel);chkBtns();chkVic();checkDefeat();
+      setEB(false);
+    });
     return;
   }
 
