@@ -530,8 +530,17 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 .hbr{display:block;width:15px;height:1.5px;background:var(--gold);border-radius:1px}
 /* settings button — shared style */
 .hud-settings-btn{font-size:14px!important;padding:0 8px!important}
+/* overlay settings gear — bottom right */
+#ko-settings-btn{
+  position:absolute;bottom:14px;right:14px;
+  background:none;border:1px solid rgba(201,168,76,.18);
+  color:rgba(201,168,76,.35);font-size:15px;
+  width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:all .15s;border-radius:2px;
+}
+#ko-settings-btn:hover{border-color:var(--gold);color:var(--gold);background:rgba(201,168,76,.06)}
 .screen-settings-btn{
-  position:absolute;top:14px;right:14px;z-index:5;
+  position:absolute;bottom:14px;right:14px;z-index:5;
   background:none;border:1px solid rgba(201,168,76,.2);
   color:rgba(201,168,76,.45);font-size:16px;
   width:32px;height:32px;display:flex;align-items:center;justify-content:center;
@@ -542,10 +551,11 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
   position:static;width:24px;height:24px;font-size:13px;
   border-color:rgba(201,168,76,.18);
 }
+/* fast-mode always visible on both desktop and mobile */
+#fast-mode-btn{display:flex!important}
 /* Responsive: hide desktop HUD elements on mobile */
 @media(max-width:900px){
   .save-btn-hud{display:none!important}
-  #fast-mode-btn{display:none!important}
   #hud-ideo{display:none!important}
   #mob-menu-btn{display:flex!important}
 }
@@ -667,13 +677,11 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 <!-- WORLDS -->
 <div class="scr" id="s-worlds">
   <canvas id="worlds-map-bg"></canvas>
+  <button class="screen-settings-btn" onclick="openSettings()" title="Settings">⚙</button>
   <div id="worlds-panel">
     <div class="worlds-header">
       <div class="worlds-title">⚔ Campaigns</div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <button class="screen-settings-btn screen-settings-btn--inline" onclick="openSettings()" title="Settings">⚙</button>
-        <button class="worlds-back" onclick="show('intro')">← Back</button>
-      </div>
+      <button class="worlds-back" onclick="show('intro')">← Back</button>
     </div>
     <div class="worlds-rule"></div>
     <div class="worlds-actions">
@@ -937,6 +945,8 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
       </button>
     </div>
   </div>
+  <!-- settings gear — bottom right -->
+  <button id="ko-settings-btn" onclick="openSettings()" title="Settings">⚙</button>
 </div>
 
 <!-- BATTLE -->
@@ -2223,11 +2233,25 @@ function koBackdropClick(e){
 }
 // ── SETTINGS (stub — not yet functional) ─────────────────
 function openSettings(){
-  // placeholder — will be implemented later
   if(typeof openMo==='function'){
     openMo('⚙ Settings','<p class="mx" style="text-align:center;padding:14px 0;color:var(--dim);font-style:italic">Settings coming soon…</p>',[{lbl:'Close',cb:()=>{}}]);
   }
 }
+// ── ESCAPE KEY → Kingdom overlay (desktop) ───────────────
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){
+    const ov=document.getElementById('kingdom-overlay');
+    const game=document.getElementById('s-game');
+    if(!ov||!game)return;
+    // Only in game screen
+    if(!game.classList.contains('on'))return;
+    if(ov.classList.contains('on')){
+      closeKingdomOverlay();
+    } else {
+      openKingdomOverlay();
+    }
+  }
+});
 
 if(window._tocMapReady){_doSessionRestore();}
 else{window.addEventListener('toc-map-ready',_doSessionRestore,{once:true});}
