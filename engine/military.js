@@ -610,26 +610,41 @@ function runBattle(fr,to,atkF,atker,done){
 function showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done){
   if(_fastMode){done();return;}
 
-  // Build or reuse overlay div
-  let ov=document.getElementById('_battle_overlay');
-  if(!ov){
-    ov=document.createElement('div');
-    ov.id='_battle_overlay';
-    ov.style.cssText=[
-      'position:fixed','inset:0','z-index:200',
-      'display:flex','align-items:center','justify-content:center',
-      'background:rgba(6,8,14,.72)',
-      'backdrop-filter:blur(3px)','-webkit-backdrop-filter:blur(3px)',
-      'animation:_bov_in .22s ease',
-    ].join(';');
-    if(!document.getElementById('_bov_style')){
-      const st=document.createElement('style');st.id='_bov_style';
-      st.textContent='@keyframes _bov_in{from{opacity:0}to{opacity:1}}'+
-        '@keyframes _bov_slide{from{transform:translateY(18px);opacity:0}to{transform:translateY(0);opacity:1}}';
-      document.head.appendChild(st);
-    }
-    document.body.appendChild(ov);
+  // ── Safely abort any in-flight overlay WITHOUT calling done() again ──
+  // We clear the skip fn and timer, hide the old overlay synchronously,
+  // then proceed. The previous done() was already called by executeBattleQueue
+  // before it called us, so we must NOT call it again here.
+  if(window._battleSkipFn){
+    // Neutralise the skip fn so it can't fire done() of a dead battle
+    window._battleSkipFn = null;
   }
+  if(window._battleAutoTimer){
+    clearTimeout(window._battleAutoTimer);
+    window._battleAutoTimer = null;
+  }
+
+  // Always destroy and recreate the overlay element so animation reliably replays
+  const old = document.getElementById('_battle_overlay');
+  if(old) old.parentNode.removeChild(old);
+
+  if(!document.getElementById('_bov_style')){
+    const st=document.createElement('style');st.id='_bov_style';
+    st.textContent='@keyframes _bov_in{from{opacity:0}to{opacity:1}}'+
+      '@keyframes _bov_slide{from{transform:translateY(18px);opacity:0}to{transform:translateY(0);opacity:1}}';
+    document.head.appendChild(st);
+  }
+
+  const ov=document.createElement('div');
+  ov.id='_battle_overlay';
+  ov.style.cssText=[
+    'position:fixed','inset:0','z-index:200',
+    'display:flex','align-items:center','justify-content:center',
+    'background:rgba(6,8,14,.72)',
+    'backdrop-filter:blur(3px)','-webkit-backdrop-filter:blur(3px)',
+    'animation:_bov_in .22s ease',
+    'opacity:1',
+  ].join(';');
+  document.body.appendChild(ov);
 
   const frName=PROVINCES[fr]?.short||'?';
   const toName=PROVINCES[to]?.name||'?';
@@ -699,27 +714,24 @@ function showBattleOverlay(fr, to, win, atkF, al, effAtk, effDef, ap, done){
     </div>
   </div>`;
 
-  // Force-close any previous overlay synchronously before showing new one
-  if(window._battleSkipFn){ window._battleSkipFn(); window._battleSkipFn=null; }
-  ov.style.transition='none';
-  ov.style.opacity='1';
-  ov.style.display='flex';
-
   let closed=false;
   function closeOverlay(){
     if(closed)return;
     closed=true;
     window._battleSkipFn=null;
+    window._battleAutoTimer=null;
     ov.style.transition='opacity .18s ease';
     ov.style.opacity='0';
     setTimeout(function(){
-      ov.style.display='none';
-      ov.innerHTML='';
+      if(ov.parentNode) ov.parentNode.removeChild(ov);
       done();
     },220);
   }
-  const autoT=setTimeout(closeOverlay,2800);
-  window._battleSkipFn=function(){clearTimeout(autoT);closeOverlay();};
+  window._battleAutoTimer=setTimeout(closeOverlay,2800);
+  window._battleSkipFn=function(){
+    if(window._battleAutoTimer){clearTimeout(window._battleAutoTimer);window._battleAutoTimer=null;}
+    closeOverlay();
+  };
 }
 
 // ── ENEMY ATTACK OVERLAY ──────────────────────────────────────
@@ -755,6 +767,33 @@ function showEnemyAttackOverlay(ev, done){
   // Zoom camera to the battle site
   if(typeof _animZoomTo==='function') _animZoomTo(fr, to, 0.38);
 
+  // Neutralise any lingering skip fn WITHOUT calling its done()
+  window._battleSkipFn = null;
+  if(window._battleAutoTimer){clearTimeout(window._battleAutoTimer);window._battleAutoTimer=null;}
+
+  // Always destroy and recreate so animation replays cleanly
+  const old = document.getElementById('_battle_overlay');
+  if(old) old.parentNode.removeChild(old);
+
+  if(!document.getElementById('_bov_style')){
+    const st=document.createElement('style');st.id='_bov_style';
+    st.textContent='@keyframes _bov_in{from{opacity:0}to{opacity:1}}'+
+      '@keyframes _bov_slide{from{transform:translateY(18px);opacity:0}to{transform:translateY(0);opacity:1}}';
+    document.head.appendChild(st);
+  }
+
+  const ov = document.createElement('div');
+  ov.id = '_battle_overlay';
+  ov.style.cssText = [
+    'position:fixed','inset:0','z-index:200',
+    'display:flex','align-items:center','justify-content:center',
+    'background:rgba(6,8,14,.72)',
+    'backdrop-filter:blur(3px)','-webkit-backdrop-filter:blur(3px)',
+    'animation:_bov_in .22s ease',
+    'opacity:1',
+  ].join(';');
+  document.body.appendChild(ov);
+
   const atkerName = NATIONS[atker]?.name || ownerName(atker);
   const toName    = PROVINCES[to]?.name  || '?';
   const frName    = PROVINCES[fr]?.short || '?';
@@ -766,26 +805,6 @@ function showEnemyAttackOverlay(ev, done){
     : `✦ ${toName} repelled the attack!`;
   const resBg      = win ? 'rgba(100,20,20,.22)' : 'rgba(20,80,10,.22)';
   const resBorder  = win ? 'rgba(160,40,40,.5)'  : 'rgba(60,160,40,.5)';
-
-  let ov = document.getElementById('_battle_overlay');
-  if(!ov){
-    ov = document.createElement('div');
-    ov.id = '_battle_overlay';
-    ov.style.cssText = [
-      'position:fixed','inset:0','z-index:200',
-      'display:flex','align-items:center','justify-content:center',
-      'background:rgba(6,8,14,.72)',
-      'backdrop-filter:blur(3px)','-webkit-backdrop-filter:blur(3px)',
-      'animation:_bov_in .22s ease',
-    ].join(';');
-    if(!document.getElementById('_bov_style')){
-      const st=document.createElement('style');st.id='_bov_style';
-      st.textContent='@keyframes _bov_in{from{opacity:0}to{opacity:1}}'+
-        '@keyframes _bov_slide{from{transform:translateY(18px);opacity:0}to{transform:translateY(0);opacity:1}}';
-      document.head.appendChild(st);
-    }
-    document.body.appendChild(ov);
-  }
 
   ov.innerHTML=`<div style="
     background:linear-gradient(160deg,#1a0808,#0a0404);
@@ -818,16 +837,16 @@ function showEnemyAttackOverlay(ev, done){
     </div>
   </div>`;
 
-  ov.style.display = 'flex';
-
   let closed = false;
   function closeOverlay(){
     if(closed) return; closed = true;
-    ov.style.opacity = '0';
+    window._battleSkipFn = null;
+    window._battleAutoTimer = null;
     ov.style.transition = 'opacity .18s ease';
-    setTimeout(()=>{ ov.style.display='none'; ov.innerHTML=''; done(); }, 200);
+    ov.style.opacity = '0';
+    setTimeout(()=>{ if(ov.parentNode) ov.parentNode.removeChild(ov); done(); }, 200);
   }
-  const autoT = setTimeout(closeOverlay, 3200);
-  window._battleSkipFn = ()=>{ clearTimeout(autoT); closeOverlay(); };
-  ov.onclick = ()=>{ clearTimeout(autoT); closeOverlay(); };
+  window._battleAutoTimer = setTimeout(closeOverlay, 3200);
+  window._battleSkipFn = ()=>{ if(window._battleAutoTimer){clearTimeout(window._battleAutoTimer);window._battleAutoTimer=null;} closeOverlay(); };
+  ov.onclick = ()=>{ if(window._battleAutoTimer){clearTimeout(window._battleAutoTimer);window._battleAutoTimer=null;} closeOverlay(); };
 }
