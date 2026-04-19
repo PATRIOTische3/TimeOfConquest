@@ -149,13 +149,12 @@ function updateSP(i){
     }else spcon.style.display='none';
   }
   sEl('sp-bld-sub',o===G.playerNation?(con?`Building: ${BUILDINGS[con.building]?.name}`:`${bldC}/${maxBld} slots`):'Select your territory');
-  // Move/naval btns
-  const canMove=o===G.playerNation&&G.army[i]>100;
-  ['sp-btn-move','mob-btn-move'].forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=!canMove;});
-  sEl('sp-move-sub',canMove?`From ${p.short}`:'Select your territory');
+  // Naval btn
   const canNaval=canLaunchNaval(i);
   ['sp-btn-naval','mob-btn-naval'].forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=!canNaval;});
   sEl('sp-naval-sub',canNaval?`${navalRch} ports in range`:'Need port + coastal');
+  // Smart move/attack btn updated via chkBtns()
+  if(typeof chkBtns==='function')chkBtns();
   // Mobile
   sEl('ri-nm',p.name);sHTML('ri-bdg',bdg);sEl('ri-ow',o>=0?ownerName(o):'Rebels');
   sEl('ri-ar',fa(G.army[i]));sEl('ri-pp',fm(G.pop[i]));sEl('ri-in',inc+'/mo');sEl('ri-as',o===G.playerNation?Math.round(G.assim[i])+'%':'—');
