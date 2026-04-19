@@ -1486,28 +1486,12 @@ function updateMapOverlayHTML(){
       });
     }
     el.innerHTML = makePanel('⚔','Army Strength','rgba(60,30,10,.55)', body);
-    // Add hover effect and cycling gold hint animation
+    // Hover glow on army rows
     const rows = el.querySelectorAll('.army-row-clickable');
     rows.forEach(r=>{
       r.addEventListener('mouseenter',()=>{ r.querySelector('.army-row-glow').style.background='rgba(201,168,76,0.18)'; });
       r.addEventListener('mouseleave',()=>{ r.querySelector('.army-row-glow').style.background='rgba(201,168,76,0)'; });
     });
-    // Cycling gold pulse: one row lights up at a time, cycling every 1.8s
-    if(rows.length > 0){
-      if(el._cycleTimer) clearInterval(el._cycleTimer);
-      el._cycleIdx = 0;
-      el._cycleHovered = false;
-      rows.forEach(r=>{ r.addEventListener('mouseenter',()=>{ el._cycleHovered=true; }); r.addEventListener('mouseleave',()=>{ el._cycleHovered=false; }); });
-      el._cycleTimer = setInterval(()=>{
-        if(el._cycleHovered) return;
-        rows.forEach((r,i)=>{
-          const g = r.querySelector('.army-row-glow');
-          if(!g) return;
-          g.style.background = i===el._cycleIdx ? 'rgba(201,168,76,0.13)' : 'rgba(201,168,76,0)';
-        });
-        el._cycleIdx = (el._cycleIdx+1) % rows.length;
-      }, 1800);
-    }
   }
   else if(mode==='instab'){
     const satVals = myProvs.map(i=>G.satisfaction[i]??70);

@@ -80,6 +80,17 @@ function startGame(){
   G.leaderName   = document.getElementById('rname').value.trim() || 'The Leader';
   G.ideology     = SI || 'fascism';
   G.playerNation = SC;
+
+  // ── Deduplicate campaign title before starting ──────────
+  (function(){
+    const disp = document.getElementById('camp-title-display');
+    if(!disp) return;
+    const raw = disp.textContent.trim() || 'NEW CAMPAIGN';
+    if(typeof uniqueCampaignLabel === 'function'){
+      const unique = uniqueCampaignLabel(raw);
+      if(unique !== raw) disp.textContent = unique.toUpperCase();
+    }
+  })();
   G.month = 0; G.week = 0; G.year = 1936;
 
   initDiplo();

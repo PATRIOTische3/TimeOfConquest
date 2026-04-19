@@ -27,7 +27,8 @@ function chkBtns(){
     const b=document.getElementById(id);
     if(!b)return;
     b.disabled=!smartEnabled;
-    b.className='abtn'+(smartIsAtk?' war-btn':'');
+    const wasActive=b.classList.contains('active-mode');
+    b.className='abtn'+(smartIsAtk?' war-btn':'')+(wasActive?' active-mode':'');
   });
 
   // Icon and label
