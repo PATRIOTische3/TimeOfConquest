@@ -1470,21 +1470,44 @@ function updateMapOverlayHTML(){
     if(!armyProvs.length){
       body += `<div style="font-size:8px;color:#7a6a40;padding:2px 0">No armies deployed</div>`;
     } else {
-      armyProvs.slice(0,6).forEach(pi=>{
+      armyProvs.slice(0,6).forEach((pi,idx)=>{
         const v = G.army[pi]||0;
         const frac = Math.round((v/maxArmy)*100);
-        body += `<div style="padding:2px 0">
-          <div style="display:flex;justify-content:space-between;font-size:7px;color:#ddd0b0;margin-bottom:1px">
+        body += `<div class="army-row-clickable" data-prov="${pi}" style="padding:3px 4px;margin:1px -4px;border-radius:2px;cursor:pointer;position:relative;overflow:hidden;transition:background .15s" onclick="panToProvince(${pi});G.sel=${pi};updateSP(${pi});scheduleDraw()">
+          <div style="display:flex;justify-content:space-between;font-size:7px;color:#ddd0b0;margin-bottom:2px;position:relative;z-index:1">
             <span>${PROVINCES[pi]?.short||PROVINCES[pi]?.name||'?'}</span>
             <span style="color:#c9a84c">${fm(v)}</span>
           </div>
-          <div style="height:4px;background:rgba(0,0,0,.4);border-radius:2px">
+          <div style="height:4px;background:rgba(0,0,0,.4);border-radius:2px;position:relative;z-index:1">
             <div style="height:4px;width:${frac}%;background:${nc};border-radius:2px;opacity:.85"></div>
           </div>
+          <div class="army-row-glow" style="position:absolute;inset:0;background:rgba(201,168,76,0);border-radius:2px;transition:background .2s;pointer-events:none"></div>
         </div>`;
       });
     }
     el.innerHTML = makePanel('⚔','Army Strength','rgba(60,30,10,.55)', body);
+    // Add hover effect and cycling gold hint animation
+    const rows = el.querySelectorAll('.army-row-clickable');
+    rows.forEach(r=>{
+      r.addEventListener('mouseenter',()=>{ r.querySelector('.army-row-glow').style.background='rgba(201,168,76,0.18)'; });
+      r.addEventListener('mouseleave',()=>{ r.querySelector('.army-row-glow').style.background='rgba(201,168,76,0)'; });
+    });
+    // Cycling gold pulse: one row lights up at a time, cycling every 1.8s
+    if(rows.length > 0){
+      if(el._cycleTimer) clearInterval(el._cycleTimer);
+      el._cycleIdx = 0;
+      el._cycleHovered = false;
+      rows.forEach(r=>{ r.addEventListener('mouseenter',()=>{ el._cycleHovered=true; }); r.addEventListener('mouseleave',()=>{ el._cycleHovered=false; }); });
+      el._cycleTimer = setInterval(()=>{
+        if(el._cycleHovered) return;
+        rows.forEach((r,i)=>{
+          const g = r.querySelector('.army-row-glow');
+          if(!g) return;
+          g.style.background = i===el._cycleIdx ? 'rgba(201,168,76,0.13)' : 'rgba(201,168,76,0)';
+        });
+        el._cycleIdx = (el._cycleIdx+1) % rows.length;
+      }, 1800);
+    }
   }
   else if(mode==='instab'){
     const satVals = myProvs.map(i=>G.satisfaction[i]??70);
@@ -1526,31 +1549,40 @@ function updateMapOverlayHTML(){
   }
   else if(mode==='resources'){
     const RES_DEF={oil:{label:'Oil',dot:[180,120,40]},coal:{label:'Coal',dot:[120,120,140]},grain:{label:'Grain',dot:[160,180,60]},steel:{label:'Steel',dot:[100,150,180]},iron:{label:'Iron',dot:[140,100,80]}};
-    const F=window.RES_FILTER||{coal:true,iron:true,oil:true};
+    if(!window.RES_FILTER) window.RES_FILTER={};
+    const F=window.RES_FILTER;
     const counts={};
     PROVINCES.forEach((p,i)=>{
       if(!p.isSea&&G.owner[i]===PN){
         Object.keys(G.resBase[i]||{}).forEach(k=>{ if((G.resBase[i][k]||0)>0) counts[k]=(counts[k]||0)+1; });
       }
     });
-    if(!window._resOverlayHitRects) window._resOverlayHitRects=[];
     window._resOverlayHitRects=[];
     let body='';
     Object.entries(RES_DEF).forEach(([k,{label,dot}])=>{
-      const active=F[k]!==false;
       const c2=counts[k]||0;
       if(!c2) return;
+      const active=F[k]!==false;
       const col=`rgb(${dot[0]},${dot[1]},${dot[2]})`;
-      body += `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;font-size:8px;opacity:${active?1:0.35};cursor:pointer" onclick="window.RES_FILTER['${k}']=!window.RES_FILTER['${k}'];scheduleDraw()">
+      body += `<button data-res-key="${k}" style="display:flex;width:100%;justify-content:space-between;align-items:center;padding:4px 2px;font-size:8px;opacity:${active?1:0.4};cursor:pointer;background:none;border:none;color:inherit;font-family:Cinzel,serif;text-align:left;transition:opacity .15s">
         <span style="display:flex;align-items:center;gap:5px;color:#ddd0b0">
-          <span style="width:8px;height:8px;border-radius:50%;background:${col};display:inline-block;flex-shrink:0"></span>
+          <span style="width:8px;height:8px;border-radius:50%;background:${col};display:inline-block;flex-shrink:0;${active?'box-shadow:0 0 4px '+col:''}"></span>
           ${label}
         </span>
         <span style="color:#c9a84c">${c2} prov</span>
-      </div>`;
+      </button>`;
     });
     if(!body) body = `<div style="font-size:8px;color:#7a6a40">No resources controlled</div>`;
     el.innerHTML = makePanel('⛏','Resources','rgba(60,60,10,.4)', body);
+    // Attach click handlers directly to button elements (avoids inline onclick scoping issues)
+    el.querySelectorAll('button[data-res-key]').forEach(btn=>{
+      btn.addEventListener('click', e=>{
+        e.stopPropagation();
+        const k = btn.getAttribute('data-res-key');
+        window.RES_FILTER[k] = window.RES_FILTER[k]===false ? true : false;
+        scheduleDraw();
+      });
+    });
   }
   else if(mode==='disease'){
     const active = G.epidemics?.filter(ep=>ep.active)||[];

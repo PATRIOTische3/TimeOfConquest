@@ -182,7 +182,7 @@ function autoSave(){
     }));
     const entry = {
       slot:       0,
-      label:      '⟳ Autosave',
+      label:      (document.getElementById('camp-title-display')?.textContent?.trim()||G.leaderName||'Campaign'),
       nation:     nat?.name || '?',
       natColor:   nat?.color || '#888',
       ideology:   G.ideology,
