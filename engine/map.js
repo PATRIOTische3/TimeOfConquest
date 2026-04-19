@@ -1420,287 +1420,156 @@ function drawMap(){
       drawOrderArrow(fsx,fsy,tsx,tsy,'rgba(80,220,80,.85)','#a0ffb0',fm(amount));
     });
   }
-  // ── UNIFIED MAP MODE OVERLAY PANELS ──────────────────────
-  drawMapOverlay();
+  // ── UNIFIED MAP MODE OVERLAY PANELS (HTML-based, not canvas) ──
+  updateMapOverlayHTML();
 }
 
-function drawMapOverlay(){
-  // Shared panel style helpers
-  // Responsive panel: smaller on mobile (narrow canvas)
-  const isMob = CW < 600;
-  const SW = isMob ? Math.min(160, Math.floor(CW*0.44)) : 210;
-  const PAD = isMob ? 8 : 12;
-  const LH = isMob ? 16 : 20;
-  const CORNER_X = 8, CORNER_Y = isMob ? 48 : 54;
-  const GOLD='#c9a84c', DIM='#7a6a40', TEXT='#ddd0b0', BG='rgba(5,7,12,.82)';
-  const ACCENT_LINE='rgba(201,168,76,.18)';
-  const FONT_TITLE = (isMob?'bold 8px':'bold 9px')+' Cinzel,serif';
-  const FONT_ROW   = (isMob?'8px':'9px')+' Cinzel,serif';
+function updateMapOverlayHTML(){
+  let el = document.getElementById('map-overlay-panel');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'map-overlay-panel';
+    el.style.cssText = 'position:absolute;top:52px;left:8px;z-index:9;min-width:170px;max-width:220px;pointer-events:auto;font-family:Cinzel,serif;user-select:none';
+    const wrap = document.getElementById('map-wrap');
+    if(wrap) wrap.appendChild(el);
+  }
+  const PN = G.playerNation;
+  const myProvs = PROVINCES.map((_,i)=>i).filter(i=>G.owner[i]===PN);
+  const mode = G.mapMode;
+  if(!mode || mode==='political' || mode==='terrain'){
+    el.innerHTML=''; el.style.display='none'; return;
+  }
+  el.style.display='block';
 
-  function panelBg(x,y,w,h,accentColor){
-    ctx.save();
-    ctx.fillStyle=BG;
-    ctx.strokeStyle=accentColor||'rgba(201,168,76,.22)';
-    ctx.lineWidth=1;
-    ctx.beginPath();ctx.rect(x,y,w,h);ctx.fill();ctx.stroke();
-    // Thin top accent line
-    ctx.strokeStyle=accentColor&&accentColor!=='rgba(201,168,76,.22)'?accentColor:GOLD;
-    ctx.globalAlpha=0.4;ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(x+1,y+1);ctx.lineTo(x+w-1,y+1);ctx.stroke();
-    ctx.restore();
-  }
-  function panelTitle(x,y,label){
-    ctx.save();
-    ctx.font=FONT_TITLE;ctx.fillStyle=GOLD;
-    ctx.textAlign='left';ctx.textBaseline='top';
-    ctx.letterSpacing='1px';
-    ctx.fillText(label,x,y);
-    ctx.restore();
-  }
-  function panelRow(x,y,label,value,valColor){
-    ctx.save();
-    ctx.textAlign='left';ctx.textBaseline='middle';
-    ctx.font=FONT_ROW;ctx.fillStyle=TEXT;
-    ctx.fillText(label,x,y);
-    ctx.textAlign='right';
-    ctx.fillStyle=valColor||GOLD;
-    ctx.font=FONT_ROW;
-    ctx.fillText(value,x+SW-PAD*2,y);
-    ctx.restore();
-  }
-  function divider(x,y,w){
-    ctx.save();ctx.strokeStyle=ACCENT_LINE;ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+w,y);ctx.stroke();
-    ctx.restore();
+  // Two-section HTML: title bar (opaque like tabs) + body (transparent like sp-actions)
+  function makePanel(icon, title, accentColor, bodyHTML){
+    return `<div style="border:1px solid rgba(201,168,76,.15);border-radius:3px;overflow:hidden;box-shadow:0 2px 16px rgba(0,0,0,.5)">
+      <div style="background:rgba(8,5,18,0.82);padding:6px 10px;border-bottom:1px solid rgba(201,168,76,.12);display:flex;align-items:center;gap:6px">
+        <span style="font-size:11px">${icon}</span>
+        <span style="font-size:9px;color:#c9a84c;letter-spacing:1px;text-transform:uppercase">${title}</span>
+      </div>
+      <div style="background:rgba(6,4,14,0.18);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);padding:6px 10px">
+        ${bodyHTML}
+      </div>
+    </div>`;
   }
 
-  const PN=G.playerNation;
-  const myProvs=PROVINCES.map((_,i)=>i).filter(i=>G.owner[i]===PN);
+  function row(label, value, valueColor){
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;font-size:8px">
+      <span style="color:#ddd0b0">${label}</span>
+      <span style="color:${valueColor||'#c9a84c'};font-weight:600">${value}</span>
+    </div>`;
+  }
 
-  if(G.mapMode==='army'){
-    const armyProvs=myProvs.filter(i=>(G.army[i]||0)>0).sort((a,b)=>(G.army[b]||0)-(G.army[a]||0));
-    const totalArmy=myProvs.reduce((s,i)=>s+(G.army[i]||0),0);
-    const maxArmy=armyProvs.length?(G.army[armyProvs[0]]||0):1;
-    const top5=armyProvs.slice(0,5);
-    const rows=Math.max(top5.length,1)+1;
-    const sh=PAD*2+14+rows*LH+4;
-    panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(60,30,10,.55)');
-    panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'⚔  ARMY STRENGTH');
-    if(!top5.length){
-      ctx.save();ctx.font='8px Cinzel,serif';ctx.fillStyle=DIM;
-      ctx.textAlign='left';ctx.textBaseline='top';
-      ctx.fillText('No armies deployed',CORNER_X+PAD,CORNER_Y+PAD+14);
-      ctx.restore();
+  if(mode==='army'){
+    const armyProvs = myProvs.filter(i=>(G.army[i]||0)>0).sort((a,b)=>(G.army[b]||0)-(G.army[a]||0));
+    const total = myProvs.reduce((s,i)=>s+(G.army[i]||0),0);
+    const maxArmy = armyProvs.length ? (G.army[armyProvs[0]]||0) : 1;
+    const nc = natColor(PN);
+    let body = row('Total', fm(total), '#c9a84c');
+    if(!armyProvs.length){
+      body += `<div style="font-size:8px;color:#7a6a40;padding:2px 0">No armies deployed</div>`;
     } else {
-      const ty=CORNER_Y+PAD+14+LH/2;
-      ctx.save();
-      ctx.font='bold 8px Cinzel,serif';ctx.fillStyle=GOLD;
-      ctx.textAlign='left';ctx.textBaseline='middle';
-      ctx.fillText('Total',CORNER_X+PAD,ty);
-      ctx.textAlign='right';
-      ctx.fillText(fm(totalArmy),CORNER_X+SW-PAD,ty);
-      ctx.restore();
-      const nc=natColor(PN);
-      top5.forEach((provIdx,idx)=>{
-        const ey=CORNER_Y+PAD+14+(idx+1)*LH;
-        const armyVal=G.army[provIdx]||0;
-        const barFrac=armyVal/maxArmy;
-        ctx.save();
-        ctx.fillStyle='rgba(0,0,0,.35)';
-        ctx.beginPath();ctx.rect(CORNER_X+PAD,ey,SW-PAD*2,LH-2);ctx.fill();
-        ctx.globalAlpha=barFrac; ctx.fillStyle=nc;
-        ctx.beginPath();ctx.rect(CORNER_X+PAD,ey,Math.round((SW-PAD*2)*barFrac),LH-2);ctx.fill();
-        ctx.globalAlpha=1.0;
-        ctx.font='7px Cinzel,serif';ctx.fillStyle=TEXT;
-        ctx.textAlign='left';ctx.textBaseline='middle';
-        ctx.fillText(PROVINCES[provIdx]?.short||PROVINCES[provIdx]?.name||'?',CORNER_X+PAD+3,ey+LH/2-1);
-        ctx.fillStyle=GOLD;ctx.textAlign='right';
-        ctx.fillText(fm(armyVal),CORNER_X+SW-PAD,ey+LH/2-1);
-        ctx.restore();
+      armyProvs.slice(0,6).forEach(pi=>{
+        const v = G.army[pi]||0;
+        const frac = Math.round((v/maxArmy)*100);
+        body += `<div style="padding:2px 0">
+          <div style="display:flex;justify-content:space-between;font-size:7px;color:#ddd0b0;margin-bottom:1px">
+            <span>${PROVINCES[pi]?.short||PROVINCES[pi]?.name||'?'}</span>
+            <span style="color:#c9a84c">${fm(v)}</span>
+          </div>
+          <div style="height:4px;background:rgba(0,0,0,.4);border-radius:2px">
+            <div style="height:4px;width:${frac}%;background:${nc};border-radius:2px;opacity:.85"></div>
+          </div>
+        </div>`;
       });
     }
+    el.innerHTML = makePanel('⚔','Army Strength','rgba(60,30,10,.55)', body);
   }
-
-  if(G.mapMode==='disease'){
-    const active=G.epidemics?.filter(ep=>ep.active)||[];
-    const rows=active.length||1;
-    const sh=PAD*2+14+rows*LH+4;
-    panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(180,60,30,.35)');
-    panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'☣  EPIDEMICS');
-    if(active.length===0){
-      ctx.save();ctx.font='8px Cinzel,serif';ctx.fillStyle=DIM;
-      ctx.textAlign='left';ctx.textBaseline='top';
-      ctx.fillText('No active epidemics',CORNER_X+PAD,CORNER_Y+PAD+14);
-      ctx.restore();
-    } else {
-      active.forEach((ep,idx)=>{
-        const ey=CORNER_Y+PAD+14+idx*LH;
-        ctx.save();
-        ctx.fillStyle=ep.color;
-        ctx.beginPath();ctx.arc(CORNER_X+PAD+4,ey+LH/2,3.5,0,Math.PI*2);ctx.fill();
-        ctx.font='8px Cinzel,serif';ctx.fillStyle=TEXT;
-        ctx.textAlign='left';ctx.textBaseline='middle';
-        ctx.fillText(`${ep.icon} ${ep.name}`,CORNER_X+PAD+13,ey+LH/2-3);
-        ctx.fillStyle=DIM;ctx.font='7px serif';
-        ctx.fillText(`${ep.provinces.size} prov · ☠${fm(ep.dead)}`,CORNER_X+PAD+13,ey+LH/2+5);
-        ctx.restore();
-      });
-    }
+  else if(mode==='instab'){
+    const satVals = myProvs.map(i=>G.satisfaction[i]??70);
+    const avgSat = satVals.length ? Math.round(satVals.reduce((a,b)=>a+b,0)/satVals.length) : 70;
+    const instabVals = myProvs.map(i=>G.instab[i]||0);
+    const avgInstab = instabVals.length ? Math.round(instabVals.reduce((a,b)=>a+b,0)/instabVals.length) : 0;
+    const satCol = avgSat>=70?'#9aba50':avgSat>=50?'#e08830':'#ff6040';
+    const instCol = avgInstab<25?'#9aba50':avgInstab<50?'#e08830':'#ff6040';
+    const frac = Math.round(avgSat);
+    const body = row('Avg. satisfaction', avgSat+'%', satCol) +
+      row('Avg. instability', avgInstab+'%', instCol) +
+      `<div style="margin-top:4px;height:5px;background:rgba(0,0,0,.4);border-radius:2px">
+        <div style="height:5px;width:${frac}%;background:linear-gradient(90deg,#c03020,#c08020 40%,#a0b030 65%,#50c040);border-radius:2px"></div>
+      </div>`;
+    el.innerHTML = makePanel('⚡','Unrest','rgba(180,120,20,.3)', body);
   }
-
-  if(G.mapMode==='buildings'){
+  else if(mode==='buildings'){
     const bldCounts={};
     myProvs.forEach(i=>{
       (G.buildings[i]||[]).forEach(k=>{bldCounts[k]=(bldCounts[k]||0)+1;});
-      if(G.construction[i])bldCounts['_const']=(bldCounts['_const']||0)+1;
+      if(G.construction[i]) bldCounts['_const']=(bldCounts['_const']||0)+1;
     });
-    const entries=Object.entries(bldCounts).filter(([k])=>k!=='_const').sort((a,b)=>b[1]-a[1]);
-    const constCount=bldCounts['_const']||0;
-    const rows=entries.length+(constCount?1:0)||(1);
-    const sh=PAD*2+14+rows*LH+4;
-    panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(40,80,60,.4)');
-    panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'🏛  BUILDINGS');
-    if(!entries.length&&!constCount){
-      ctx.save();ctx.font='8px Cinzel,serif';ctx.fillStyle=DIM;
-      ctx.textAlign='left';ctx.textBaseline='top';
-      ctx.fillText('No buildings constructed',CORNER_X+PAD,CORNER_Y+PAD+14);
-      ctx.restore();
+    const entries = Object.entries(bldCounts).filter(([k])=>k!=='_const').sort((a,b)=>b[1]-a[1]);
+    const constCount = bldCounts['_const']||0;
+    let body = '';
+    if(!entries.length && !constCount){
+      body = `<div style="font-size:8px;color:#7a6a40">No buildings constructed</div>`;
     } else {
-      entries.forEach(([k,cnt],idx)=>{
-        const b=BUILDINGS[k];if(!b)return;
-        const ey=CORNER_Y+PAD+14+idx*LH+LH/2;
-        ctx.save();
-        ctx.font='10px serif';ctx.fillStyle=TEXT;
-        ctx.textAlign='left';ctx.textBaseline='middle';
-        ctx.fillText(b.icon||'?',CORNER_X+PAD,ey);
-        ctx.font='8px Cinzel,serif';
-        ctx.fillText(b.name,CORNER_X+PAD+16,ey);
-        ctx.fillStyle=GOLD;ctx.textAlign='right';
-        ctx.fillText('×'+cnt,CORNER_X+SW-PAD,ey);
-        ctx.restore();
+      entries.forEach(([k,cnt])=>{
+        const b=BUILDINGS[k]; if(!b) return;
+        body += `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;font-size:8px">
+          <span style="color:#ddd0b0">${b.icon||''} ${b.name}</span>
+          <span style="color:#c9a84c">×${cnt}</span>
+        </div>`;
       });
-      if(constCount){
-        const ey=CORNER_Y+PAD+14+entries.length*LH+LH/2;
-        ctx.save();ctx.font='8px Cinzel,serif';ctx.fillStyle=DIM;
-        ctx.textAlign='left';ctx.textBaseline='middle';
-        ctx.fillText('🏗 Under construction',CORNER_X+PAD,ey);
-        ctx.fillStyle=GOLD;ctx.textAlign='right';
-        ctx.fillText('×'+constCount,CORNER_X+SW-PAD,ey);
-        ctx.restore();
-      }
+      if(constCount) body += row('🏗 Under construction','×'+constCount,'#7a6a40');
     }
+    el.innerHTML = makePanel('🏛','Buildings','rgba(40,80,60,.4)', body);
   }
-
-  if(G.mapMode==='instab'){
-    const satVals=myProvs.map(i=>G.satisfaction[i]??70);
-    const avgSat=satVals.length?Math.round(satVals.reduce((a,b)=>a+b,0)/satVals.length):70;
-    const satColor=avgSat>=70?'#9aba50':avgSat>=50?'#e08830':'#ff6040';
-    // Panel height: title + gap + value row + bar + bottom pad
-    const BAR_H=7, BAR_W=SW-PAD*2, TITLE_H=22, VAL_H=18;
-    const sh=TITLE_H+VAL_H+BAR_H+PAD+8;
-    panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(180,120,20,.3)');
-    // Title
-    panelTitle(CORNER_X+PAD,CORNER_Y+7,'⚡  UNREST');
-    // Value row
-    const vy=CORNER_Y+TITLE_H+VAL_H/2+2;
-    ctx.save();
-    ctx.font='8px Cinzel,serif';ctx.fillStyle=TEXT;
-    ctx.textAlign='left';ctx.textBaseline='middle';
-    ctx.fillText('Avg. satisfaction',CORNER_X+PAD,vy);
-    ctx.font='bold 9px Cinzel,serif';ctx.fillStyle=satColor;
-    ctx.textAlign='right';
-    ctx.fillText(avgSat+'%',CORNER_X+SW-PAD,vy);
-    ctx.restore();
-    // Gradient bar
-    const bx=CORNER_X+PAD, by=CORNER_Y+TITLE_H+VAL_H+4;
-    const grad=ctx.createLinearGradient(bx,0,bx+BAR_W,0);
-    grad.addColorStop(0,'#c03020');grad.addColorStop(0.4,'#c08020');
-    grad.addColorStop(0.65,'#a0b030');grad.addColorStop(1,'#50c040');
-    ctx.save();
-    ctx.fillStyle='rgba(0,0,0,.4)';
-    ctx.beginPath();ctx.rect(bx,by,BAR_W,BAR_H);ctx.fill();
-    ctx.fillStyle=grad;
-    const filled=Math.round(BAR_W*(avgSat/100));
-    ctx.beginPath();ctx.rect(bx,by,filled,BAR_H);ctx.fill();
-    // Tick marker
-    ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.globalAlpha=0.9;
-    ctx.beginPath();ctx.moveTo(bx+filled,by-1);ctx.lineTo(bx+filled,by+BAR_H+1);ctx.stroke();
-    ctx.restore();
-  }
-
-  if(G.mapMode==='terrain'){
-    // Count terrain types across player provinces
-    const terrCount={};
-    myProvs.forEach(i=>{
-      const t=PROVINCES[i].terrain||'plains';
-      terrCount[t]=(terrCount[t]||0)+1;
-    });
-    const sorted=Object.entries(terrCount).sort((a,b)=>b[1]-a[1]);
-    const rows=Math.max(1,sorted.length);
-    const sh=PAD*2+14+rows*LH+4;
-    panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(50,80,50,.35)');
-    panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'🏔  TERRAIN');
-    sorted.forEach(([t,cnt],idx)=>{
-      const tInfo=TERRAIN[t];
-      const label=tInfo?.name||t;
-      const ey=CORNER_Y+PAD+14+idx*LH+LH/2;
-      ctx.save();
-      // Small terrain color swatch
-      ctx.fillStyle=TC[t]||'#444';
-      ctx.beginPath();ctx.rect(CORNER_X+PAD,ey-4,8,8);ctx.fill();
-      ctx.font='8px Cinzel,serif';ctx.fillStyle=TEXT;
-      ctx.textAlign='left';ctx.textBaseline='middle';
-      ctx.fillText(label,CORNER_X+PAD+12,ey);
-      ctx.fillStyle=DIM;ctx.textAlign='right';
-      ctx.fillText(cnt+' prov',CORNER_X+SW-PAD,ey);
-      ctx.restore();
-    });
-    if(!sorted.length){
-      ctx.save();ctx.font='8px Cinzel,serif';ctx.fillStyle=DIM;
-      ctx.textAlign='left';ctx.textBaseline='top';
-      ctx.fillText('No territories',CORNER_X+PAD,CORNER_Y+PAD+14);
-      ctx.restore();
-    }
-  }
-
-  if(G.mapMode==='resources'){
+  else if(mode==='resources'){
+    const RES_DEF={oil:{label:'Oil',dot:[180,120,40]},coal:{label:'Coal',dot:[120,120,140]},grain:{label:'Grain',dot:[160,180,60]},steel:{label:'Steel',dot:[100,150,180]},iron:{label:'Iron',dot:[140,100,80]}};
     const F=window.RES_FILTER||{coal:true,iron:true,oil:true};
-    const resDefs=[
-      {k:'coal',label:'Coal',dot:[80,80,80]},
-      {k:'iron',label:'Iron',dot:[100,140,180]},
-      {k:'oil', label:'Oil', dot:[180,130,40]},
-    ];
-    const counts={coal:0,iron:0,oil:0};
-    PROVINCES.forEach((_,i)=>{
-      if(PROVINCES[i]?.isSea)return;
-      const r=G.resBase[i]||{};
-      if(r.coal>0)counts.coal++;
-      if(r.iron>0)counts.iron++;
-      if(r.oil>0)counts.oil++;
+    const counts={};
+    PROVINCES.forEach((p,i)=>{
+      if(!p.isSea&&G.owner[i]===PN){
+        Object.keys(G.resBase[i]||{}).forEach(k=>{ if((G.resBase[i][k]||0)>0) counts[k]=(counts[k]||0)+1; });
+      }
     });
-    const rows=3;
-    const sh=PAD*2+14+rows*LH+4;
-    panelBg(CORNER_X,CORNER_Y,SW,sh,'rgba(80,70,20,.35)');
-    panelTitle(CORNER_X+PAD,CORNER_Y+PAD,'⛏  RESOURCES');
+    if(!window._resOverlayHitRects) window._resOverlayHitRects=[];
     window._resOverlayHitRects=[];
-    resDefs.forEach(({k,label,dot},idx)=>{
-      const rowY=CORNER_Y+PAD+14+idx*LH;
-      const ey=rowY+LH/2;
-      const active=F[k];
-      window._resOverlayHitRects.push({k,x:CORNER_X,y:rowY,w:SW,h:LH});
-      ctx.save();
-      ctx.globalAlpha=active?1:0.35;
-      ctx.fillStyle=`rgb(${dot[0]},${dot[1]},${dot[2]})`;
-      ctx.beginPath();ctx.arc(CORNER_X+PAD+4,ey,4,0,Math.PI*2);ctx.fill();
-      ctx.font='8px Cinzel,serif';
-      ctx.fillStyle=active?TEXT:'rgba(180,160,120,.5)';
-      ctx.textAlign='left';ctx.textBaseline='middle';
-      ctx.fillText(label,CORNER_X+PAD+13,ey);
-      ctx.fillStyle=active?GOLD:'rgba(120,100,60,.5)';ctx.textAlign='right';
-      ctx.fillText(counts[k]+' prov',CORNER_X+SW-PAD,ey);
-      ctx.restore();
+    let body='';
+    Object.entries(RES_DEF).forEach(([k,{label,dot}])=>{
+      const active=F[k]!==false;
+      const c2=counts[k]||0;
+      if(!c2) return;
+      const col=`rgb(${dot[0]},${dot[1]},${dot[2]})`;
+      body += `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;font-size:8px;opacity:${active?1:0.35};cursor:pointer" onclick="window.RES_FILTER['${k}']=!window.RES_FILTER['${k}'];scheduleDraw()">
+        <span style="display:flex;align-items:center;gap:5px;color:#ddd0b0">
+          <span style="width:8px;height:8px;border-radius:50%;background:${col};display:inline-block;flex-shrink:0"></span>
+          ${label}
+        </span>
+        <span style="color:#c9a84c">${c2} prov</span>
+      </div>`;
     });
+    if(!body) body = `<div style="font-size:8px;color:#7a6a40">No resources controlled</div>`;
+    el.innerHTML = makePanel('⛏','Resources','rgba(60,60,10,.4)', body);
+  }
+  else if(mode==='disease'){
+    const active = G.epidemics?.filter(ep=>ep.active)||[];
+    let body='';
+    if(!active.length){
+      body = `<div style="font-size:8px;color:#7a6a40">No active epidemics</div>`;
+    } else {
+      active.forEach(ep=>{
+        body += `<div style="padding:2px 0">
+          <div style="display:flex;justify-content:space-between;font-size:8px;color:#ddd0b0">
+            <span style="color:${ep.color}">${ep.icon} ${ep.name}</span>
+            <span style="color:#c9a84c">${ep.provinces.size} prov</span>
+          </div>
+          <div style="font-size:7px;color:#7a6a40">☠ ${fm(ep.dead)} dead</div>
+        </div>`;
+      });
+    }
+    el.innerHTML = makePanel('☣','Epidemics','rgba(180,60,30,.35)', body);
   } else {
-    window._resOverlayHitRects=[];
+    el.innerHTML=''; el.style.display='none';
   }
 }
