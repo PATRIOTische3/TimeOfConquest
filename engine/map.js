@@ -504,7 +504,8 @@ function zoomReset(){
     let mnX=Infinity, mxX=-Infinity, mnY=Infinity, mxY=-Infinity;
     for(const h of _hexCache){ mnX=Math.min(mnX,h.x); mxX=Math.max(mxX,h.x); mnY=Math.min(mnY,h.y); mxY=Math.max(mxY,h.y); }
     const minX=mnX-R*2, maxX=mxX+R*2, minY=mnY-R*2, maxY=mxY+R*2;
-    const s = Math.min(CW/(maxX-minX), CH/(maxY-minY)) * 0.92;
+    const isMobile = CW < 600;
+    const s = Math.min(CW/(maxX-minX), CH/(maxY-minY)) * (isMobile ? 1.8 : 0.92);
     vp.scale = s; vp.tx = (CW-(maxX-minX)*s)/2 - minX*s; vp.ty = (CH-(maxY-minY)*s)/2 - minY*s;
     _computeMapBounds(); scheduleDraw(); return;
   }
@@ -512,7 +513,8 @@ function zoomReset(){
   let mnX=Infinity, mxX=-Infinity, mnY=Infinity, mxY=-Infinity;
   for(const p of PROVINCES){ mnX=Math.min(mnX,p.cx); mxX=Math.max(mxX,p.cx); mnY=Math.min(mnY,p.cy); mxY=Math.max(mxY,p.cy); }
   const minX=mnX-25, maxX=mxX+25, minY=mnY-25, maxY=mxY+25;
-  const s = Math.min(CW/(maxX-minX), CH/(maxY-minY)) * 0.88;
+  const isMobile2 = CW < 600;
+  const s = Math.min(CW/(maxX-minX), CH/(maxY-minY)) * (isMobile2 ? 1.8 : 0.88);
   vp.scale = s; vp.tx = (CW-(maxX-minX)*s)/2 - minX*s; vp.ty = (CH-(maxY-minY)*s)/2 - minY*s;
   _computeMapBounds(); scheduleDraw();
 }
@@ -1424,9 +1426,16 @@ function drawMap(){
 
 function drawMapOverlay(){
   // Shared panel style helpers
-  const PAD=12, LH=20, SW=210, CORNER_X=8, CORNER_Y=54;
-  const GOLD='#c9a84c', DIM='#7a6a40', TEXT='#ddd0b0', BG='rgba(5,7,12,.92)';
+  // Responsive panel: smaller on mobile (narrow canvas)
+  const isMob = CW < 600;
+  const SW = isMob ? Math.min(160, Math.floor(CW*0.44)) : 210;
+  const PAD = isMob ? 8 : 12;
+  const LH = isMob ? 16 : 20;
+  const CORNER_X = 8, CORNER_Y = isMob ? 48 : 54;
+  const GOLD='#c9a84c', DIM='#7a6a40', TEXT='#ddd0b0', BG='rgba(5,7,12,.82)';
   const ACCENT_LINE='rgba(201,168,76,.18)';
+  const FONT_TITLE = (isMob?'bold 8px':'bold 9px')+' Cinzel,serif';
+  const FONT_ROW   = (isMob?'8px':'9px')+' Cinzel,serif';
 
   function panelBg(x,y,w,h,accentColor){
     ctx.save();
@@ -1442,7 +1451,7 @@ function drawMapOverlay(){
   }
   function panelTitle(x,y,label){
     ctx.save();
-    ctx.font='bold 9px Cinzel,serif';ctx.fillStyle=GOLD;
+    ctx.font=FONT_TITLE;ctx.fillStyle=GOLD;
     ctx.textAlign='left';ctx.textBaseline='top';
     ctx.letterSpacing='1px';
     ctx.fillText(label,x,y);
@@ -1451,10 +1460,11 @@ function drawMapOverlay(){
   function panelRow(x,y,label,value,valColor){
     ctx.save();
     ctx.textAlign='left';ctx.textBaseline='middle';
-    ctx.font='9px Cinzel,serif';ctx.fillStyle=TEXT;
+    ctx.font=FONT_ROW;ctx.fillStyle=TEXT;
     ctx.fillText(label,x,y);
     ctx.textAlign='right';
     ctx.fillStyle=valColor||GOLD;
+    ctx.font=FONT_ROW;
     ctx.fillText(value,x+SW-PAD*2,y);
     ctx.restore();
   }
