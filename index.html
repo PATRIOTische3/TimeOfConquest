@@ -388,6 +388,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 @media(max-width:700px){#bottom{display:none!important;flex-direction:column}#side-panel{display:none!important}}
 @media(max-width:700px){#game-body{flex-direction:column;position:relative}#side-panel{display:none!important}#bottom{display:flex!important;flex-direction:column;height:32vh;max-height:260px;flex-shrink:0;position:absolute;bottom:0;left:0;right:0;z-index:5}#map-wrap{flex:1;min-height:0;padding-right:0!important}}
 @media(min-width:701px){#bottom{display:none!important}#side-panel{display:flex!important}}
+@media(max-width:700px){#map-zoom-btns{display:none!important}}
 
 /* ── PROVINCE POPUP ──────────────────────────────────────── */
 #prov-popup{position:absolute;z-index:15;pointer-events:auto;filter:drop-shadow(0 6px 24px rgba(0,0,0,.9))}
@@ -759,7 +760,12 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
       <button class="abtn" onclick="openMarionette()"><span class="ic">🎭</span><span class="al"><span class="am">Puppet state</span></span></button>
     </div>
     <div class="tpane" id="pane-log"><div id="mob-log" style="font-size:9px"></div></div>
-    <div id="mob-advance-bar" style="padding:5px 8px;border-top:1px solid var(--border);background:rgba(8,5,18,0.72);flex-shrink:0">
+    <div id="mob-advance-bar" style="padding:5px 8px;border-top:1px solid rgba(201,168,76,.12);background:rgba(8,5,18,0.72);flex-shrink:0">
+      <div style="display:flex;gap:5px;margin-bottom:5px">
+        <button class="zbtn" onclick="zoomBy(1.28)" style="flex:1;width:auto;height:36px;font-size:18px">+</button>
+        <button class="zbtn" onclick="zoomBy(1/1.28)" style="flex:1;width:auto;height:36px;font-size:18px">−</button>
+        <button class="zbtn" onclick="zoomReset()" style="flex:1;width:auto;height:36px;font-size:11px">⊡</button>
+      </div>
       <button class="btn full" id="end-btn-mob" onclick="endTurn()" style="padding:10px;font-size:11px;letter-spacing:2px">Advance Week ›</button>
     </div>
   </div>
@@ -836,19 +842,19 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 })();
 </script>
 <!-- ═══ ENGINE MODULES (replaces monolithic game.js) ═══ -->
-<script src="engine/utils.js?v=1776550688"></script>
-<script src="engine/time.js?v=1776550688"></script>
-<script src="engine/state.js?v=1776550688"></script>
-<script src="engine/map.js?v=1776550688"></script>
-<script src="engine/naval.js?v=1776550688"></script>
-<script src="engine/military.js?v=1776550688"></script>
-<script src="engine/assimilation.js?v=1776550688"></script>
-<script src="engine/economy.js?v=1776550688"></script>
-<script src="engine/diplomacy.js?v=1776550688"></script>
-<script src="engine/events.js?v=1776550688"></script>
-<script src="engine/ai.js?v=1776550688"></script>
-<script src="engine/endturn.js?v=1776550688"></script>
-<script src="engine/ui.js?v=1776550688"></script>
+<script src="engine/utils.js?v=1776584692"></script>
+<script src="engine/time.js?v=1776584692"></script>
+<script src="engine/state.js?v=1776584692"></script>
+<script src="engine/map.js?v=1776584692"></script>
+<script src="engine/naval.js?v=1776584692"></script>
+<script src="engine/military.js?v=1776584692"></script>
+<script src="engine/assimilation.js?v=1776584692"></script>
+<script src="engine/economy.js?v=1776584692"></script>
+<script src="engine/diplomacy.js?v=1776584692"></script>
+<script src="engine/events.js?v=1776584692"></script>
+<script src="engine/ai.js?v=1776584692"></script>
+<script src="engine/endturn.js?v=1776584692"></script>
+<script src="engine/ui.js?v=1776584692"></script>
 <script src="multiplayer.js"></script>
 <script>
 // ── SHARED MINI-MAP RENDERER (intro, worlds, setup) ──────────
