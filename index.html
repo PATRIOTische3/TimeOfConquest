@@ -393,30 +393,31 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 /* ── PROVINCE POPUP ──────────────────────────────────────── */
 #prov-popup{position:absolute;z-index:15;pointer-events:auto;filter:drop-shadow(0 6px 24px rgba(0,0,0,.9))}
 /* Popup scales with viewport using vw/vh so it looks good on both mobile and 2K */
-#prov-popup-inner{background:linear-gradient(160deg,#1e1208,#0c0804);border:1px solid rgba(201,168,76,.35);width:clamp(220px,18vw,480px);position:relative;overflow:hidden}
+#prov-popup-inner{background:linear-gradient(160deg,#1e1208,#0c0804);border:1px solid rgba(201,168,76,.35);width:clamp(220px,20vw,560px);position:relative;overflow:hidden}
 #prov-popup-inner::before{content:'';position:absolute;top:0;left:8%;right:8%;height:1px;background:linear-gradient(90deg,transparent,rgba(201,168,76,.5),transparent)}
 #prov-popup-inner::after{content:'';position:absolute;bottom:clamp(-9px,-.7vw,-5px);left:50%;transform:translateX(-50%);width:0;height:0;border-left:clamp(7px,.55vw,14px) solid transparent;border-right:clamp(7px,.55vw,14px) solid transparent;border-top:clamp(7px,.55vw,14px) solid rgba(201,168,76,.35)}
 .pp-head{padding:clamp(8px,.7vw,18px) clamp(10px,.9vw,22px) clamp(6px,.5vw,14px);border-bottom:1px solid rgba(42,36,24,.5)}
-.pp-name{font-family:'Cinzel',serif;font-size:clamp(12px,1.1vw,26px);color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;padding-right:clamp(22px,1.8vw,40px)}
+.pp-name{font-family:'Cinzel',serif;font-size:clamp(12px,1.15vw,28px);color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;padding-right:clamp(22px,1.8vw,40px)}
 .pp-sub{font-size:clamp(9px,.75vw,18px);color:var(--dim);font-style:italic}
 .pp-grid{display:grid;grid-template-columns:1fr 1fr;padding:clamp(6px,.6vw,14px) clamp(10px,.9vw,22px);gap:clamp(4px,.4vw,10px) clamp(8px,.7vw,18px)}
 .pp-cell{display:flex;flex-direction:column}
-.pp-label{font-size:clamp(7px,.6vw,14px);color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:1px}
-.pp-val{font-family:'Cinzel',serif;font-size:clamp(11px,.95vw,22px);color:var(--text)}
+.pp-label{font-size:clamp(7px,.65vw,15px);color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:1px}
+.pp-val{font-family:'Cinzel',serif;font-size:clamp(11px,1.0vw,24px);color:var(--text)}
 .pp-disease{margin:0 clamp(10px,.9vw,22px) clamp(6px,.5vw,12px);padding:clamp(3px,.3vw,8px) clamp(6px,.6vw,14px);font-size:clamp(8px,.7vw,16px);border:1px solid;text-align:center}
 .pp-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(clamp(50px,4.5vw,100px),1fr));gap:0;border-top:1px solid rgba(42,36,24,.5)}
-.pp-act{padding:clamp(6px,.6vw,14px) clamp(3px,.3vw,8px);background:rgba(0,0,0,.2);border:none;border-right:1px solid rgba(42,36,24,.4);color:var(--dim);font-family:'Cinzel',serif;font-size:clamp(8px,.65vw,14px);letter-spacing:.5px;cursor:pointer;transition:all .12s;text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px;text-transform:uppercase}
+.pp-act{padding:clamp(6px,.7vw,16px) clamp(3px,.35vw,10px);background:rgba(0,0,0,.2);border:none;border-right:1px solid rgba(42,36,24,.4);color:var(--dim);font-family:'Cinzel',serif;font-size:clamp(8px,.7vw,16px);letter-spacing:.5px;cursor:pointer;transition:all .12s;text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px;text-transform:uppercase}
 .pp-act:last-child{border-right:none}
 .pp-act:hover:not(:disabled){background:rgba(201,168,76,.08);color:var(--gold)}
 .pp-act:disabled{opacity:.3;cursor:not-allowed}
 .pp-act.red{color:#e06050}.pp-act.red:hover:not(:disabled){background:rgba(180,30,30,.15);color:#ff7060}
 .pp-act.grn{color:#60d060}.pp-act.grn:hover:not(:disabled){background:rgba(30,120,30,.15);color:#80e880}
-.pp-act-icon{font-size:clamp(14px,1.3vw,28px);line-height:1}
-.pp-act-lbl{font-size:clamp(6px,.55vw,12px)}
+.pp-act-icon{font-size:clamp(14px,1.5vw,34px);line-height:1}
+.pp-act-lbl{font-size:clamp(6px,.6vw,14px)}
 .pp-close{position:absolute;top:clamp(4px,.4vw,10px);right:clamp(6px,.6vw,14px);background:none;border:none;color:var(--dim);cursor:pointer;font-size:clamp(12px,1vw,20px);line-height:1;padding:2px 4px;transition:color .12s;z-index:2}
 .pp-sl{font-size:clamp(6px,.55vw,12px);color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
 .pp-sv{font-family:'Cinzel',serif;font-size:clamp(10px,.95vw,20px);color:var(--text)}
 @keyframes ppIn{from{opacity:0;transform:translateY(6px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes nameDupShake{0%,100%{transform:translateX(0);color:var(--gold)}15%{transform:translateX(-6px);color:#ff4444}30%{transform:translateX(5px);color:#ff4444}45%{transform:translateX(-4px);color:#ff4444}60%{transform:translateX(3px);color:#ff6060}75%{transform:translateX(-2px);color:#ff8060}90%{transform:translateX(1px);color:#ff9060}}
 /* On mobile, popup uses vw-based width (72vw was original good value) */
 @media(max-width:900px){
   #prov-popup-inner{width:clamp(220px,72vw,340px)}
@@ -1148,6 +1149,30 @@ function showToast(msg,dur){if(typeof popup==='function')popup(msg,dur||2200);el
 const SAVE_KEY='toc1936_v2';
 const MAX_SLOTS=6;
 function getAllSaves(){try{return JSON.parse(localStorage.getItem(SAVE_KEY)||'[]');}catch{return[];}}
+
+// Returns a unique label: if label exists in saves, appends/increments a number suffix
+function uniqueCampaignLabel(label, excludeSlot){
+  const saves = getAllSaves().filter(s=>excludeSlot===undefined||s.slot!==excludeSlot);
+  const existing = new Set(saves.map(s=>(s.label||'').toUpperCase()));
+  if(!existing.has(label.toUpperCase())) return label;
+  // Strip existing trailing number
+  const base = label.replace(/\s*\d+$/, '').trim();
+  let n = 2;
+  while(existing.has((base+' '+n).toUpperCase())) n++;
+  return base + ' ' + n;
+}
+
+// Shake+red animation on the camp title display, then resolve with unique name
+function shakeAndResolveDupName(disp, newLabel, onDone){
+  disp.style.animation = 'none';
+  void disp.offsetWidth; // reflow
+  disp.style.animation = 'nameDupShake 0.55s ease both';
+  setTimeout(()=>{
+    disp.style.animation = '';
+    disp.textContent = newLabel.toUpperCase();
+    if(onDone) onDone(newLabel.toUpperCase());
+  }, 580);
+}
 function setSaves(arr){try{localStorage.setItem(SAVE_KEY,JSON.stringify(arr));}catch{showToast('Storage full!');}}
 
 function saveToSlot(slot,label){
@@ -1158,8 +1183,11 @@ function saveToSlot(slot,label){
     if(val instanceof Set)return[...val];
     return val;
   }));
+  // Deduplicate label: if same label exists in another slot, auto-increment
+  const rawLabel = label||G.leaderName||'Campaign';
+  const uniqueLabel = typeof uniqueCampaignLabel==='function' ? uniqueCampaignLabel(rawLabel, slot) : rawLabel;
   const entry={
-    slot,label:label||G.leaderName||'Campaign',
+    slot,label:uniqueLabel,
     nation:nat?.name||'?',natColor:nat?.color||'#888',
     ideology:G.ideology,leaderName:G.leaderName,
     gameDate:`${mo[G.month]} ${G.year}`,
@@ -1193,6 +1221,9 @@ function loadFromSlot(slot){
   setTimeout(()=>{
     buildHexCache();computeHexRadius();buildCanvas();zoomReset();
     updateHUD();updateIdeoHUD();updateSeasonUI();
+    // Restore campaign title display
+    const disp=document.getElementById('camp-title-display');
+    if(disp&&entry.label) disp.textContent=entry.label.toUpperCase();
     addLog(`${G.leaderName} returns to the throne.`,'event');
   },80);
 }
@@ -1861,7 +1892,17 @@ window.refreshWorldsList=function(){
     const wrap=document.getElementById('camp-title-wrap'),disp=document.getElementById('camp-title-display'),inp=document.getElementById('camp-title-input');
     if(!wrap||!disp||!inp)return;
     const edit=()=>{disp.style.display='none';inp.style.display='block';inp.value=disp.textContent;inp.focus();inp.select();};
-    const done=()=>{disp.textContent=(inp.value.trim()||'NEW CAMPAIGN').toUpperCase();inp.style.display='none';disp.style.display='';};
+    const done=()=>{
+      const raw=(inp.value.trim()||'NEW CAMPAIGN').toUpperCase();
+      inp.style.display='none';disp.style.display='';
+      const unique=uniqueCampaignLabel(raw);
+      if(unique!==raw){
+        disp.textContent=raw; // show what user typed first, then shake→resolve
+        shakeAndResolveDupName(disp, unique);
+      } else {
+        disp.textContent=raw;
+      }
+    };
     wrap.onclick=e=>{if(e.target!==inp)edit();};
     inp.onblur=done;
     inp.onkeydown=e=>{if(e.key==='Enter')inp.blur();if(e.key==='Escape'){inp.value=disp.textContent;inp.blur();}};
