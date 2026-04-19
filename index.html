@@ -417,6 +417,99 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 .pp-sv{font-family:'Cinzel',serif;font-size:clamp(10px,.95vw,13px);color:var(--text)}
 @keyframes ppIn{from{opacity:0;transform:translateY(6px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
 .pp-anim{animation:ppIn .16s cubic-bezier(.2,.8,.4,1) both}
+
+/* ── KINGDOM OVERLAY (pause screen) ─────────────────── */
+#kingdom-overlay{
+  display:none;position:fixed;inset:0;z-index:500;
+  background:rgba(4,6,12,.72);
+  backdrop-filter:blur(14px) saturate(1.2);
+  -webkit-backdrop-filter:blur(14px) saturate(1.2);
+  flex-direction:column;align-items:center;justify-content:center;
+  pointer-events:all;
+}
+#kingdom-overlay.on{display:flex}
+/* ticker */
+#ko-ticker-wrap{
+  width:100%;overflow:hidden;
+  background:rgba(0,0,0,.55);border-bottom:1px solid rgba(201,168,76,.2);
+  padding:6px 0;flex-shrink:0;
+}
+#ko-ticker{
+  display:inline-block;white-space:nowrap;
+  font-family:'Cinzel',serif;font-size:11px;
+  color:var(--gold);letter-spacing:1px;
+  animation:koTick 28s linear infinite;
+}
+@keyframes koTick{0%{transform:translateX(100vw)}100%{transform:translateX(-100%)}}
+/* center card */
+#ko-card{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:10px;
+  padding:28px 20px;text-align:center;
+}
+#ko-nation-name{
+  font-family:'Cinzel Decorative',serif;
+  font-size:clamp(20px,5vw,32px);
+  color:var(--gold);letter-spacing:4px;
+  text-shadow:0 0 40px rgba(201,168,76,.5);
+  line-height:1.2;
+}
+#ko-ideo-label{
+  font-family:'Cinzel',serif;font-size:13px;
+  color:rgba(201,168,76,.55);letter-spacing:3px;text-transform:uppercase;
+  margin-top:2px;
+}
+.ko-rule{width:min(280px,70%);height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:6px 0}
+/* buttons */
+#ko-btns{display:flex;flex-direction:column;gap:8px;width:min(260px,80%);margin-top:12px}
+#ko-btns .btn{width:100%;text-align:center;padding:10px 0;font-size:10px;letter-spacing:2.5px}
+#ko-return-btn{border-color:var(--green2);color:var(--green2)}
+#ko-save-btn{}
+#ko-exit-btn{border-color:rgba(180,80,80,.6);color:#c08080}
+/* pause button in hud */
+#hud-pause-btn{
+  background:none;border:1px solid rgba(201,168,76,.25);
+  color:rgba(201,168,76,.6);font-size:13px;
+  width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:all .13s;flex-shrink:0;margin-right:2px;border-radius:2px;
+}
+#hud-pause-btn:hover{border-color:var(--gold);color:var(--gold);background:rgba(201,168,76,.08)}
+/* mobile menu btn (⋮) — only shown on mobile */
+#mob-menu-btn{
+  display:none;
+  background:none;border:1px solid rgba(201,168,76,.25);
+  color:rgba(201,168,76,.65);font-size:16px;font-weight:700;
+  width:30px;height:28px;align-items:center;justify-content:center;
+  cursor:pointer;transition:all .13s;flex-shrink:0;border-radius:2px;
+  font-family:monospace;letter-spacing:-2px;
+}
+#mob-menu-btn:hover{border-color:var(--gold);color:var(--gold)}
+/* mobile menu drawer */
+#mob-menu-drawer{
+  display:none;position:fixed;top:0;right:0;bottom:0;
+  width:min(240px,80vw);
+  background:linear-gradient(160deg,#1a1008,#0c0804);
+  border-left:1px solid rgba(201,168,76,.3);
+  z-index:600;flex-direction:column;padding:16px 14px;gap:10px;
+  box-shadow:-8px 0 40px rgba(0,0,0,.6);
+}
+#mob-menu-drawer.on{display:flex}
+#mob-menu-backdrop{
+  display:none;position:fixed;inset:0;z-index:599;
+  background:rgba(0,0,0,.5);
+}
+#mob-menu-backdrop.on{display:block}
+.mob-menu-title{font-family:'Cinzel Decorative',serif;font-size:13px;color:var(--gold);letter-spacing:2px;border-bottom:1px solid rgba(201,168,76,.2);padding-bottom:8px;margin-bottom:4px}
+.mob-menu-nat{font-family:'Cinzel',serif;font-size:11px;color:var(--gold);opacity:.7;margin-bottom:2px}
+.mob-menu-ideo{font-size:10px;color:var(--dim);margin-bottom:10px}
+.mob-menu-rule{height:1px;background:rgba(201,168,76,.15)}
+#mob-menu-drawer .btn{padding:9px 0;text-align:center;font-size:9px;letter-spacing:2px;width:100%}
+#mob-menu-close{background:none;border:none;color:var(--dim);font-size:18px;cursor:pointer;align-self:flex-end;margin-bottom:4px;padding:0}
+/* Responsive: on mobile hide HUD save/exit, show mob-menu-btn */
+@media(max-width:900px){
+  .save-btn-hud{display:none!important}
+  #mob-menu-btn{display:flex!important}
+}
 </style>
 </head>
 <body>
@@ -622,6 +715,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 <div class="scr" id="s-game">
   <div id="hud">
     <span class="hud-season" id="h-season">☀️</span>
+    <button id="hud-pause-btn" onclick="openKingdomOverlay()" title="Kingdom overview">⏸</button>
     <div class="hud-date" id="h-date">Jan 1936</div>
     <div class="hstat"><div class="hsl">Gold</div><div class="hsv" id="h-gld">—</div></div>
     <div class="hstat"><div class="hsl">Income</div><div class="hsv" id="h-inc">—</div></div>
@@ -635,6 +729,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
       <div id="mp-ig-dot"></div>
       <span id="mp-ig-txt">MP</span>
     </div>
+    <button id="mob-menu-btn" onclick="openMobMenu()" title="Menu">⋮</button>
     <button class="save-btn-hud" onclick="openSaveMenu()">💾 Save</button>
     <button class="save-btn-hud" onclick="saveAndExit()" style="border-color:rgba(180,80,80,.5);color:#c08080">💾 Exit</button>
     <button class="save-btn-hud" id="fast-mode-btn" onclick="toggleFastMode()" title="Fast mode — skip battle animations">▶▶</button>
@@ -769,6 +864,38 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
       <button class="btn full" id="end-btn-mob" onclick="endTurn()" style="padding:10px;font-size:11px;letter-spacing:2px">Advance Week ›</button>
     </div>
   </div>
+</div>
+
+<!-- KINGDOM OVERLAY (pause / overview) -->
+<div id="kingdom-overlay" onclick="koBackdropClick(event)">
+  <!-- ticker -->
+  <div id="ko-ticker-wrap">
+    <span id="ko-ticker">GOLD: — | INCOME: — | POPULATION: — | SATISFACTION: — | TAX: — &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; GOLD: — | INCOME: — | POPULATION: — | SATISFACTION: — | TAX: —</span>
+  </div>
+  <!-- center card -->
+  <div id="ko-card">
+    <div id="ko-nation-name">Kingdom of —</div>
+    <div id="ko-ideo-label">Militarism</div>
+    <div class="ko-rule"></div>
+    <div id="ko-btns">
+      <button class="btn" id="ko-return-btn" onclick="closeKingdomOverlay()">↩ Return to Game</button>
+      <button class="btn" id="ko-save-btn" onclick="closeKingdomOverlay();openSaveMenu()">💾 Save Campaign</button>
+      <button class="btn" id="ko-exit-btn" onclick="closeKingdomOverlay();saveAndExit()">⏻ Save &amp; Exit</button>
+    </div>
+  </div>
+</div>
+
+<!-- MOBILE SIDE MENU -->
+<div id="mob-menu-backdrop" onclick="closeMobMenu()"></div>
+<div id="mob-menu-drawer">
+  <button id="mob-menu-close" onclick="closeMobMenu()">✕</button>
+  <div class="mob-menu-title">⚔ Menu</div>
+  <div class="mob-menu-nat" id="mob-menu-nat-name">—</div>
+  <div class="mob-menu-ideo" id="mob-menu-ideo-name">—</div>
+  <div class="mob-menu-rule"></div>
+  <button class="btn" onclick="closeMobMenu();openKingdomOverlay()" style="border-color:rgba(201,168,76,.4)">👁 Kingdom Overview</button>
+  <button class="btn" onclick="closeMobMenu();openSaveMenu()">💾 Save Campaign</button>
+  <button class="btn" onclick="closeMobMenu();saveAndExit()" style="border-color:rgba(180,80,80,.5);color:#c08080">⏻ Save &amp; Exit</button>
 </div>
 
 <!-- BATTLE -->
@@ -2016,6 +2143,55 @@ function _doSessionRestore(){
     },400);
   }catch(e){}
 }
+// ── KINGDOM OVERLAY ─────────────────────────────────────
+function openKingdomOverlay(){
+  // Update nation name from G
+  const nat=typeof G!=='undefined'&&NATIONS?NATIONS[G.playerNation]:null;
+  const io=typeof ideol==='function'?ideol():null;
+  const el=document.getElementById('kingdom-overlay');
+  if(!el)return;
+  document.getElementById('ko-nation-name').textContent=nat?nat.name:'Kingdom of —';
+  document.getElementById('ko-ideo-label').textContent=io?(io.icon+' '+io.name):'Militarism';
+  // Build ticker text from HUD values
+  const gld=document.getElementById('h-gld')?.textContent||'—';
+  const inc=document.getElementById('h-inc')?.textContent||'—';
+  const pop=document.getElementById('h-pop')?.textContent||'—';
+  const sat=document.getElementById('h-sat')?.textContent||'—';
+  const tax=document.getElementById('h-tax')?.textContent||'—';
+  const seg=`GOLD: ${gld} | INCOME: ${inc} | POPULATION: ${pop} | SATISFACTION: ${sat} | TAX: ${tax}`;
+  const tk=document.getElementById('ko-ticker');
+  if(tk)tk.textContent=seg+'       '+seg;
+  el.classList.add('on');
+  // block interaction on the game area
+  const gb=document.getElementById('game-body');
+  if(gb)gb.style.pointerEvents='none';
+}
+function closeKingdomOverlay(){
+  const el=document.getElementById('kingdom-overlay');
+  if(el)el.classList.remove('on');
+  const gb=document.getElementById('game-body');
+  if(gb)gb.style.pointerEvents='';
+}
+function koBackdropClick(e){
+  // close only when clicking the dark backdrop itself (not the card)
+  if(e.target===document.getElementById('kingdom-overlay'))closeKingdomOverlay();
+}
+// ── MOBILE MENU ──────────────────────────────────────────
+function openMobMenu(){
+  const nat=typeof G!=='undefined'&&NATIONS?NATIONS[G.playerNation]:null;
+  const io=typeof ideol==='function'?ideol():null;
+  const nn=document.getElementById('mob-menu-nat-name');
+  const ni=document.getElementById('mob-menu-ideo-name');
+  if(nn)nn.textContent=nat?nat.name:'—';
+  if(ni)ni.textContent=io?(io.icon+' '+io.name):'—';
+  document.getElementById('mob-menu-drawer').classList.add('on');
+  document.getElementById('mob-menu-backdrop').classList.add('on');
+}
+function closeMobMenu(){
+  document.getElementById('mob-menu-drawer').classList.remove('on');
+  document.getElementById('mob-menu-backdrop').classList.remove('on');
+}
+
 if(window._tocMapReady){_doSessionRestore();}
 else{window.addEventListener('toc-map-ready',_doSessionRestore,{once:true});}
 </script>
