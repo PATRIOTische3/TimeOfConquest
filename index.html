@@ -182,7 +182,7 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .hsv{font-family:'Cinzel',serif;font-size:clamp(11px,1.3vw,18px);color:var(--gold);line-height:1.2}
 .hstat.warn .hsv{color:#ff8844}
 .hud-spacer{flex:1;min-width:4px}
-#hud-ideo{font-family:'Cinzel',serif;font-size:clamp(9px,1vw,14px);letter-spacing:1px;flex-shrink:0;text-transform:uppercase;padding:0 clamp(5px,.7vw,11px);border-right:1px solid rgba(42,36,24,.7);height:clamp(38px,4.5vh,56px);display:flex;flex-direction:column;justify-content:center;gap:1px}
+#hud-ideo{font-family:'Cinzel',serif;font-size:clamp(9px,1vw,14px);letter-spacing:1px;flex-shrink:0;text-transform:uppercase;padding:0 clamp(5px,.7vw,11px);border-left:1px solid rgba(42,36,24,.7);height:clamp(38px,4.5vh,56px);display:flex;flex-direction:column;justify-content:center;gap:1px}
 #hud-ideo .hsl{font-size:clamp(7px,.7vw,9px);color:var(--dim);letter-spacing:1px;text-transform:uppercase}
 #hud-ideo .hsv{}
 .save-btn-hud{padding:0 clamp(6px,.8vw,12px);height:clamp(22px,2.8vh,34px);background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--dim);font-family:'Cinzel',serif;font-size:clamp(8px,.8vw,11px);letter-spacing:1px;cursor:pointer;transition:all .12s;flex-shrink:0;margin-right:clamp(3px,.4vw,6px);display:flex;align-items:center;gap:4px;text-transform:uppercase}
@@ -265,7 +265,7 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .ri-box{background:rgba(0,0,0,.25);border:1px solid rgba(42,36,24,.45);padding:3px 4px;text-align:center}
 .ri-bl{font-size:6.5px;color:var(--dim);text-transform:uppercase}
 .ri-bv{font-family:'Cinzel',serif;font-size:11px;color:var(--text)}
-#mo{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:flex-end;justify-content:center;z-index:200}
+#mo{position:fixed;inset:0;background:rgba(0,0,0,.9);display:none;align-items:flex-end;justify-content:center;z-index:600}
 #mo.on{display:flex}
 #mb{background:linear-gradient(155deg,#1a1208,#0c0804);border:1px solid var(--gold);border-bottom:none;padding:14px 13px 20px;width:100%;max-width:520px;max-height:90dvh;overflow-y:auto;box-shadow:0 -4px 28px rgba(201,168,76,.14)}
 #mb::-webkit-scrollbar{width:2px}
@@ -392,30 +392,43 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 
 /* ── PROVINCE POPUP ──────────────────────────────────────── */
 #prov-popup{position:absolute;z-index:15;pointer-events:auto;filter:drop-shadow(0 6px 24px rgba(0,0,0,.9))}
-#prov-popup-inner{background:linear-gradient(160deg,#1e1208,#0c0804);border:1px solid rgba(201,168,76,.35);width:clamp(220px,72vw,340px);position:relative;overflow:hidden}
+/* Popup scales with viewport using vw/vh so it looks good on both mobile and 2K */
+#prov-popup-inner{background:linear-gradient(160deg,#1e1208,#0c0804);border:1px solid rgba(201,168,76,.35);width:clamp(220px,18vw,480px);position:relative;overflow:hidden}
 #prov-popup-inner::before{content:'';position:absolute;top:0;left:8%;right:8%;height:1px;background:linear-gradient(90deg,transparent,rgba(201,168,76,.5),transparent)}
-#prov-popup-inner::after{content:'';position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-top:9px solid rgba(201,168,76,.35)}
-.pp-head{padding:10px 12px 8px;border-bottom:1px solid rgba(42,36,24,.5)}
-.pp-name{font-family:'Cinzel',serif;font-size:clamp(12px,3.5vw,16px);color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;padding-right:22px}
-.pp-sub{font-size:clamp(9px,2.4vw,11px);color:var(--dim);font-style:italic}
-.pp-grid{display:grid;grid-template-columns:1fr 1fr;padding:8px 12px;gap:6px 10px}
+#prov-popup-inner::after{content:'';position:absolute;bottom:clamp(-9px,-.7vw,-5px);left:50%;transform:translateX(-50%);width:0;height:0;border-left:clamp(7px,.55vw,14px) solid transparent;border-right:clamp(7px,.55vw,14px) solid transparent;border-top:clamp(7px,.55vw,14px) solid rgba(201,168,76,.35)}
+.pp-head{padding:clamp(8px,.7vw,18px) clamp(10px,.9vw,22px) clamp(6px,.5vw,14px);border-bottom:1px solid rgba(42,36,24,.5)}
+.pp-name{font-family:'Cinzel',serif;font-size:clamp(12px,1.1vw,26px);color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;padding-right:clamp(22px,1.8vw,40px)}
+.pp-sub{font-size:clamp(9px,.75vw,18px);color:var(--dim);font-style:italic}
+.pp-grid{display:grid;grid-template-columns:1fr 1fr;padding:clamp(6px,.6vw,14px) clamp(10px,.9vw,22px);gap:clamp(4px,.4vw,10px) clamp(8px,.7vw,18px)}
 .pp-cell{display:flex;flex-direction:column}
-.pp-label{font-size:clamp(7px,1.8vw,9px);color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:1px}
-.pp-val{font-family:'Cinzel',serif;font-size:clamp(11px,3vw,14px);color:var(--text)}
-.pp-disease{margin:0 12px 8px;padding:4px 8px;font-size:clamp(8px,2.2vw,10px);border:1px solid;text-align:center}
-.pp-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(60px,1fr));gap:0;border-top:1px solid rgba(42,36,24,.5)}
-.pp-act{padding:8px 4px;background:rgba(0,0,0,.2);border:none;border-right:1px solid rgba(42,36,24,.4);color:var(--dim);font-family:'Cinzel',serif;font-size:clamp(8px,2.2vw,10px);letter-spacing:.5px;cursor:pointer;transition:all .12s;text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px;text-transform:uppercase}
+.pp-label{font-size:clamp(7px,.6vw,14px);color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:1px}
+.pp-val{font-family:'Cinzel',serif;font-size:clamp(11px,.95vw,22px);color:var(--text)}
+.pp-disease{margin:0 clamp(10px,.9vw,22px) clamp(6px,.5vw,12px);padding:clamp(3px,.3vw,8px) clamp(6px,.6vw,14px);font-size:clamp(8px,.7vw,16px);border:1px solid;text-align:center}
+.pp-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(clamp(50px,4.5vw,100px),1fr));gap:0;border-top:1px solid rgba(42,36,24,.5)}
+.pp-act{padding:clamp(6px,.6vw,14px) clamp(3px,.3vw,8px);background:rgba(0,0,0,.2);border:none;border-right:1px solid rgba(42,36,24,.4);color:var(--dim);font-family:'Cinzel',serif;font-size:clamp(8px,.65vw,14px);letter-spacing:.5px;cursor:pointer;transition:all .12s;text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px;text-transform:uppercase}
 .pp-act:last-child{border-right:none}
 .pp-act:hover:not(:disabled){background:rgba(201,168,76,.08);color:var(--gold)}
 .pp-act:disabled{opacity:.3;cursor:not-allowed}
 .pp-act.red{color:#e06050}.pp-act.red:hover:not(:disabled){background:rgba(180,30,30,.15);color:#ff7060}
 .pp-act.grn{color:#60d060}.pp-act.grn:hover:not(:disabled){background:rgba(30,120,30,.15);color:#80e880}
-.pp-act-icon{font-size:clamp(14px,4vw,18px);line-height:1}
-.pp-act-lbl{font-size:clamp(6px,1.6vw,8px)}
-.pp-close{position:absolute;top:6px;right:8px;background:none;border:none;color:var(--dim);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;transition:color .12s;z-index:2}
-.pp-sl{font-size:clamp(6px,.55vw,8px);color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
-.pp-sv{font-family:'Cinzel',serif;font-size:clamp(10px,.95vw,13px);color:var(--text)}
+.pp-act-icon{font-size:clamp(14px,1.3vw,28px);line-height:1}
+.pp-act-lbl{font-size:clamp(6px,.55vw,12px)}
+.pp-close{position:absolute;top:clamp(4px,.4vw,10px);right:clamp(6px,.6vw,14px);background:none;border:none;color:var(--dim);cursor:pointer;font-size:clamp(12px,1vw,20px);line-height:1;padding:2px 4px;transition:color .12s;z-index:2}
+.pp-sl{font-size:clamp(6px,.55vw,12px);color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+.pp-sv{font-family:'Cinzel',serif;font-size:clamp(10px,.95vw,20px);color:var(--text)}
 @keyframes ppIn{from{opacity:0;transform:translateY(6px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+/* On mobile, popup uses vw-based width (72vw was original good value) */
+@media(max-width:900px){
+  #prov-popup-inner{width:clamp(220px,72vw,340px)}
+  .pp-name{font-size:clamp(12px,3.5vw,16px)}
+  .pp-sub{font-size:clamp(9px,2.4vw,11px)}
+  .pp-label{font-size:clamp(7px,1.8vw,9px)}
+  .pp-val{font-size:clamp(11px,3vw,14px)}
+  .pp-act{font-size:clamp(8px,2.2vw,10px);padding:8px 4px}
+  .pp-act-icon{font-size:clamp(14px,4vw,18px)}
+  .pp-act-lbl{font-size:clamp(6px,1.6vw,8px)}
+  .pp-close{font-size:14px}
+}
 .pp-anim{animation:ppIn .16s cubic-bezier(.2,.8,.4,1) both}
 
 /* ── KINGDOM OVERLAY ─────────────────────────────────── */
@@ -782,11 +795,11 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
       <div id="mp-ig-dot"></div>
       <span id="mp-ig-txt">MP</span>
     </div>
-    <div id="hud-ideo"></div>
     <button class="save-btn-hud" onclick="openSaveMenu()">💾 Save</button>
     <button class="save-btn-hud" onclick="saveAndExit()" style="border-color:rgba(180,80,80,.5);color:#c08080">💾 Exit</button>
     <button class="save-btn-hud hud-settings-btn" onclick="openSettings()" title="Settings">⚙</button>
     <button class="save-btn-hud" id="fast-mode-btn" onclick="toggleFastMode()" title="Fast mode — skip battle animations">▶▶</button>
+    <div id="hud-ideo"></div>
   </div>
   <div id="game-body">
     <div id="map-wrap">
@@ -844,9 +857,8 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
       </div>
       <div id="sp-actions">
         <div class="sp-sec">⚔ Military Actions</div>
-        <button class="abtn war-btn" id="sp-btn-atk" onclick="openAttack()" disabled><span class="ic">⚔</span><span class="al"><span class="am">Attack / Declare War</span><span class="as" id="sp-atk-sub">Select adjacent enemy territory</span></span></button>
+        <button class="abtn" id="sp-btn-smart" onclick="smartMilitaryAction()" disabled><span class="ic" id="sp-smart-ic">⚔</span><span class="al"><span class="am" id="sp-smart-am">Move / Attack</span><span class="as" id="sp-smart-sub">Select a territory first</span></span></button>
         <button class="abtn" onclick="openDraft()"><span class="ic">🪖</span><span class="al"><span class="am">Conscript Soldiers</span><span class="as">1,000 pop · 1 gold per soldier</span></span></button>
-        <button class="abtn" id="sp-btn-move" onclick="toggleMoveMode()" disabled><span class="ic">🚶</span><span class="al"><span class="am">Move Army</span><span class="as" id="sp-move-sub">Select your territory first</span></span></button>
         <div class="sp-sec">🎁 Appease Population</div>
         <button class="abtn" onclick="openAppease()"><span class="ic">🎁</span><span class="al"><span class="am">Appease Population</span><span class="as">Raise satisfaction in all provinces</span></span></button>
         <div class="sp-sec">🏗 Economy &amp; Building</div>
@@ -892,8 +904,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     </div>
     <div class="tpane" id="pane-act">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:2px 0">
-        <button class="abtn" id="mob-btn-move" onclick="toggleMoveMode()" disabled><span class="ic">🚶</span><span class="al"><span class="am">Move Army</span></span></button>
-        <button class="abtn war-btn" id="btn-atk" onclick="openAttack()" disabled><span class="ic">⚔</span><span class="al"><span class="am">Attack</span></span></button>
+        <button class="abtn" id="mob-btn-smart" onclick="smartMilitaryAction()" disabled style="grid-column:1/-1"><span class="ic" id="mob-smart-ic">⚔</span><span class="al"><span class="am" id="mob-smart-am">Move / Attack</span></span></button>
         <button class="abtn" onclick="openDraft()"><span class="ic">🪖</span><span class="al"><span class="am">Conscript</span></span></button>
         <button class="abtn" onclick="openTaxation()"><span class="ic">💰</span><span class="al"><span class="am">Economy</span></span></button>
         <button class="abtn" onclick="openAppease()"><span class="ic">🎁</span><span class="al"><span class="am">Appease</span></span></button>
