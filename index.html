@@ -229,13 +229,14 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 #sp-actions::-webkit-scrollbar{width:2px}
 #sp-actions::-webkit-scrollbar-thumb{background:var(--border)}
 .sp-sec{font-family:'Cinzel',serif;font-size:clamp(7px,.7vw,10px);color:rgba(201,168,76,.7);letter-spacing:1.5px;text-transform:uppercase;padding:clamp(5px,.6vh,8px) 0 4px;border-bottom:1px solid rgba(201,168,76,.15);margin-top:6px}
-.abtn{width:100%;padding:clamp(6px,.8vh,10px) clamp(6px,.7vw,10px);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,.08);color:var(--text);font-family:'IM Fell English',serif;font-size:clamp(10px,1vw,14px);cursor:pointer;transition:all .14s;text-align:left;display:flex;align-items:center;gap:clamp(4px,.5vw,8px);min-height:0;border-radius:2px}
-.abtn:hover:not(:disabled){background:rgba(201,168,76,.06);border-color:var(--gold);color:var(--gold)}
+.abtn{width:100%;padding:clamp(6px,.8vh,10px) clamp(6px,.7vw,10px);background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,.08);color:var(--text);font-family:'IM Fell English',serif;font-size:clamp(10px,1vw,14px);cursor:pointer;transition:background .18s,border-color .18s,color .18s,box-shadow .18s;text-align:left;display:flex;align-items:center;gap:clamp(4px,.5vw,8px);min-height:0;border-radius:2px}
+.abtn:hover:not(:disabled){background:rgba(201,168,76,.10);border-color:rgba(201,168,76,.5);color:var(--gold);box-shadow:0 0 10px rgba(201,168,76,.08)}
 .abtn:disabled{opacity:.22;cursor:not-allowed}
-.abtn.war-btn:hover:not(:disabled){border-color:var(--red2);color:#ff7070;background:rgba(130,26,26,.09)}
-.abtn.peace-btn:hover:not(:disabled){border-color:var(--green2);color:#7aff7a;background:rgba(26,100,40,.09)}
-.abtn.active-mode{border-color:#50ff50;color:#80ff80;background:rgba(26,120,26,.12)}
-.abtn.active-naval{border-color:#50c8ff;color:#80e8ff;background:rgba(20,80,140,.15)}
+.abtn.war-btn{border-color:rgba(180,40,40,.4);color:#d07070}
+.abtn.war-btn:hover:not(:disabled){border-color:var(--red2);color:#ff7070;background:rgba(130,26,26,.14);box-shadow:0 0 10px rgba(180,40,40,.10)}
+.abtn.peace-btn:hover:not(:disabled){border-color:var(--green2);color:#7aff7a;background:rgba(26,100,40,.12);box-shadow:0 0 10px rgba(40,160,60,.10)}
+.abtn.active-mode{border-color:rgba(60,200,80,.7);color:#90f090;background:rgba(20,80,26,.25);box-shadow:0 0 12px rgba(40,200,60,.15),inset 0 0 8px rgba(40,200,60,.06);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+.abtn.active-naval{border-color:rgba(40,160,220,.7);color:#80deff;background:rgba(14,60,100,.28);box-shadow:0 0 12px rgba(40,160,220,.15),inset 0 0 8px rgba(40,160,220,.06);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
 .abtn .ic{font-size:clamp(13px,1.4vw,20px);flex-shrink:0}
 .abtn .al{display:flex;flex-direction:column}
 .abtn .am{font-size:clamp(9px,2.4vw,13px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1150,13 +1151,15 @@ const SAVE_KEY='toc1936_v2';
 const MAX_SLOTS=6;
 function getAllSaves(){try{return JSON.parse(localStorage.getItem(SAVE_KEY)||'[]');}catch{return[];}}
 
-// Returns a unique label: if label exists in saves, appends/increments a number suffix
+// Returns a unique label: if label exists in saves (slots 1+), appends/increments number suffix
+// Slot 0 is autosave and always overwrites itself — excluded from conflict checking
 function uniqueCampaignLabel(label, excludeSlot){
-  const saves = getAllSaves().filter(s=>excludeSlot===undefined||s.slot!==excludeSlot);
+  // Exclude autosave slot (0) and the slot being saved to from conflict check
+  const saves = getAllSaves().filter(s=>s.slot!==0&&(excludeSlot===undefined||s.slot!==excludeSlot));
   const existing = new Set(saves.map(s=>(s.label||'').toUpperCase()));
   if(!existing.has(label.toUpperCase())) return label;
-  // Strip existing trailing number
-  const base = label.replace(/\s*\d+$/, '').trim();
+  // Strip existing trailing number suffix
+  const base = label.replace(/ \d+$/, '').trim();
   let n = 2;
   while(existing.has((base+' '+n).toUpperCase())) n++;
   return base + ' ' + n;
