@@ -1470,11 +1470,11 @@ function updateMapOverlayHTML(){
     if(!armyProvs.length){
       body += `<div style="font-size:8px;color:#7a6a40;padding:2px 0">No armies deployed</div>`;
     } else {
-      armyProvs.slice(0,6).forEach(pi=>{
+      armyProvs.slice(0,6).forEach((pi,idx)=>{
         const v = G.army[pi]||0;
         const frac = Math.round((v/maxArmy)*100);
-        body += `<div style="padding:2px 0">
-          <div style="display:flex;justify-content:space-between;font-size:7px;color:#ddd0b0;margin-bottom:1px">
+        body += `<div data-pi="${pi}" style="padding:3px 2px;cursor:pointer;border-radius:2px;transition:background .15s">
+          <div style="display:flex;justify-content:space-between;font-size:7px;color:#ddd0b0;margin-bottom:2px">
             <span>${PROVINCES[pi]?.short||PROVINCES[pi]?.name||'?'}</span>
             <span style="color:#c9a84c">${fm(v)}</span>
           </div>
@@ -1485,6 +1485,18 @@ function updateMapOverlayHTML(){
       });
     }
     el.innerHTML = makePanel('⚔','Army Strength','rgba(60,30,10,.55)', body);
+    // Wire up click+hover after innerHTML (no inline onclick — scoping issues)
+    el.querySelectorAll('[data-pi]').forEach(row=>{
+      const pi = +row.getAttribute('data-pi');
+      row.addEventListener('mouseenter',()=>{ row.style.background='rgba(201,168,76,0.10)'; });
+      row.addEventListener('mouseleave',()=>{ row.style.background=''; });
+      row.addEventListener('click',()=>{
+        G.sel = pi;
+        if(typeof panToProvince==='function') panToProvince(pi);
+        if(typeof updateSP==='function') updateSP(pi);
+        if(typeof scheduleDraw==='function') scheduleDraw();
+      });
+    });
   }
   else if(mode==='instab'){
     const satVals = myProvs.map(i=>G.satisfaction[i]??70);
