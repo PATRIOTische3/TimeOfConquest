@@ -22,13 +22,13 @@ function chkBtns(){
   const smartEnabled = isOwn || atkOk;
   const smartIsAtk = !isOwn && atkOk;
 
-  // Update both desktop and mobile smart buttons
+  // Update both desktop and mobile smart buttons — classList.toggle to avoid flicker
   ['sp-btn-smart','mob-btn-smart'].forEach(id=>{
     const b=document.getElementById(id);
     if(!b)return;
     b.disabled=!smartEnabled;
-    const wasActive=b.classList.contains('active-mode');
-    b.className='abtn'+(smartIsAtk?' war-btn':'')+(wasActive?' active-mode':'');
+    b.classList.toggle('war-btn', smartIsAtk);
+    // active-mode is managed exclusively by toggleMoveMode/cancelMove — never touch it here
   });
 
   // Icon and label
