@@ -6,6 +6,6 @@
     "PATCH — bugfixes, UI tweaks, balance changes",
     "YYMMDD — build date"
   ],
-  "version": "0.9.7-19042026",
+  "version": "0.9.8-19042026",
   "changelog": "Fix"
 }
