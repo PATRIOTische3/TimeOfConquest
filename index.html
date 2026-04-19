@@ -427,12 +427,25 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
   flex-direction:column;align-items:center;justify-content:center;
   pointer-events:all;
 }
-#kingdom-overlay.on{display:flex}
+#kingdom-overlay.on{display:flex;animation:koFadeIn .32s ease both}
+@keyframes koFadeIn{from{opacity:0}to{opacity:1}}
+/* fog-from-top card animation */
+#ko-card{
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:8px;
+  padding:20px;text-align:center;
+  animation:koSlideDown .38s cubic-bezier(.2,.85,.4,1) both;
+}
+@keyframes koSlideDown{
+  from{opacity:0;transform:translateY(-32px) scale(.97)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
 #ko-ticker-wrap{
   position:absolute;top:0;left:0;right:0;
   overflow:hidden;
   background:rgba(0,0,0,.6);border-bottom:1px solid rgba(201,168,76,.18);
   padding:5px 0;
+  animation:koSlideDown .28s ease both;
 }
 #ko-ticker{
   display:inline-block;white-space:nowrap;
@@ -441,11 +454,6 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
   animation:koTick 32s linear infinite;
 }
 @keyframes koTick{0%{transform:translateX(100vw)}100%{transform:translateX(-100%)}}
-#ko-card{
-  display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:8px;
-  padding:20px;text-align:center;
-}
 #ko-nation-name{
   font-family:'Cinzel Decorative',serif;
   font-size:clamp(22px,6vw,38px);
@@ -453,65 +461,92 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
   text-shadow:0 0 50px rgba(201,168,76,.45),0 2px 12px rgba(0,0,0,.9);
   line-height:1.25;margin-bottom:4px;
 }
-/* ideology — same visual language as #hud-ideo but larger */
+/* ideology — matches hud-ideo exactly but bigger */
 #ko-ideo-label{
   display:flex;align-items:center;justify-content:center;gap:7px;
   margin-bottom:2px;
 }
-#ko-ideo-icon{font-size:17px;line-height:1}
+#ko-ideo-icon{font-size:16px;line-height:1}
 #ko-ideo-text{
   font-family:'Cinzel',serif;
-  font-size:clamp(11px,2.8vw,15px);
-  letter-spacing:3.5px;text-transform:uppercase;
-  color:rgba(201,168,76,.55);
-  text-shadow:0 0 16px rgba(201,168,76,.2);
+  font-size:clamp(12px,2.8vw,16px);
+  letter-spacing:2px;text-transform:uppercase;
+  /* same dim gold as hsl label in HUD */
+  color:rgba(138,120,72,.9);
 }
 .ko-rule{
   width:min(220px,65%);height:1px;
   background:linear-gradient(90deg,transparent,rgba(201,168,76,.5),transparent);
   margin:10px 0;
 }
-/* minimalist list buttons */
+/* buttons */
 #ko-btns{
   display:flex;flex-direction:column;
-  width:min(230px,76%);
-  border:1px solid rgba(201,168,76,.15);
-  margin-top:6px;
+  width:min(240px,78%);
+  border:1px solid rgba(201,168,76,.14);
+  margin-top:6px;overflow:hidden;
 }
 .ko-btn{
-  width:100%;padding:13px 18px;
+  width:100%;padding:15px 18px;
   background:transparent;
   border:none;border-bottom:1px solid rgba(201,168,76,.1);
-  color:rgba(232,213,163,.65);
-  font-family:'Cinzel',serif;font-size:10.5px;letter-spacing:2.5px;text-transform:uppercase;
+  color:rgba(232,213,163,.6);
+  font-family:'Cinzel',serif;font-size:10px;letter-spacing:2.5px;text-transform:uppercase;
   cursor:pointer;transition:background .15s,color .15s;
   display:flex;align-items:center;gap:16px;text-align:left;
 }
 .ko-btn:last-child{border-bottom:none}
-.ko-btn:hover{background:rgba(201,168,76,.07);color:var(--gold)}
-.ko-btn:active{background:rgba(201,168,76,.13)}
 .ko-btn-sym{
-  font-size:12px;color:rgba(201,168,76,.35);
+  font-size:12px;color:rgba(201,168,76,.3);
   width:14px;text-align:center;flex-shrink:0;
 }
-.ko-btn-lbl{flex:1}
-.ko-btn-exit{color:rgba(192,128,128,.6)}
-.ko-btn-exit:hover{background:rgba(120,20,20,.12);color:#c87070}
-.ko-btn-exit .ko-btn-sym{color:rgba(192,128,128,.35)}
-/* hamburger — only on mobile, right edge of HUD */
+.ko-btn-lbl{flex:1;display:flex;flex-direction:column;gap:2px}
+.ko-btn-date{
+  display:block;font-size:8px;color:var(--dim);letter-spacing:1px;
+  font-family:'IM Fell English',serif;text-transform:none;font-style:italic;
+  margin-top:1px;
+}
+/* Return — neutral, no tint */
+.ko-btn-return:hover{background:rgba(201,168,76,.05);color:rgba(232,213,163,.9)}
+.ko-btn-return .ko-btn-sym{color:rgba(201,168,76,.3)}
+/* Save — subtle green 10% */
+.ko-btn-save{background:rgba(30,80,30,.10)}
+.ko-btn-save:hover{background:rgba(40,110,40,.18);color:#90e090;box-shadow:inset 0 0 20px rgba(60,180,60,.04)}
+.ko-btn-save .ko-btn-sym{color:rgba(80,180,80,.45)}
+/* Exit — subtle red 10% */
+.ko-btn-exit{background:rgba(80,20,20,.10);color:rgba(192,128,128,.6)}
+.ko-btn-exit:hover{background:rgba(120,25,25,.18);color:#c87070;box-shadow:inset 0 0 20px rgba(180,50,50,.04)}
+.ko-btn-exit .ko-btn-sym{color:rgba(180,80,80,.4)}
+/* hamburger — left edge of HUD, mobile only */
 #mob-menu-btn{
   display:none;
   background:none;border:none;
   padding:0 10px;height:100%;
   flex-direction:column;align-items:center;justify-content:center;gap:4px;
   cursor:pointer;flex-shrink:0;opacity:.5;transition:opacity .15s;
+  order:-1;
 }
 #mob-menu-btn:hover{opacity:.9}
 .hbr{display:block;width:15px;height:1.5px;background:var(--gold);border-radius:1px}
-/* Responsive: hide desktop HUD btns on mobile */
+/* settings button — shared style */
+.hud-settings-btn{font-size:14px!important;padding:0 8px!important}
+.screen-settings-btn{
+  position:absolute;top:14px;right:14px;z-index:5;
+  background:none;border:1px solid rgba(201,168,76,.2);
+  color:rgba(201,168,76,.45);font-size:16px;
+  width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:all .15s;border-radius:2px;
+}
+.screen-settings-btn:hover{border-color:var(--gold);color:var(--gold);background:rgba(201,168,76,.06)}
+.screen-settings-btn--inline{
+  position:static;width:24px;height:24px;font-size:13px;
+  border-color:rgba(201,168,76,.18);
+}
+/* Responsive: hide desktop HUD elements on mobile */
 @media(max-width:900px){
   .save-btn-hud{display:none!important}
   #fast-mode-btn{display:none!important}
+  #hud-ideo{display:none!important}
   #mob-menu-btn{display:flex!important}
 }
 </style>
@@ -528,6 +563,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <button class="btn" onclick="show('worlds');refreshWorldsList()" style="margin-top:12px">▶ Single Player</button>
     <button class="btn" onclick="show('mp')" style="border-color:#4080c0;color:#80b8f0">⚡ Local</button>
   </div>
+  <button class="screen-settings-btn" onclick="openSettings()" title="Settings">⚙</button>
   <div id="version-label" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;color:rgba(100,88,60,.45);white-space:nowrap;pointer-events:none;user-select:none">powered by v…</div>
 </div>
 
@@ -634,7 +670,10 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
   <div id="worlds-panel">
     <div class="worlds-header">
       <div class="worlds-title">⚔ Campaigns</div>
-      <button class="worlds-back" onclick="show('intro')">← Back</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="screen-settings-btn screen-settings-btn--inline" onclick="openSettings()" title="Settings">⚙</button>
+        <button class="worlds-back" onclick="show('intro')">← Back</button>
+      </div>
     </div>
     <div class="worlds-rule"></div>
     <div class="worlds-actions">
@@ -718,6 +757,9 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 <!-- GAME -->
 <div class="scr" id="s-game">
   <div id="hud">
+    <button id="mob-menu-btn" onclick="openKingdomOverlay()" title="Kingdom overview">
+      <span class="hbr"></span><span class="hbr"></span><span class="hbr"></span>
+    </button>
     <span class="hud-season" id="h-season">☀️</span>
     <div class="hud-date" id="h-date">Jan 1936</div>
     <div class="hstat"><div class="hsl">Gold</div><div class="hsv" id="h-gld">—</div></div>
@@ -732,13 +774,11 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
       <div id="mp-ig-dot"></div>
       <span id="mp-ig-txt">MP</span>
     </div>
+    <div id="hud-ideo"></div>
     <button class="save-btn-hud" onclick="openSaveMenu()">💾 Save</button>
     <button class="save-btn-hud" onclick="saveAndExit()" style="border-color:rgba(180,80,80,.5);color:#c08080">💾 Exit</button>
+    <button class="save-btn-hud hud-settings-btn" onclick="openSettings()" title="Settings">⚙</button>
     <button class="save-btn-hud" id="fast-mode-btn" onclick="toggleFastMode()" title="Fast mode — skip battle animations">▶▶</button>
-    <div id="hud-ideo"></div>
-    <button id="mob-menu-btn" onclick="openKingdomOverlay()" title="Kingdom overview">
-      <span class="hbr"></span><span class="hbr"></span><span class="hbr"></span>
-    </button>
   </div>
   <div id="game-body">
     <div id="map-wrap">
@@ -883,9 +923,18 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <div id="ko-ideo-label"><span id="ko-ideo-icon"></span><span id="ko-ideo-text">Militarism</span></div>
     <div class="ko-rule"></div>
     <div id="ko-btns">
-      <button class="ko-btn" onclick="closeKingdomOverlay()"><span class="ko-btn-sym">↩</span><span class="ko-btn-lbl">Return to Game</span></button>
-      <button class="ko-btn" onclick="closeKingdomOverlay();openSaveMenu()"><span class="ko-btn-sym">✦</span><span class="ko-btn-lbl">Save Campaign</span></button>
-      <button class="ko-btn ko-btn-exit" onclick="closeKingdomOverlay();saveAndExit()"><span class="ko-btn-sym">✕</span><span class="ko-btn-lbl">Save &amp; Exit</span></button>
+      <button class="ko-btn ko-btn-return" onclick="closeKingdomOverlay()">
+        <span class="ko-btn-sym">↩</span>
+        <span class="ko-btn-lbl">Return to Game</span>
+      </button>
+      <button class="ko-btn ko-btn-save" onclick="closeKingdomOverlay();openSaveMenu()">
+        <span class="ko-btn-sym">✦</span>
+        <span class="ko-btn-lbl">Save Campaign<span class="ko-btn-date" id="ko-date-label"></span></span>
+      </button>
+      <button class="ko-btn ko-btn-exit" onclick="closeKingdomOverlay();saveAndExit()">
+        <span class="ko-btn-sym">✕</span>
+        <span class="ko-btn-lbl">Save &amp; Exit</span>
+      </button>
     </div>
   </div>
 </div>
@@ -2144,6 +2193,9 @@ function openKingdomOverlay(){
   document.getElementById('ko-nation-name').textContent=nat?nat.name:'Kingdom of —';
   document.getElementById('ko-ideo-icon').textContent=io?io.icon:'';
   document.getElementById('ko-ideo-text').textContent=io?io.name:'Militarism';
+  // date label under Save button
+  const dateEl=document.getElementById('ko-date-label');
+  if(dateEl){const d=document.getElementById('h-date');dateEl.textContent=d?d.textContent:'';}
   // Build ticker from live HUD values
   const gld=document.getElementById('h-gld')?.textContent||'—';
   const inc=document.getElementById('h-inc')?.textContent||'—';
@@ -2153,6 +2205,9 @@ function openKingdomOverlay(){
   const seg=`GOLD: ${gld} | INCOME: ${inc} | POPULATION: ${pop} | SATISFACTION: ${sat} | TAX: ${tax}`;
   const tk=document.getElementById('ko-ticker');
   if(tk)tk.textContent=seg+'          '+seg;
+  // re-trigger animation each open
+  const card=document.getElementById('ko-card');
+  if(card){card.style.animation='none';void card.offsetWidth;card.style.animation='';}
   el.classList.add('on');
   const gb=document.getElementById('game-body');
   if(gb)gb.style.pointerEvents='none';
@@ -2165,6 +2220,13 @@ function closeKingdomOverlay(){
 }
 function koBackdropClick(e){
   if(e.target===document.getElementById('kingdom-overlay'))closeKingdomOverlay();
+}
+// ── SETTINGS (stub — not yet functional) ─────────────────
+function openSettings(){
+  // placeholder — will be implemented later
+  if(typeof openMo==='function'){
+    openMo('⚙ Settings','<p class="mx" style="text-align:center;padding:14px 0;color:var(--dim);font-style:italic">Settings coming soon…</p>',[{lbl:'Close',cb:()=>{}}]);
+  }
 }
 
 if(window._tocMapReady){_doSessionRestore();}
