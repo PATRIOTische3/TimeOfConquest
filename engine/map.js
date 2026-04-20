@@ -1432,6 +1432,27 @@ function updateMapOverlayHTML(){
     el.style.cssText = 'position:absolute;top:52px;left:8px;z-index:9;min-width:170px;max-width:220px;pointer-events:auto;font-family:Cinzel,serif;user-select:none';
     const wrap = document.getElementById('map-wrap');
     if(wrap) wrap.appendChild(el);
+    // Event delegation — one listener survives all innerHTML rewrites
+    el.addEventListener('click', e=>{
+      const row = e.target.closest('[data-pi]');
+      if(!row) return;
+      const pi = +row.getAttribute('data-pi');
+      if(isNaN(pi)) return;
+      e.stopPropagation();
+      G.sel = pi;
+      if(typeof updateSP==='function') updateSP(pi);
+      if(typeof chkBtns==='function') chkBtns();
+      if(typeof scheduleDraw==='function') scheduleDraw();
+      if(typeof panToProvince==='function') panToProvince(pi);
+    });
+    el.addEventListener('mouseover', e=>{
+      const row = e.target.closest('[data-pi]');
+      if(row) row.style.background='rgba(201,168,76,0.10)';
+    });
+    el.addEventListener('mouseout', e=>{
+      const row = e.target.closest('[data-pi]');
+      if(row) row.style.background='';
+    });
   }
   const PN = G.playerNation;
   const myProvs = PROVINCES.map((_,i)=>i).filter(i=>G.owner[i]===PN);
@@ -1470,33 +1491,22 @@ function updateMapOverlayHTML(){
     if(!armyProvs.length){
       body += `<div style="font-size:8px;color:#7a6a40;padding:2px 0">No armies deployed</div>`;
     } else {
-      armyProvs.slice(0,6).forEach((pi,idx)=>{
+      armyProvs.slice(0,6).forEach(pi=>{
         const v = G.army[pi]||0;
         const frac = Math.round((v/maxArmy)*100);
-        body += `<div data-pi="${pi}" style="padding:3px 2px;cursor:pointer;border-radius:2px;transition:background .15s">
-          <div style="display:flex;justify-content:space-between;font-size:7px;color:#ddd0b0;margin-bottom:2px">
+        // data-pi enables event delegation click (defined once on panel creation)
+        body += `<div data-pi="${pi}" style="padding:2px 0;cursor:pointer;border-radius:2px">
+          <div style="display:flex;justify-content:space-between;font-size:7px;color:#ddd0b0;margin-bottom:1px;pointer-events:none">
             <span>${PROVINCES[pi]?.short||PROVINCES[pi]?.name||'?'}</span>
             <span style="color:#c9a84c">${fm(v)}</span>
           </div>
-          <div style="height:4px;background:rgba(0,0,0,.4);border-radius:2px">
+          <div style="height:4px;background:rgba(0,0,0,.4);border-radius:2px;pointer-events:none">
             <div style="height:4px;width:${frac}%;background:${nc};border-radius:2px;opacity:.85"></div>
           </div>
         </div>`;
       });
     }
     el.innerHTML = makePanel('⚔','Army Strength','rgba(60,30,10,.55)', body);
-    // Wire up click+hover after innerHTML (no inline onclick — scoping issues)
-    el.querySelectorAll('[data-pi]').forEach(row=>{
-      const pi = +row.getAttribute('data-pi');
-      row.addEventListener('mouseenter',()=>{ row.style.background='rgba(201,168,76,0.10)'; });
-      row.addEventListener('mouseleave',()=>{ row.style.background=''; });
-      row.addEventListener('click',()=>{
-        G.sel = pi;
-        if(typeof panToProvince==='function') panToProvince(pi);
-        if(typeof updateSP==='function') updateSP(pi);
-        if(typeof scheduleDraw==='function') scheduleDraw();
-      });
-    });
   }
   else if(mode==='instab'){
     const satVals = myProvs.map(i=>G.satisfaction[i]??70);
