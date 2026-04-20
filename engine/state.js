@@ -53,7 +53,12 @@ let SC = -1, SI = 'fascism';
 
 function chkSB(){
   const b = document.getElementById('startbtn');
-  if(b) b.disabled = SC < 0 || !SI;
+  if(!b) return;
+  const disp = document.getElementById('camp-title-display');
+  const name = (disp ? disp.textContent : '').trim().toUpperCase();
+  const saves = typeof getAllSaves === 'function' ? getAllSaves() : [];
+  const isDup = saves.some(s => (s.label||'').toUpperCase().trim() === name);
+  b.disabled = SC < 0 || !SI || isDup;
 }
 
 // ── DIPLOMACY INIT ────────────────────────────────────────

@@ -633,9 +633,7 @@ window.addEventListener('mousemove', e => {
     clampViewport(); scheduleDraw(); return;
   }
   if(G.mapMode === 'resources' && window._resOverlayHitRects && e.target === canvas){
-    const r = canvas.getBoundingClientRect();
-    const hit = window._resOverlayHitRects.find(h => e.clientX-r.left >= h.x && e.clientX-r.left <= h.x+h.w && e.clientY-r.top >= h.y && e.clientY-r.top <= h.y+h.h);
-    canvas.style.cursor = hit ? 'pointer' : '';
+    canvas.style.cursor = '';
   } else { canvas.style.cursor = ''; }
 });
 window.addEventListener('mouseup', e => {
@@ -644,10 +642,6 @@ window.addEventListener('mouseup', e => {
   if(!_moved && Date.now()-_tapStart.t < 400 && e.target === canvas){
     const r = canvas.getBoundingClientRect();
     const sx = e.clientX-r.left, sy = e.clientY-r.top;
-    if(G.mapMode === 'resources' && window._resOverlayHitRects){
-      const hit = window._resOverlayHitRects.find(h => sx>=h.x && sx<=h.x+h.w && sy>=h.y && sy<=h.y+h.h);
-      if(hit){ window.RES_FILTER[hit.k] = !window.RES_FILTER[hit.k]; scheduleDraw(); return; }
-    }
     const [wx, wy] = toWorld(sx, sy);
     onCanvasClick(wx, wy);
   }
@@ -699,10 +693,6 @@ canvas.addEventListener('touchend', e => {
     if(!_moved && _pan.active && Date.now()-_tapStart.t < 400){
       const r  = canvas.getBoundingClientRect();
       const sx = _tapStart.x - r.left, sy = _tapStart.y - r.top;
-      if(G.mapMode === 'resources' && window._resOverlayHitRects){
-        const hit = window._resOverlayHitRects.find(h => sx>=h.x && sx<=h.x+h.w && sy>=h.y && sy<=h.y+h.h);
-        if(hit){ window.RES_FILTER[hit.k] = !window.RES_FILTER[hit.k]; _pan.active=false; scheduleDraw(); return; }
-      }
       const [wx, wy] = toWorld(sx, sy);
       onCanvasClick(wx, wy);
     }
@@ -1468,20 +1458,18 @@ function updateMapOverlayHTML(){
     const nc = natColor(PN);
     let body = row('Total', fm(total), '#c9a84c');
     if(!armyProvs.length){
-      body += `<div style="font-size:8px;color:#7a6a40;padding:2px 0">No armies deployed</div>`;
+      body += `<div style="font-size:clamp(8px,.6vw,10px);color:#7a6a40;padding:2px 0">No armies deployed</div>`;
     } else {
+      const BAR_FULL = '▬▬▬▬▬', BAR_EMPTY = '▭▭▭▭▭';
       armyProvs.slice(0,6).forEach(pi=>{
         const v = G.army[pi]||0;
-        const frac = Math.round((v/maxArmy)*100);
+        const frac5 = Math.round((v/maxArmy)*5); // 0-5 filled segments
+        const bar = '<span style="color:#c9a84c;letter-spacing:-1px">'+BAR_FULL.slice(0,frac5)+'</span>'
+                  + '<span style="color:#3a3228;letter-spacing:-1px">'+BAR_EMPTY.slice(0,5-frac5)+'</span>';
         const isSel = G.sel === pi;
-        body += `<div data-army-prov="${pi}" style="padding:3px 4px;cursor:pointer;border-radius:2px;background:${isSel?'rgba(201,168,76,.12)':'transparent'};border:1px solid ${isSel?'rgba(201,168,76,.35)':'transparent'};transition:background .12s" onmouseenter="this.style.background='rgba(201,168,76,.07)'" onmouseleave="this.style.background='${isSel?'rgba(201,168,76,.12)':'transparent'}'">
-          <div style="display:flex;justify-content:space-between;font-size:7.5px;color:#ddd0b0;margin-bottom:2px;pointer-events:none">
-            <span>${PROVINCES[pi]?.short||PROVINCES[pi]?.name||'?'}</span>
-            <span style="color:#c9a84c">${fm(v)}</span>
-          </div>
-          <div style="height:4px;background:rgba(0,0,0,.4);border-radius:2px;pointer-events:none">
-            <div style="height:4px;width:${frac}%;background:${nc};border-radius:2px;opacity:.85"></div>
-          </div>
+        body += `<div data-army-prov="${pi}" style="display:flex;justify-content:space-between;align-items:center;padding:3px 4px;cursor:pointer;border-radius:2px;margin:1px 0;border:1px solid ${isSel?'rgba(201,168,76,.4)':'transparent'};background:${isSel?'rgba(201,168,76,.1)':'transparent'};transition:background .1s">
+          <span style="font-size:clamp(7.5px,.6vw,10px);color:#ddd0b0;pointer-events:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%">${PROVINCES[pi]?.short||PROVINCES[pi]?.name||'?'}</span>
+          <span style="font-size:clamp(8px,.65vw,11px);pointer-events:none;white-space:nowrap">${fm(v)} ${bar}</span>
         </div>`;
       });
     }
@@ -1542,9 +1530,9 @@ function updateMapOverlayHTML(){
       const c2=counts[k]||0;
       if(!c2) return;
       const col=`rgb(${dot[0]},${dot[1]},${dot[2]})`;
-      body += `<div data-res-key="${k}" style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:8px;opacity:${active?1:0.35};cursor:pointer;border-radius:2px;transition:background .12s" onmouseenter="this.style.background='rgba(201,168,76,.06)'" onmouseleave="this.style.background=''" onmousedown="event.stopPropagation()">
+      body += `<div data-res-key="${k}" style="display:flex;justify-content:space-between;align-items:center;padding:3px 2px;font-size:clamp(8px,.65vw,11px);opacity:${active?1:0.35};cursor:pointer;border-radius:2px">
         <span style="display:flex;align-items:center;gap:5px;color:#ddd0b0;pointer-events:none">
-          <span style="width:9px;height:9px;border-radius:50%;background:${col};display:inline-block;flex-shrink:0;border:1px solid rgba(255,255,255,.2)"></span>
+          <span style="width:9px;height:9px;border-radius:50%;background:${col};display:inline-block;flex-shrink:0"></span>
           ${label}
         </span>
         <span style="color:#c9a84c;pointer-events:none">${c2} prov</span>
@@ -1557,15 +1545,15 @@ function updateMapOverlayHTML(){
     const active = G.epidemics?.filter(ep=>ep.active)||[];
     let body='';
     if(!active.length){
-      body = `<div style="font-size:8px;color:#7a6a40">No active epidemics</div>`;
+      body = `<div style="font-size:clamp(8px,.6vw,10px);color:#7a6a40">No active epidemics</div>`;
     } else {
       active.forEach(ep=>{
         body += `<div style="padding:2px 0">
-          <div style="display:flex;justify-content:space-between;font-size:8px;color:#ddd0b0">
+          <div style="display:flex;justify-content:space-between;font-size:clamp(8px,.65vw,11px);color:#ddd0b0">
             <span style="color:${ep.color}">${ep.icon} ${ep.name}</span>
             <span style="color:#c9a84c">${ep.provinces.size} prov</span>
           </div>
-          <div style="font-size:7px;color:#7a6a40">☠ ${fm(ep.dead)} dead</div>
+          <div style="font-size:clamp(7px,.55vw,9px);color:#7a6a40">☠ ${fm(ep.dead)} dead</div>
         </div>`;
       });
     }
@@ -1574,23 +1562,29 @@ function updateMapOverlayHTML(){
     el.innerHTML=''; el.style.display='none';
   }
 
-  // ── Delegated click handler (re-attached each render) ───────
+  // ── Single delegated click handler — re-attached every render ──
+  // Handles both resource filter toggles and army province selection.
+  // Attached directly to el so it fires BEFORE the canvas handler beneath.
   el.onclick = function(e){
-    const target = e.target.closest('[data-res-key]');
-    if(target){
-      e.stopPropagation();
-      const k = target.dataset.resKey;
+    e.stopPropagation();
+
+    // Resource filter toggle
+    const resRow = e.target.closest('[data-res-key]');
+    if(resRow){
+      const k = resRow.dataset.resKey;
       if(!window.RES_FILTER) window.RES_FILTER={coal:true,iron:true,oil:true};
       window.RES_FILTER[k] = !window.RES_FILTER[k];
       scheduleDraw();
       return;
     }
+
+    // Army province row → select + pan (works regardless of current G.sel)
     const armyRow = e.target.closest('[data-army-prov]');
     if(armyRow){
-      e.stopPropagation();
       const pi = parseInt(armyRow.dataset.armyProv, 10);
-      if(pi >= 0){
+      if(!isNaN(pi) && pi >= 0){
         G.sel = pi; G.selStage = 1; G.selHex = null;
+        if(window._instabAnimY) window._instabAnimY[pi] = undefined;
         scheduleDraw();
         if(typeof updateSP === 'function') updateSP(pi);
         if(typeof chkBtns === 'function') chkBtns();
