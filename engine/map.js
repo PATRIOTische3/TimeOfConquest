@@ -1429,7 +1429,7 @@ function updateMapOverlayHTML(){
   if(!el){
     el = document.createElement('div');
     el.id = 'map-overlay-panel';
-    el.style.cssText = 'position:absolute;top:52px;left:8px;z-index:9;min-width:170px;max-width:220px;pointer-events:auto;font-family:Cinzel,serif;user-select:none';
+    el.style.cssText = 'position:absolute;top:52px;left:8px;z-index:9;min-width:clamp(170px,13vw,280px);max-width:clamp(220px,16vw,340px);pointer-events:auto;font-family:Cinzel,serif;user-select:none';
     const wrap = document.getElementById('map-wrap');
     if(wrap) wrap.appendChild(el);
   }
@@ -1455,7 +1455,7 @@ function updateMapOverlayHTML(){
   }
 
   function row(label, value, valueColor){
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;font-size:8px">
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;font-size:clamp(8px,.65vw,11px)">
       <span style="color:#ddd0b0">${label}</span>
       <span style="color:${valueColor||'#c9a84c'};font-weight:600">${value}</span>
     </div>`;
@@ -1473,12 +1473,13 @@ function updateMapOverlayHTML(){
       armyProvs.slice(0,6).forEach(pi=>{
         const v = G.army[pi]||0;
         const frac = Math.round((v/maxArmy)*100);
-        body += `<div style="padding:2px 0">
-          <div style="display:flex;justify-content:space-between;font-size:7px;color:#ddd0b0;margin-bottom:1px">
+        const isSel = G.sel === pi;
+        body += `<div data-army-prov="${pi}" style="padding:3px 4px;cursor:pointer;border-radius:2px;background:${isSel?'rgba(201,168,76,.12)':'transparent'};border:1px solid ${isSel?'rgba(201,168,76,.35)':'transparent'};transition:background .12s" onmouseenter="this.style.background='rgba(201,168,76,.07)'" onmouseleave="this.style.background='${isSel?'rgba(201,168,76,.12)':'transparent'}'">
+          <div style="display:flex;justify-content:space-between;font-size:7.5px;color:#ddd0b0;margin-bottom:2px;pointer-events:none">
             <span>${PROVINCES[pi]?.short||PROVINCES[pi]?.name||'?'}</span>
             <span style="color:#c9a84c">${fm(v)}</span>
           </div>
-          <div style="height:4px;background:rgba(0,0,0,.4);border-radius:2px">
+          <div style="height:4px;background:rgba(0,0,0,.4);border-radius:2px;pointer-events:none">
             <div style="height:4px;width:${frac}%;background:${nc};border-radius:2px;opacity:.85"></div>
           </div>
         </div>`;
@@ -1541,12 +1542,12 @@ function updateMapOverlayHTML(){
       const c2=counts[k]||0;
       if(!c2) return;
       const col=`rgb(${dot[0]},${dot[1]},${dot[2]})`;
-      body += `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;font-size:8px;opacity:${active?1:0.35};cursor:pointer" onclick="window.RES_FILTER['${k}']=!window.RES_FILTER['${k}'];scheduleDraw()">
-        <span style="display:flex;align-items:center;gap:5px;color:#ddd0b0">
-          <span style="width:8px;height:8px;border-radius:50%;background:${col};display:inline-block;flex-shrink:0"></span>
+      body += `<div data-res-key="${k}" style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:8px;opacity:${active?1:0.35};cursor:pointer;border-radius:2px;transition:background .12s" onmouseenter="this.style.background='rgba(201,168,76,.06)'" onmouseleave="this.style.background=''" onmousedown="event.stopPropagation()">
+        <span style="display:flex;align-items:center;gap:5px;color:#ddd0b0;pointer-events:none">
+          <span style="width:9px;height:9px;border-radius:50%;background:${col};display:inline-block;flex-shrink:0;border:1px solid rgba(255,255,255,.2)"></span>
           ${label}
         </span>
-        <span style="color:#c9a84c">${c2} prov</span>
+        <span style="color:#c9a84c;pointer-events:none">${c2} prov</span>
       </div>`;
     });
     if(!body) body = `<div style="font-size:8px;color:#7a6a40">No resources controlled</div>`;
@@ -1572,4 +1573,30 @@ function updateMapOverlayHTML(){
   } else {
     el.innerHTML=''; el.style.display='none';
   }
+
+  // ── Delegated click handler (re-attached each render) ───────
+  el.onclick = function(e){
+    const target = e.target.closest('[data-res-key]');
+    if(target){
+      e.stopPropagation();
+      const k = target.dataset.resKey;
+      if(!window.RES_FILTER) window.RES_FILTER={coal:true,iron:true,oil:true};
+      window.RES_FILTER[k] = !window.RES_FILTER[k];
+      scheduleDraw();
+      return;
+    }
+    const armyRow = e.target.closest('[data-army-prov]');
+    if(armyRow){
+      e.stopPropagation();
+      const pi = parseInt(armyRow.dataset.armyProv, 10);
+      if(pi >= 0){
+        G.sel = pi; G.selStage = 1; G.selHex = null;
+        scheduleDraw();
+        if(typeof updateSP === 'function') updateSP(pi);
+        if(typeof chkBtns === 'function') chkBtns();
+        if(typeof panToProvince === 'function') panToProvince(pi);
+        if(window.innerWidth <= 900 && typeof switchTab === 'function') switchTab('info');
+      }
+    }
+  };
 }

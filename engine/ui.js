@@ -175,8 +175,8 @@ function openMo(title,body,btns){
   btns.forEach(({lbl,cls,cb})=>{const b=document.createElement('button');b.className='btn '+(cls||'');b.textContent=lbl;b.onclick=()=>{closeMo();cb&&cb();};bw.appendChild(b);});
   document.getElementById('mo').classList.add('on');
 }
-function closeMo(){document.getElementById('mo').classList.remove('on');}
-function moOut(e){if(e.target===document.getElementById('mo'))closeMo();}
+function closeMo(){const m=document.getElementById('mo');if(m){m.classList.remove('on');m.style.zIndex='200';}}
+function moOut(e){if(e.target===document.getElementById('mo'))closeMo();}function moOut(e){if(e.target===document.getElementById('mo'))closeMo();}
 // Aliases used by save system in index.html
 function openModal(title,body,btnsHtml){
   sEl('mo-t',title);sHTML('mo-b',body);
