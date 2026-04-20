@@ -619,9 +619,9 @@ var _touches  = {};
 var wrap      = document.getElementById('map-wrap');
 
 canvas.addEventListener('mousedown', e => {
-  // Don't activate pan if click is on the overlay panel
-  const overlayEl = document.getElementById('map-overlay-panel');
-  if(overlayEl && overlayEl.contains(e.target)) return;
+  // Don't start pan if mousedown is on the overlay panel
+  const _ov = document.getElementById('map-overlay-panel');
+  if(_ov && _ov.contains(e.target)) return;
   if(e.button === 1 || (e.button === 0 && e.ctrlKey)) e.preventDefault();
   _pan.active = true; _pan.lx = e.clientX; _pan.ly = e.clientY; _moved = false;
   _tapStart = {x:e.clientX, y:e.clientY, t:Date.now()};
@@ -656,8 +656,6 @@ canvas.addEventListener('wheel', e => {
 }, {passive:false});
 
 canvas.addEventListener('touchstart', e => {
-  const overlayEl = document.getElementById('map-overlay-panel');
-  if(overlayEl && e.touches.length && overlayEl.contains(document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY))) return;
   e.preventDefault();
   for(const t of e.changedTouches) _touches[t.identifier] = {x:t.clientX, y:t.clientY};
   if(e.touches.length === 1){
@@ -1424,12 +1422,40 @@ function updateMapOverlayHTML(){
   if(!el){
     el = document.createElement('div');
     el.id = 'map-overlay-panel';
-    el.style.cssText = 'position:absolute;top:52px;left:8px;z-index:12;min-width:clamp(170px,13vw,280px);max-width:clamp(220px,16vw,340px);pointer-events:auto;font-family:Cinzel,serif;user-select:none';
-    // Block ALL pointer events from reaching canvas beneath this panel
-    el.addEventListener('mousedown', e => e.stopPropagation(), true);
-    el.addEventListener('touchstart', e => e.stopPropagation(), true);
+    el.style.cssText = 'position:absolute;top:52px;left:8px;z-index:11;min-width:clamp(170px,13vw,280px);max-width:clamp(220px,16vw,340px);pointer-events:auto;font-family:Cinzel,serif;user-select:none';
     const wrap = document.getElementById('map-wrap');
     if(wrap) wrap.appendChild(el);
+    // Stable click handler — attached once, never removed
+    el.addEventListener('mousedown', ev => ev.stopPropagation());
+    el.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      // Walk up from click target to find data-res-key or data-army-prov
+      let node = ev.target;
+      while(node && node !== el){
+        if(node.dataset){
+          if(node.dataset.resKey !== undefined){
+            if(!window.RES_FILTER) window.RES_FILTER={coal:true,iron:true,oil:true};
+            window.RES_FILTER[node.dataset.resKey] = !window.RES_FILTER[node.dataset.resKey];
+            scheduleDraw();
+            return;
+          }
+          if(node.dataset.armyProv !== undefined){
+            const pi = parseInt(node.dataset.armyProv, 10);
+            if(!isNaN(pi) && pi >= 0){
+              G.sel = pi; G.selStage = 1; G.selHex = null;
+              if(window._instabAnimY) window._instabAnimY[pi] = undefined;
+              scheduleDraw();
+              if(typeof updateSP === 'function') updateSP(pi);
+              if(typeof chkBtns === 'function') chkBtns();
+              if(typeof panToProvince === 'function') panToProvince(pi);
+              if(window.innerWidth <= 900 && typeof switchTab === 'function') switchTab('info');
+            }
+            return;
+          }
+        }
+        node = node.parentElement;
+      }
+    });
   }
   const PN = G.playerNation;
   const myProvs = PROVINCES.map((_,i)=>i).filter(i=>G.owner[i]===PN);
@@ -1538,10 +1564,10 @@ function updateMapOverlayHTML(){
       const c2=counts[k]||0;
       if(!c2) return;
       const col=`rgb(${dot[0]},${dot[1]},${dot[2]})`;
-      body += `<div data-res-key="${k}" style="display:flex;justify-content:space-between;align-items:center;padding:5px 4px;font-size:clamp(8px,.65vw,11px);opacity:${active?1:0.35};cursor:pointer;border-radius:2px;user-select:none">
-        <span style="display:flex;align-items:center;gap:5px;color:#ddd0b0">
-          <span style="width:9px;height:9px;border-radius:50%;background:${col};display:inline-block;flex-shrink:0;pointer-events:none"></span>
-          <span style="pointer-events:none">${label}</span>
+      body += `<div data-res-key="${k}" style="display:flex;justify-content:space-between;align-items:center;padding:5px 4px;font-size:clamp(8px,.65vw,11px);opacity:${active?1:0.35};cursor:pointer;border-radius:2px">
+        <span style="display:flex;align-items:center;gap:5px;color:#ddd0b0;pointer-events:none">
+          <span style="width:9px;height:9px;border-radius:50%;background:${col};display:inline-block;flex-shrink:0"></span>
+          ${label}
         </span>
         <span style="color:#c9a84c;pointer-events:none">${c2} prov</span>
       </div>`;
@@ -1570,40 +1596,5 @@ function updateMapOverlayHTML(){
     el.innerHTML=''; el.style.display='none';
   }
 
-  // ── Delegated click handler — attached ONCE per element lifetime ──
-  if(!el._tocHandlerAttached){
-    el._tocHandlerAttached = true;
-    el.addEventListener('click', function(e){
-      e.stopPropagation();
-      e.preventDefault();
-
-      // Walk up from click target to find data attribute
-      let node = e.target;
-      while(node && node !== el){
-        // Resource filter toggle
-        if(node.dataset && node.dataset.resKey !== undefined){
-          const k = node.dataset.resKey;
-          if(!window.RES_FILTER) window.RES_FILTER = {coal:true,iron:true,oil:true};
-          window.RES_FILTER[k] = !window.RES_FILTER[k];
-          scheduleDraw();
-          return;
-        }
-        // Army province selection
-        if(node.dataset && node.dataset.armyProv !== undefined){
-          const pi = parseInt(node.dataset.armyProv, 10);
-          if(!isNaN(pi) && pi >= 0){
-            G.sel = pi; G.selStage = 1; G.selHex = null;
-            if(window._instabAnimY) window._instabAnimY[pi] = undefined;
-            scheduleDraw();
-            if(typeof updateSP === 'function') updateSP(pi);
-            if(typeof chkBtns === 'function') chkBtns();
-            if(typeof panToProvince === 'function') panToProvince(pi);
-            if(window.innerWidth <= 900 && typeof switchTab === 'function') switchTab('info');
-          }
-          return;
-        }
-        node = node.parentElement;
-      }
-    }, true); // capture phase — fires before canvas handlers
-  }
+  // Click handler is attached once on element creation above — nothing to re-attach here.
 }
