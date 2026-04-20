@@ -1204,18 +1204,27 @@ window.importSave=function(){
   const inp=document.createElement('input');inp.type='file';inp.accept='.json';
   inp.onchange=e=>{
     const f=e.target.files[0];if(!f)return;
-    // (duplicate FileReader removed — fix applied)
     const fr=new FileReader();fr.onload=ev=>{
       try{
         const entry=JSON.parse(ev.target.result);
         if(!entry?.state)throw 0;
         const saves=getAllSaves();
-        let slot=typeof entry.slot==='number'?entry.slot:saves.length;
-        if(saves.find(s=>s.slot===slot))slot=Math.max(...saves.map(s=>s.slot),-1)+1;
-        entry.slot=slot;
-        const idx=saves.findIndex(s=>s.slot===slot);
-        if(idx>=0)saves[idx]=entry;else saves.push(entry);
-        setSaves(saves);refreshWorldsList();showToast('✓ Imported');
+        const existingLabels=saves.map(s=>(s.label||'').toUpperCase().trim());
+        // Resolve duplicate label — append number suffix
+        let baseLabel=(entry.label||'Imported').trim();
+        let finalLabel=baseLabel;
+        if(existingLabels.includes(finalLabel.toUpperCase())){
+          let n=2;
+          while(existingLabels.includes((baseLabel+' '+n).toUpperCase())) n++;
+          finalLabel=baseLabel+' '+n;
+        }
+        entry.label=finalLabel;
+        // Assign a fresh slot that doesn't collide
+        const usedSlots=saves.map(s=>typeof s.slot==='number'?s.slot:-1);
+        entry.slot=usedSlots.length?Math.max(...usedSlots)+1:0;
+        saves.push(entry);
+        setSaves(saves);refreshWorldsList();
+        showToast(finalLabel!==baseLabel?`✓ Imported as "${finalLabel}"`:'✓ Imported');
       }catch{showToast('Invalid save file');}
     };
     fr.readAsText(f);
