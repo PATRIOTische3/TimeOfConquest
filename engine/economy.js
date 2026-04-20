@@ -230,6 +230,50 @@ function gatherResources(){
 
 // NOTE: openSponsor() and processResistance() live in events.js — not duplicated here.
 
+// ── TAX PREVIEW (called by slider in openTaxation modal) ──
+function updTaxPreview(){
+  const sl=document.getElementById('tax-sl');if(!sl)return;
+  const newRate=+sl.value;
+  const valEl=document.getElementById('tax-val');
+  if(valEl)valEl.textContent=newRate+'%';
+  const io=window._econIo||ideol();
+  const mr=window._econMr||regsOf(G.playerNation);
+  const taxMod=newRate/100;
+  const taxFactor=0.4+taxMod*2.4;
+  const newInc=mr.reduce((s,r)=>{
+    let inc=G.income[r];
+    if((G.buildings[r]||[]).includes('factory'))inc=Math.floor(inc*1.8);
+    if((G.buildings[r]||[]).includes('palace'))inc=Math.floor(inc*1.15);
+    return s+Math.floor(inc*io.income*taxFactor);
+  },0);
+  const incPrev=document.getElementById('tax-inc-preview');
+  if(incPrev)incPrev.textContent=fa(newInc)+'g';
+  const moodEl=document.getElementById('tax-mood-lbl');
+  if(moodEl){
+    const mood=newRate<=10?'+15% sat':newRate<=25?'+5% sat':newRate<=40?'neutral':newRate<=60?'−10% sat':newRate<=80?'−25% sat':'−40% sat';
+    moodEl.textContent=mood;
+  }
+}
+
+// ── APPLY TAX RATE ────────────────────────────────────────
+function applyTaxRate(){
+  const sl=document.getElementById('tax-sl');if(!sl)return;
+  const newRate=+sl.value;
+  const old=G.taxRate??25;
+  G.taxRate=newRate;
+  // Tax mood delta — tracks sentiment change from tax shift
+  const delta=newRate-old;
+  if(Math.abs(delta)>0){
+    regsOf(G.playerNation).forEach(r=>{
+      G.taxMood[r]=(G.taxMood[r]||0)-delta*0.4; // negative = higher tax = bad mood
+    });
+  }
+  closeMo();
+  addLog(`💰 Tax rate set to ${newRate}%.`,'event');
+  popup(`✓ Tax rate: ${newRate}%`);
+  updateHUD();scheduleDraw();
+}
+
 function openAppease(){
   var PN=G.playerNation;
   var mr=regsOf(PN);
@@ -247,4 +291,29 @@ function openAppease(){
   h+='<button class="btn" style="flex:1;padding:10px 4px;border-color:rgba(100,50,200,.5);color:#b090ff;text-align:center;opacity:'+(g>=cost3?1:0.4)+'" onclick="appeasePop(100,\'grand\')">&#x1F451;<br><b>Grand</b><br><span style="font-size:8px;color:var(--dim)">'+fa(cost3)+'g +14-22%</span></button>';
   h+='</div>';
   openMo('APPEASE POPULATION', h, [{lbl:'Close',cls:'dim'}]);
+}
+
+// ── APPEASE POPULATION ────────────────────────────────────
+function appeasePop(dummy, size){
+  const PN=G.playerNation;
+  const mr=regsOf(PN);
+  const cost1=Math.max(25,mr.length*10);
+  const cost2=Math.max(50,mr.length*20);
+  const cost3=Math.max(100,mr.length*40);
+  let cost,minGain,maxGain;
+  if(size==='small'){       cost=cost1; minGain=4;  maxGain=8;  }
+  else if(size==='medium'){ cost=cost2; minGain=8;  maxGain=15; }
+  else {                    cost=cost3; minGain=14; maxGain=22; }
+  if(G.gold[PN]<cost){closeMo();popup('Insufficient gold!');return;}
+  G.gold[PN]-=cost;
+  mr.forEach(r=>{
+    const gain=ri(minGain,maxGain);
+    G.satisfaction[r]=Math.min(100,(G.satisfaction[r]||70)+gain);
+    G.instab[r]=Math.max(0,(G.instab[r]||0)-Math.floor(gain/2));
+  });
+  closeMo();
+  const labels={small:'Bread distribution',medium:'Grand festival'};
+  addLog(`🎉 ${labels[size]||'Royal celebration'}: +${minGain}–${maxGain}% satisfaction nationwide.`,'event');
+  popup(`🎉 People appeased! +${minGain}–${maxGain}% satisfaction`);
+  updateHUD();scheduleDraw();
 }

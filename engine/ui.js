@@ -258,7 +258,16 @@ function showProvPopup(i, screenX, screenY){
       armyStr=(isFar?'~':'')+fm(intel.value);
     }
   }
-  stats.push({l:'Army', v: armyStr});
+  // Army strength bar: compare to largest army among all provinces
+  const maxArmy = Math.max(1, ...PROVINCES.map((_,idx)=>G.army[idx]||0));
+  const armyRatio = Math.min(1, (G.army[i]||0) / maxArmy);
+  const BAR_TOTAL = 5;
+  const barFilled = Math.round(armyRatio * BAR_TOTAL);
+  const armyBar = '\u25ac'.repeat(barFilled) + '\u25ad'.repeat(BAR_TOTAL - barFilled);
+  const barColor = barFilled>=4?'#e06050':barFilled>=2?'#c0a030':'#5090c0';
+  const armyCell = `${armyStr} <span style="font-size:9px;letter-spacing:1px;color:${barColor}">${armyBar}</span>`;
+
+  stats.push({l:'Army', v: armyCell, html:true});
   stats.push({l:'Pop', v: fm(G.pop[i])});
   stats.push({l:'Income', v: inc+'/mo'});
   if(isOurs){
@@ -267,7 +276,7 @@ function showProvPopup(i, screenX, screenY){
     stats.push({l:'Terrain', v: TERRAIN[p.terrain||'plains']&&TERRAIN[p.terrain||'plains'].name||'Plains'});
   }
 
-  const gridHtml = stats.map(s=>`<div class="pp-cell"><div class="pp-label">${s.l}</div><div class="pp-val">${s.v}</div></div>`).join('');
+  const gridHtml = stats.map(s=>`<div class="pp-cell"><div class="pp-label">${s.l}</div><div class="pp-val">${s.html?s.v:s.v}</div></div>`).join('');
 
   const diseaseHtml = ep ? `<div class="pp-disease" style="color:${ep.color};border-color:${ep.color}">${ep.icon} ${ep.name}</div>` : '';
 
@@ -376,6 +385,9 @@ function onCanvasClick(wx,wy){
   }
 
   // ── Staged selection (like test stand) ──────────────────
+  // Always hide popup when canvas is clicked
+  hideProvPopup();
+
   // Stage 0 → clicked nothing: deselect
   if(i<0){
     G.sel=-1; G.selStage=0; G.selHex=null;
