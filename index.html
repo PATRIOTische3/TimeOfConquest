@@ -2233,8 +2233,10 @@ function koBackdropClick(e){
 }
 // ── SETTINGS (stub — not yet functional) ─────────────────
 function openSettings(){
+  const mo = document.getElementById('mo');
+  if(mo) mo.style.zIndex = '600';
   if(typeof openMo==='function'){
-    openMo('⚙ Settings','<p class="mx" style="text-align:center;padding:14px 0;color:var(--dim);font-style:italic">Settings coming soon…</p>',[{lbl:'Close',cb:()=>{}}]);
+    openMo('⚙ Settings','<p class="mx" style="text-align:center;padding:14px 0;color:var(--dim);font-style:italic">Settings coming soon…</p>',[{lbl:'Close',cls:'dim',cb:()=>{ const m=document.getElementById('mo');if(m)m.style.zIndex='200'; }}]);
   }
 }
 // ── ESCAPE KEY → Kingdom overlay (desktop) ───────────────
