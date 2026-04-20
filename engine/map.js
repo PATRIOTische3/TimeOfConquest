@@ -486,7 +486,7 @@ function _computeMapBounds(){
 
 function clampViewport(){
   const {minX, maxX, minY, maxY} = _mapBounds;
-  const margin = Math.min(CW, CH) * 0.55;
+  const margin = Math.min(CW, CH) * 0.15;
   vp.tx = Math.max(CW-margin-maxX*vp.scale, Math.min(margin-minX*vp.scale, vp.tx));
   vp.ty = Math.max(CH-margin-maxY*vp.scale, Math.min(margin-minY*vp.scale, vp.ty));
 }
@@ -593,7 +593,7 @@ function panToProvince(i){
   const targetTx = CW/2 - wx*vp.scale;
   const targetTy = CH/2 - wy*vp.scale;
   const {minX, maxX, minY, maxY} = _mapBounds;
-  const margin = Math.min(CW, CH) * .55;
+  const margin = Math.min(CW, CH) * .15;
   const clampedTx = Math.max(CW-margin-maxX*vp.scale, Math.min(margin-minX*vp.scale, targetTx));
   const clampedTy = Math.max(CH-margin-maxY*vp.scale, Math.min(margin-minY*vp.scale, targetTy));
   if(_panAnim) cancelAnimationFrame(_panAnim);
@@ -1432,27 +1432,6 @@ function updateMapOverlayHTML(){
     el.style.cssText = 'position:absolute;top:52px;left:8px;z-index:9;min-width:170px;max-width:220px;pointer-events:auto;font-family:Cinzel,serif;user-select:none';
     const wrap = document.getElementById('map-wrap');
     if(wrap) wrap.appendChild(el);
-    // Event delegation — one listener survives all innerHTML rewrites
-    el.addEventListener('click', e=>{
-      const row = e.target.closest('[data-pi]');
-      if(!row) return;
-      const pi = +row.getAttribute('data-pi');
-      if(isNaN(pi)) return;
-      e.stopPropagation();
-      G.sel = pi;
-      if(typeof updateSP==='function') updateSP(pi);
-      if(typeof chkBtns==='function') chkBtns();
-      if(typeof scheduleDraw==='function') scheduleDraw();
-      if(typeof panToProvince==='function') panToProvince(pi);
-    });
-    el.addEventListener('mouseover', e=>{
-      const row = e.target.closest('[data-pi]');
-      if(row) row.style.background='rgba(201,168,76,0.10)';
-    });
-    el.addEventListener('mouseout', e=>{
-      const row = e.target.closest('[data-pi]');
-      if(row) row.style.background='';
-    });
   }
   const PN = G.playerNation;
   const myProvs = PROVINCES.map((_,i)=>i).filter(i=>G.owner[i]===PN);
@@ -1494,13 +1473,12 @@ function updateMapOverlayHTML(){
       armyProvs.slice(0,6).forEach(pi=>{
         const v = G.army[pi]||0;
         const frac = Math.round((v/maxArmy)*100);
-        // data-pi enables event delegation click (defined once on panel creation)
-        body += `<div data-pi="${pi}" style="padding:2px 0;cursor:pointer;border-radius:2px">
-          <div style="display:flex;justify-content:space-between;font-size:7px;color:#ddd0b0;margin-bottom:1px;pointer-events:none">
+        body += `<div style="padding:2px 0">
+          <div style="display:flex;justify-content:space-between;font-size:7px;color:#ddd0b0;margin-bottom:1px">
             <span>${PROVINCES[pi]?.short||PROVINCES[pi]?.name||'?'}</span>
             <span style="color:#c9a84c">${fm(v)}</span>
           </div>
-          <div style="height:4px;background:rgba(0,0,0,.4);border-radius:2px;pointer-events:none">
+          <div style="height:4px;background:rgba(0,0,0,.4);border-radius:2px">
             <div style="height:4px;width:${frac}%;background:${nc};border-radius:2px;opacity:.85"></div>
           </div>
         </div>`;

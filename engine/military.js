@@ -9,55 +9,18 @@ function peaceTurnsLeft(){ return Math.max(0, PEACE_WEEKS - (G.tick||0)); }
 function chkBtns(){
   const si=G.sel,PN=G.playerNation;
   const peace=inPeacePeriod();
-
-  // Own province selected → Move mode
-  const isOwn = si>=0 && G.owner[si]===PN && G.army[si]>100;
-  // Enemy province selected → Attack mode
-  const isEnemy = si>=0 && G.owner[si]!==PN;
-  const canAtk = !peace && isEnemy;
-  const fr = canAtk ? regsOf(PN).find(r=>G.army[r]>100&&NB[r]?.includes(si)) : undefined;
-  const atkOk = fr!==undefined && canAtk;
-
-  // Smart button state
-  const smartEnabled = isOwn || atkOk;
-  const smartIsAtk = !isOwn && atkOk;
-
-  // Update both desktop and mobile smart buttons — classList.toggle to avoid flicker
-  ['sp-btn-smart','mob-btn-smart'].forEach(id=>{
-    const b=document.getElementById(id);
-    if(!b)return;
-    b.disabled=!smartEnabled;
-    b.classList.toggle('war-btn', smartIsAtk);
-    // active-mode is managed exclusively by toggleMoveMode/cancelMove — never touch it here
-  });
-
-  // Icon and label
-  const smartIc = isOwn ? '🚶' : atkOk ? '⚔' : '⚔';
-  const smartAm = isOwn ? 'Move Army' : atkOk ? 'Attack' : 'Move / Attack';
-  let smartSub;
-  if(isOwn) smartSub = `From ${PROVINCES[si].short}`;
-  else if(atkOk) smartSub = `${PROVINCES[fr].short}→${PROVINCES[si].short}`;
-  else if(peace) smartSub = `Peace — ${peaceTurnsLeft()} weeks left`;
-  else smartSub = 'Select a territory first';
-
-  ['sp-smart-ic','mob-smart-ic'].forEach(id=>sEl(id,smartIc));
-  ['sp-smart-am','mob-smart-am'].forEach(id=>sEl(id,smartAm));
-  sEl('sp-smart-sub', smartSub);
-
-  if(atkOk){window._af=fr;window._at=si;}
-}
-
-// Smart action: move if own province selected, attack if enemy
-function smartMilitaryAction(){
-  const si=G.sel,PN=G.playerNation;
-  if(si<0){popup('Select a territory first!');return;}
-  if(G.owner[si]===PN){
-    // Own province → move
-    toggleMoveMode();
-  } else {
-    // Enemy province → attack
-    openAttack();
-  }
+  const canAtk=!peace&&si>=0&&G.owner[si]!==PN&&G.owner[si]>=0;
+  const fr=canAtk?regsOf(PN).find(r=>G.army[r]>100&&NB[r]?.includes(si)):undefined;
+  const ok=fr!==undefined&&canAtk;
+  ['btn-atk','sp-btn-atk'].forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=!ok;});
+  const atkSub = peace
+    ? `Peace — ${peaceTurnsLeft()} weeks left`
+    : !canAtk ? 'Select enemy'
+    : ok ? `${PROVINCES[fr].short}→${PROVINCES[si].short}`
+    : 'No army on border';
+  sEl('sp-atk-sub', atkSub);
+  sEl('atk-sub', peace ? `Peace — ${peaceTurnsLeft()}wk` : ok?`${PROVINCES[fr].short}→${PROVINCES[si].short}`:'Select enemy');
+  if(ok){window._af=fr;window._at=si;}
 }
 
 // NOTE: openMo/closeMo/openModal/closeModal/popup/addLog/setEB live in ui.js
@@ -81,13 +44,13 @@ function toggleMoveMode(){
   if(si<0||G.owner[si]!==G.playerNation||G.army[si]<1){popup('Select your territory first!');return;}
   G.moveFrom=si;G.moveMode=true;
   const mb=document.getElementById('move-banner');if(mb)mb.style.display='block';
-  ['sp-btn-smart','mob-btn-smart'].forEach(id=>{const b=document.getElementById(id);if(b){b.classList.add('active-mode');const am=b.querySelector('.am');if(am)am.textContent='Cancel Move';}});
+  ['sp-btn-move','mob-btn-move'].forEach(id=>{const b=document.getElementById(id);if(b){b.classList.add('active-mode');const am=b.querySelector('.am');if(am)am.textContent='Cancel Move';}});
   scheduleDraw();popup('Move mode — click adjacent territory');
 }
 function cancelMove(){
   G.moveFrom=-1;G.moveMode=false;
   const mb=document.getElementById('move-banner');if(mb)mb.style.display='none';
-  ['sp-btn-smart','mob-btn-smart'].forEach(id=>{const b=document.getElementById(id);if(b){b.classList.remove('active-mode');const am=b.querySelector('.am');if(am)am.textContent=G.sel>=0&&G.owner[G.sel]===G.playerNation?'Move Army':'Attack';}});
+  ['sp-btn-move','mob-btn-move'].forEach(id=>{const b=document.getElementById(id);if(b){b.classList.remove('active-mode');const am=b.querySelector('.am');if(am)am.textContent='Move Army';}});
   scheduleDraw();
 }
 // How many troops are available in province (actual minus committed to queues)
