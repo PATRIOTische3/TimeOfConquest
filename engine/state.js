@@ -161,6 +161,9 @@ function startGame(){
     borderProvs.slice(0, ri(1, 3)).forEach(idx => { G.army[idx] = ri(200, 800); });
   });
 
+  // Store campaign label so autoSave targets the right slot
+  window._tocCampLabel = (document.getElementById('camp-title-display')?.textContent||'').trim().toUpperCase() || G.leaderName;
+
   show('game');
   setTimeout(() => {
     buildHexCache();
@@ -185,9 +188,12 @@ function autoSave(){
       if(val instanceof Set) return [...val];
       return val;
     }));
+    // Use campaign label from setup screen, or fallback to leaderName
+    // _campLabel is set when the game starts so autosave always targets the right slot
+    const campLabel = window._tocCampLabel || G.leaderName || 'Campaign';
     const entry = {
-      slot:       0,
-      label:      '⟳ Autosave',
+      // slot is derived from existing save position for this campaign, or a new slot
+      label:      campLabel,
       nation:     nat?.name || '?',
       natColor:   nat?.color || '#888',
       ideology:   G.ideology,
@@ -198,8 +204,20 @@ function autoSave(){
       saved:      new Date().toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}),
       state:      stateCopy,
     };
-    const idx = saves.findIndex(s => s.slot === 0);
-    if(idx >= 0) saves[idx] = entry; else saves.unshift(entry);
+    // Find existing save by label (case-insensitive) to overwrite correct slot
+    const existIdx = saves.findIndex(s =>
+      (s.label||'').toUpperCase().trim() === campLabel.toUpperCase().trim()
+    );
+    if(existIdx >= 0){
+      entry.slot = saves[existIdx].slot;
+      saves[existIdx] = entry;
+    } else {
+      // New campaign — assign a fresh slot number
+      const usedSlots = saves.map(s => typeof s.slot === 'number' ? s.slot : -1);
+      const newSlot = usedSlots.length ? Math.max(...usedSlots) + 1 : 0;
+      entry.slot = newSlot;
+      saves.push(entry);
+    }
     setSaves(saves);
     // Live session snapshot for crash recovery
     try { localStorage.setItem('toc_live', JSON.stringify(stateCopy)); } catch(e){}

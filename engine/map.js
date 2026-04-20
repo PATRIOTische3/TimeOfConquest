@@ -1530,12 +1530,12 @@ function updateMapOverlayHTML(){
       const c2=counts[k]||0;
       if(!c2) return;
       const col=`rgb(${dot[0]},${dot[1]},${dot[2]})`;
-      body += `<div data-res-key="${k}" style="display:flex;justify-content:space-between;align-items:center;padding:3px 2px;font-size:clamp(8px,.65vw,11px);opacity:${active?1:0.35};cursor:pointer;border-radius:2px">
-        <span style="display:flex;align-items:center;gap:5px;color:#ddd0b0;pointer-events:none">
+      body += `<div data-res-key="${k}" style="display:flex;justify-content:space-between;align-items:center;padding:5px 4px;font-size:clamp(8px,.65vw,11px);opacity:${active?1:0.35};cursor:pointer;border-radius:2px;transition:opacity .1s">
+        <span style="display:flex;align-items:center;gap:5px;color:#ddd0b0">
           <span style="width:9px;height:9px;border-radius:50%;background:${col};display:inline-block;flex-shrink:0"></span>
           ${label}
         </span>
-        <span style="color:#c9a84c;pointer-events:none">${c2} prov</span>
+        <span style="color:#c9a84c">${c2} prov</span>
       </div>`;
     });
     if(!body) body = `<div style="font-size:8px;color:#7a6a40">No resources controlled</div>`;
@@ -1562,35 +1562,43 @@ function updateMapOverlayHTML(){
     el.innerHTML=''; el.style.display='none';
   }
 
-  // ── Single delegated click handler — re-attached every render ──
-  // Handles both resource filter toggles and army province selection.
-  // Attached directly to el so it fires BEFORE the canvas handler beneath.
-  el.onclick = function(e){
-    e.stopPropagation();
+  // ── Delegated click handler — attached ONCE, never re-attached ──
+  if(!el._tocHandlerAttached){
+    el._tocHandlerAttached = true;
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
 
-    // Resource filter toggle
-    const resRow = e.target.closest('[data-res-key]');
-    if(resRow){
-      const k = resRow.dataset.resKey;
-      if(!window.RES_FILTER) window.RES_FILTER={coal:true,iron:true,oil:true};
-      window.RES_FILTER[k] = !window.RES_FILTER[k];
-      scheduleDraw();
-      return;
-    }
-
-    // Army province row → select + pan (works regardless of current G.sel)
-    const armyRow = e.target.closest('[data-army-prov]');
-    if(armyRow){
-      const pi = parseInt(armyRow.dataset.armyProv, 10);
-      if(!isNaN(pi) && pi >= 0){
-        G.sel = pi; G.selStage = 1; G.selHex = null;
-        if(window._instabAnimY) window._instabAnimY[pi] = undefined;
-        scheduleDraw();
-        if(typeof updateSP === 'function') updateSP(pi);
-        if(typeof chkBtns === 'function') chkBtns();
-        if(typeof panToProvince === 'function') panToProvince(pi);
-        if(window.innerWidth <= 900 && typeof switchTab === 'function') switchTab('info');
+      // Resource filter toggle — walk up from the actual click target
+      let node = e.target;
+      while(node && node !== el){
+        if(node.dataset && node.dataset.resKey !== undefined){
+          const k = node.dataset.resKey;
+          if(!window.RES_FILTER) window.RES_FILTER={coal:true,iron:true,oil:true};
+          window.RES_FILTER[k] = !window.RES_FILTER[k];
+          scheduleDraw();
+          return;
+        }
+        node = node.parentElement;
       }
-    }
-  };
+
+      // Army province row → select + pan
+      node = e.target;
+      while(node && node !== el){
+        if(node.dataset && node.dataset.armyProv !== undefined){
+          const pi = parseInt(node.dataset.armyProv, 10);
+          if(!isNaN(pi) && pi >= 0){
+            G.sel = pi; G.selStage = 1; G.selHex = null;
+            if(window._instabAnimY) window._instabAnimY[pi] = undefined;
+            scheduleDraw();
+            if(typeof updateSP === 'function') updateSP(pi);
+            if(typeof chkBtns === 'function') chkBtns();
+            if(typeof panToProvince === 'function') panToProvince(pi);
+            if(window.innerWidth <= 900 && typeof switchTab === 'function') switchTab('info');
+          }
+          return;
+        }
+        node = node.parentElement;
+      }
+    });
+  }
 }
