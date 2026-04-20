@@ -1846,16 +1846,73 @@ window.refreshWorldsList=function(){
   }
 
   // ── TITLE ────────────────────────────────────────────────
+  // ── CAMP TITLE WITH DUPLICATE DETECTION ──────────────────
   function initTitle(){
     const wrap=document.getElementById('camp-title-wrap'),disp=document.getElementById('camp-title-display'),inp=document.getElementById('camp-title-input');
     if(!wrap||!disp||!inp)return;
+
+    // Smart default: avoid colliding with existing save names
+    const saves=getAllSaves();
+    const existingNames=saves.map(s=>(s.label||'').toUpperCase().trim());
+    let defaultName='NEW CAMPAIGN';
+    if(existingNames.includes(defaultName)){
+      let n=2;
+      while(existingNames.includes('NEW CAMPAIGN '+n)) n++;
+      defaultName='NEW CAMPAIGN '+n;
+    }
+    disp.textContent=defaultName;
+    inp.value=defaultName;
+
     const edit=()=>{disp.style.display='none';inp.style.display='block';inp.value=disp.textContent;inp.focus();inp.select();};
-    const done=()=>{disp.textContent=(inp.value.trim()||'NEW CAMPAIGN').toUpperCase();inp.style.display='none';disp.style.display='';};
+    const done=()=>{
+      const val=(inp.value.trim()||defaultName).toUpperCase();
+      disp.textContent=val;
+      inp.style.display='none';
+      disp.style.display='';
+      _checkTitleDuplicate(val);
+    };
     wrap.onclick=e=>{if(e.target!==inp)edit();};
     inp.onblur=done;
+    inp.oninput=()=>_checkTitleDuplicate(inp.value.trim().toUpperCase());
     inp.onkeydown=e=>{if(e.key==='Enter')inp.blur();if(e.key==='Escape'){inp.value=disp.textContent;inp.blur();}};
     inp.onclick=e=>e.stopPropagation();
+    _checkTitleDuplicate(defaultName);
   }
+
+  // CSS for shake — injected once
+  if(!document.getElementById('_campShakeStyle')){
+    const s=document.createElement('style');s.id='_campShakeStyle';
+    s.textContent=`@keyframes _campShake{0%,100%{transform:translateX(0)}15%{transform:translateX(-7px)}30%{transform:translateX(6px)}45%{transform:translateX(-5px)}60%{transform:translateX(4px)}75%{transform:translateX(-2px)}90%{transform:translateX(2px)}}
+.camp-title-shake{animation:_campShake .4s ease both!important;}
+.camp-title-dup .camp-title-display,.camp-title-dup .camp-title-input{color:#ff6040!important;border-bottom-color:#ff6040!important;}
+.camp-title-warn .camp-title-display,.camp-title-warn .camp-title-input{color:#8a7848!important;}`;
+    document.head.appendChild(s);
+  }
+
+  let _dupShakeTimer=null;
+  function _checkTitleDuplicate(nameUpper){
+    const saves=getAllSaves();
+    const existingNames=saves.map(s=>(s.label||'').toUpperCase().trim());
+    const wrap=document.getElementById('camp-title-wrap');
+    const startBtn=document.getElementById('startbtn');
+    const isDup=existingNames.includes(nameUpper);
+
+    if(wrap){
+      wrap.classList.remove('camp-title-dup','camp-title-warn');
+      if(isDup){
+        wrap.classList.add('camp-title-shake','camp-title-dup');
+        clearTimeout(_dupShakeTimer);
+        _dupShakeTimer=setTimeout(()=>{
+          wrap.classList.remove('camp-title-shake','camp-title-dup');
+          wrap.classList.add('camp-title-warn');
+        },420);
+      }
+    }
+    // Block start button while duplicate
+    if(startBtn) startBtn.disabled = isDup || SC<0;
+    return isDup;
+  }
+  window._checkTitleDuplicate=_checkTitleDuplicate;
 
   // ── FLAG RENDERING ────────────────────────────────────────
   function makeFlagSvg(nat,ideo){
@@ -1942,8 +1999,21 @@ window.refreshWorldsList=function(){
   // ── WIRING ───────────────────────────────────────────────
   window.initNewCampaign=function(){
     SC=-1;SI='fascism';
-    const d=document.getElementById('camp-title-display');if(d)d.textContent='NEW CAMPAIGN';
-    const inp=document.getElementById('camp-title-input');if(inp)inp.value='NEW CAMPAIGN';
+    // Generate non-colliding default name
+    const saves=getAllSaves();
+    const existingNames=saves.map(s=>(s.label||'').toUpperCase().trim());
+    let defaultName='NEW CAMPAIGN';
+    if(existingNames.includes(defaultName)){
+      let n=2;
+      while(existingNames.includes('NEW CAMPAIGN '+n)) n++;
+      defaultName='NEW CAMPAIGN '+n;
+    }
+    const d=document.getElementById('camp-title-display');if(d)d.textContent=defaultName;
+    const inp=document.getElementById('camp-title-input');if(inp)inp.value=defaultName;
+    // Remove any duplicate warning classes
+    const wrap=document.getElementById('camp-title-wrap');
+    if(wrap)wrap.classList.remove('camp-title-dup','camp-title-warn','camp-title-shake');
+    chkSB();
   };
   window.selectYear=function(){};
   window.eraStep=window.eraStep||function(){};
@@ -2233,10 +2303,8 @@ function koBackdropClick(e){
 }
 // ── SETTINGS (stub — not yet functional) ─────────────────
 function openSettings(){
-  const mo = document.getElementById('mo');
-  if(mo) mo.style.zIndex = '600';
   if(typeof openMo==='function'){
-    openMo('⚙ Settings','<p class="mx" style="text-align:center;padding:14px 0;color:var(--dim);font-style:italic">Settings coming soon…</p>',[{lbl:'Close',cls:'dim',cb:()=>{ const m=document.getElementById('mo');if(m)m.style.zIndex='200'; }}]);
+    openMo('⚙ Settings','<p class="mx" style="text-align:center;padding:14px 0;color:var(--dim);font-style:italic">Settings coming soon…</p>',[{lbl:'Close',cb:()=>{}}]);
   }
 }
 // ── ESCAPE KEY → Kingdom overlay (desktop) ───────────────
