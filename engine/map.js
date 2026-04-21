@@ -796,13 +796,13 @@ function drawMap(){
       }
     }
 
-    // PASS A: black shadow (same style as nation borders)
-    ctx.strokeStyle=`rgba(0,0,0,${(0.75*seaBorderAlpha).toFixed(2)})`;
+    // PASS A: black shadow — identical to province PASS 4C
     ctx.lineWidth=3.5/vp.scale;
+    ctx.strokeStyle=`rgba(0,0,0,${(0.85*seaBorderAlpha).toFixed(2)})`;
     ctx.lineJoin='round'; ctx.lineCap='round';
     ctx.beginPath();
     _seaZonePositions.forEach((z,zi)=>{
-      const edges = _seaZoneBorderEdges&&_seaZoneBorderEdges[zi]; if(!edges) return;
+      const edges=_seaZoneBorderEdges&&_seaZoneBorderEdges[zi]; if(!edges) return;
       for(const e of edges){
         if(e.x0<wx0-50&&e.x1<wx0-50) continue;
         if(e.x0>wx1+50&&e.x1>wx1+50) continue;
@@ -811,14 +811,14 @@ function drawMap(){
     });
     ctx.stroke();
 
-    // PASS B: gold (non-selected zones)
-    ctx.strokeStyle=`rgba(201,168,76,${(0.75*seaBorderAlpha).toFixed(2)})`;
+    // PASS B: gold — identical to province PASS 4D
     ctx.lineWidth=2.0/vp.scale;
+    ctx.strokeStyle=`rgba(201,168,76,${(0.90*seaBorderAlpha).toFixed(2)})`;
     ctx.lineJoin='round'; ctx.lineCap='round';
     ctx.beginPath();
     _seaZonePositions.forEach((z,zi)=>{
-      if(zi === selZi) return;
-      const edges = _seaZoneBorderEdges&&_seaZoneBorderEdges[zi]; if(!edges) return;
+      if(zi===selZi) return;
+      const edges=_seaZoneBorderEdges&&_seaZoneBorderEdges[zi]; if(!edges) return;
       for(const e of edges){
         if(e.x0<wx0-50&&e.x1<wx0-50) continue;
         if(e.x0>wx1+50&&e.x1>wx1+50) continue;
@@ -827,9 +827,9 @@ function drawMap(){
     });
     ctx.stroke();
 
-    // PASS C: selected zone pulsing gold with glow
-    if(selZi >= 0 && _seaZoneBorderEdges && _seaZoneBorderEdges[selZi]){
-      const selEdges = _seaZoneBorderEdges[selZi];
+    // PASS C: selected zone — pulsing gold with glow, identical to province PASS 5
+    if(selZi>=0 && _seaZoneBorderEdges && _seaZoneBorderEdges[selZi]){
+      const selEdges=_seaZoneBorderEdges[selZi];
       ctx.strokeStyle=`rgba(255,215,0,${seaPulse.toFixed(2)})`;
       ctx.lineWidth=2.5/vp.scale;
       ctx.lineJoin='round'; ctx.lineCap='round';

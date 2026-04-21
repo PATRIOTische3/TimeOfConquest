@@ -63,6 +63,44 @@ var sEl=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
 var sHTML=(id,v)=>{const e=document.getElementById(id);if(e)e.innerHTML=v;};
 
 
+
+function showSeaZoneInfo(zi){
+  if(!window._seaZonePositions || !_seaZonePositions[zi]) return;
+  const z = _seaZonePositions[zi];
+  const name = z.t || 'Sea Zone';
+
+  // Update name fields (desktop + mobile)
+  const spNm = document.getElementById('sp-nm');
+  if(spNm) spNm.textContent = name;
+  const riNm = document.getElementById('ri-nm');
+  if(riNm) riNm.textContent = name;
+
+  // Clear owner / status badge
+  const spBdg = document.getElementById('sp-bdg');
+  if(spBdg) spBdg.innerHTML = '<span class="badge neut">🌊 Sea Zone</span>';
+  const riBdg = document.getElementById('ri-bdg');
+  if(riBdg) riBdg.innerHTML = '<span class="badge neut">🌊 Sea Zone</span>';
+  const owEl = document.getElementById('sp-ow');
+  if(owEl){ owEl.textContent = ''; }
+  const riOw = document.getElementById('ri-ow');
+  if(riOw){ riOw.textContent = ''; }
+
+  // Blank out stats — sea zones have no army/pop/income
+  sEl('sp-ar', '—'); sEl('sp-pp', '—'); sEl('sp-in', '—'); sEl('sp-as', '—');
+  sEl('ri-ar', '—'); sEl('ri-pp', '—'); sEl('ri-in', '—'); sEl('ri-as', '—');
+  sHTML('sp-res', ''); sHTML('sp-blds', '');
+  sHTML('ri-res', ''); sHTML('ri-blds', '');
+
+  // Change tab icon to 🌊 on mobile
+  const tabInfo = document.getElementById('tab-info');
+  if(tabInfo) tabInfo.innerHTML = '🌊 Region';
+}
+
+function restoreRegionTab(){
+  const tabInfo = document.getElementById('tab-info');
+  if(tabInfo) tabInfo.innerHTML = '📍 Region';
+}
+
 function updateSP(i){
   if(i<0)return;
   const p=PROVINCES[i],o=G.owner[i];
@@ -392,11 +430,18 @@ function onCanvasClick(wx,wy){
   if(i<0){
     const zi = (typeof hitSeaZone === 'function') ? hitSeaZone(wx, wy) : -1;
     if(zi >= 0){
+      // Always allow switching between sea zones without needing to click land first
       G.selSea = (G.selSea === zi) ? -1 : zi;
       G.sel = -1; G.selStage = 0; G.selHex = null;
-      scheduleDraw(); chkBtns(); return;
+      scheduleDraw(); chkBtns();
+      // FIX: show sea zone name in region panel on mobile
+      if(typeof showSeaZoneInfo === 'function') showSeaZoneInfo(zi);
+      if(window.innerWidth <= 900) switchTab('info');
+      return;
     }
+    // Clicked open water with no sea zone — deselect everything
     G.selSea = -1; G.sel=-1; G.selStage=0; G.selHex=null;
+    if(typeof restoreRegionTab==='function') restoreRegionTab();
     scheduleDraw(); chkBtns(); return;
   }
 
@@ -404,7 +449,7 @@ function onCanvasClick(wx,wy){
     // Clicked a DIFFERENT province → stage 1: select province
     G.sel=i; G.selStage=1; G.selHex=null; G.selSea=-1;
     if(window._instabAnimY) window._instabAnimY[i]=undefined;
-    scheduleDraw(); updateSP(i); chkBtns();
+    restoreRegionTab(); scheduleDraw(); updateSP(i); chkBtns();
     if(window.innerWidth<=900) switchTab('info');
     panToProvince(i);
   } else {
