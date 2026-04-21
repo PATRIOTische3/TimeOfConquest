@@ -430,11 +430,11 @@ function onCanvasClick(wx,wy){
   if(i<0){
     const zi = (typeof hitSeaZone === 'function') ? hitSeaZone(wx, wy) : -1;
     if(zi >= 0){
-      // Always allow switching between sea zones without needing to click land first
-      G.selSea = (G.selSea === zi) ? -1 : zi;
+      // Set new sea zone — always, no toggle to avoid stale-map vs fresh-UI mismatch
+      G.selSea = zi;
       G.sel = -1; G.selStage = 0; G.selHex = null;
-      scheduleDraw(); chkBtns();
-      // FIX: show sea zone name in region panel on mobile
+      // Force a fresh draw even if one is already pending
+      forceRedraw(); chkBtns();
       if(typeof showSeaZoneInfo === 'function') showSeaZoneInfo(zi);
       if(window.innerWidth <= 900) switchTab('info');
       return;

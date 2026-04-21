@@ -354,6 +354,11 @@ window.addEventListener('resize', () => {
   scheduleDraw();
 });
 
+function forceRedraw(){
+  _drawPending = false;
+  scheduleDraw();
+}
+
 function scheduleDraw(){
   if(_drawPending) return;
   _drawPending = true;
