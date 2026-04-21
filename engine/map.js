@@ -365,7 +365,7 @@ function scheduleDraw(){
   requestAnimationFrame(() => {
     _drawPending = false;
     drawMap();
-    if(G.sel >= 0 || G.selSea >= 0 || G.moveMode || G.navalMode || _atkSelectMode) scheduleDraw();
+    if(G.sel >= 0 || G.moveMode || G.navalMode || _atkSelectMode) scheduleDraw();
     if(G.mapMode === 'instab' && window._instabAnimY){
       if(Object.values(window._instabAnimY).some(v => v !== undefined && Math.abs(v) < 5)) scheduleDraw();
     }
@@ -779,79 +779,24 @@ function drawMap(){
   // ── Sea zone borders (inside transform) ─────────────────
   // Labels drawn AFTER ctx.restore() to appear above all hexes
   const seaLabelAlpha = Math.min(1, Math.max(0, (vp.scale - 0.20) / 0.15));
-  const seaBorderAlpha = Math.min(1, Math.max(0, (vp.scale - 0.15) / 0.10));
 
-  if(_hexCache&&_hexCache.length&&_seaZonePositions&&seaBorderAlpha>0){
-    const selZi = (typeof G.selSea === 'number' && G.selSea >= 0) ? G.selSea : -1;
-    const seaPulse = 0.7 + 0.3*Math.sin(Date.now()/220);
+  // ── Sea zone selection fill (no borders, just subtle white fill) ──
+  if(_hexCache&&_hexCache.length&&_seaZonePositions&&G.selSea>=0){
+    const selZi = G.selSea;
+    const z = _seaZonePositions[selZi];
     const R_sea = HEX_GRID.hexR;
-
-    // Sea selection: blue-white pulse fill on all hexes of selected zone
-    if(selZi >= 0 && _seaZonePositions[selZi]){
-      const z = _seaZonePositions[selZi];
-      const selPulse = 0.10 + 0.07*Math.sin(Date.now()/220);
-      if(z.hexIds && z.hexIds.length){
-        for(const hi of z.hexIds){
-          const h = _hexCache[hi]; if(!h) continue;
-          if(h.x<wx0-R_sea*3||h.x>wx1+R_sea*3||h.y<wy0-R_sea*3||h.y>wy1+R_sea*3) continue;
-          hexPath(ctx,h.x,h.y,R_sea+0.3/vp.scale);
-          ctx.fillStyle=`rgba(180,220,255,${selPulse})`;
-          ctx.fill();
-        }
+    if(z && z.hexIds){
+      for(const hi of z.hexIds){
+        const h = _hexCache[hi]; if(!h) continue;
+        if(h.x<wx0-R_sea*3||h.x>wx1+R_sea*3||h.y<wy0-R_sea*3||h.y>wy1+R_sea*3) continue;
+        hexPath(ctx,h.x,h.y,R_sea+0.3/vp.scale);
+        ctx.fillStyle='rgba(255,255,255,0.10)';
+        ctx.fill();
       }
-    }
-
-    // PASS A: black shadow — identical to province PASS 4C
-    ctx.lineWidth=3.5/vp.scale;
-    ctx.strokeStyle=`rgba(0,0,0,${(0.85*seaBorderAlpha).toFixed(2)})`;
-    ctx.lineJoin='round'; ctx.lineCap='round';
-    ctx.beginPath();
-    _seaZonePositions.forEach((z,zi)=>{
-      const edges=_seaZoneBorderEdges&&_seaZoneBorderEdges[zi]; if(!edges) return;
-      for(const e of edges){
-        if(e.x0<wx0-50&&e.x1<wx0-50) continue;
-        if(e.x0>wx1+50&&e.x1>wx1+50) continue;
-        ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
-      }
-    });
-    ctx.stroke();
-
-    // PASS B: gold — identical to province PASS 4D
-    ctx.lineWidth=2.0/vp.scale;
-    ctx.strokeStyle=`rgba(201,168,76,${(0.90*seaBorderAlpha).toFixed(2)})`;
-    ctx.lineJoin='round'; ctx.lineCap='round';
-    ctx.beginPath();
-    _seaZonePositions.forEach((z,zi)=>{
-      if(zi===selZi) return;
-      const edges=_seaZoneBorderEdges&&_seaZoneBorderEdges[zi]; if(!edges) return;
-      for(const e of edges){
-        if(e.x0<wx0-50&&e.x1<wx0-50) continue;
-        if(e.x0>wx1+50&&e.x1>wx1+50) continue;
-        ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
-      }
-    });
-    ctx.stroke();
-
-    // PASS C: selected zone — pulsing gold with glow, identical to province PASS 5
-    if(selZi>=0 && _seaZoneBorderEdges && _seaZoneBorderEdges[selZi]){
-      const selEdges=_seaZoneBorderEdges[selZi];
-      ctx.strokeStyle=`rgba(255,215,0,${seaPulse.toFixed(2)})`;
-      ctx.lineWidth=2.5/vp.scale;
-      ctx.lineJoin='round'; ctx.lineCap='round';
-      ctx.shadowColor='rgba(255,160,0,0.8)';
-      ctx.shadowBlur=4/vp.scale;
-      ctx.beginPath();
-      for(const e of selEdges){
-        if(e.x0<wx0-50&&e.x1<wx0-50) continue;
-        if(e.x0>wx1+50&&e.x1>wx1+50) continue;
-        ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
-      }
-      ctx.stroke();
-      ctx.shadowBlur=0;
     }
   }
 
-  // ── HEX_GRID mode ─────────────────────────────────────────
+    // ── HEX_GRID mode ─────────────────────────────────────────
   if(_hexCache&&_hexCache.length){
     const R=HEX_GRID.hexR,pad=R*3;
 
