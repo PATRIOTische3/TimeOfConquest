@@ -360,7 +360,7 @@ function scheduleDraw(){
   requestAnimationFrame(() => {
     _drawPending = false;
     drawMap();
-    if(G.sel >= 0 || G.moveMode || G.navalMode || _atkSelectMode) scheduleDraw();
+    if(G.sel >= 0 || G.selSea >= 0 || G.moveMode || G.navalMode || _atkSelectMode) scheduleDraw();
     if(G.mapMode === 'instab' && window._instabAnimY){
       if(Object.values(window._instabAnimY).some(v => v !== undefined && Math.abs(v) < 5)) scheduleDraw();
     }
@@ -575,6 +575,34 @@ function hitHex(wx, wy){
   return best;
 }
 
+function hitSeaZone(wx, wy){
+  if(!_hexCache||!_hexByRC||!_seaZonePositions) return -1;
+  const R = HEX_GRID.hexR, W2 = Math.sqrt(3)*R, H2 = 2*R;
+  const approxRow = Math.round(wy / (H2*.75));
+  const startRow  = Math.max(0, approxRow-2);
+  const endRow    = Math.min((_hexByRC?.length||0)-1, approxRow+2);
+  for(let r = startRow; r <= endRow; r++){
+    if(!_hexByRC[r]) continue;
+    const offset    = r%2 ? W2/2 : 0;
+    const approxCol = Math.round((wx - offset) / W2);
+    for(let c = Math.max(0, approxCol-2); c <= approxCol+2; c++){
+      const idx = _hexByRC[r][c];
+      if(idx === undefined) continue;
+      const h = _hexCache[idx];
+      if(!h.sea) continue;
+      const dx = wx-h.x, dy = wy-h.y;
+      if(dx*dx+dy*dy < R*R*1.5){
+        // Find which sea zone this hex belongs to
+        for(let zi=0; zi<_seaZonePositions.length; zi++){
+          const z = _seaZonePositions[zi];
+          if(z.hexIds && z.hexIds.includes(idx)) return zi;
+        }
+      }
+    }
+  }
+  return -1;
+}
+
 function provScreenPos(i){
   if(_provCentroid && _provCentroid[i] && _provCentroid[i].x)
     return toScreen(_provCentroid[i].x, _provCentroid[i].y);
@@ -743,65 +771,79 @@ function drawMap(){
   ctx.save();
   ctx.translate(vp.tx,vp.ty);ctx.scale(vp.scale,vp.scale);
 
-  // ── Sea zone borders + labels ────────────────────────────
-  // Labels fade out when zoomed out (< 0.35 scale = too small to read)
-  // Borders fade out below 0.25 scale
+  // ── Sea zone borders (inside transform) ─────────────────
+  // Labels drawn AFTER ctx.restore() to appear above all hexes
   const seaLabelAlpha = Math.min(1, Math.max(0, (vp.scale - 0.20) / 0.15));
   const seaBorderAlpha = Math.min(1, Math.max(0, (vp.scale - 0.15) / 0.10));
 
   if(_hexCache&&_hexCache.length&&_seaZonePositions&&seaBorderAlpha>0){
-    _seaZonePositions.forEach((z,zi)=>{
-      const edges = _seaZoneBorderEdges&&_seaZoneBorderEdges[zi];
-      if(edges&&edges.length){
-        // Border: always draw a subtle dashed outline; highlight (solid gold) when adjacent province selected
-        const isSelected = G.sel>=0 && z.hexIds && z.hexIds.length>0 &&
-          z.hexIds.some(hi=>_hexCache[hi]?.p === G.sel);
-        ctx.lineWidth = (isSelected ? 2.0 : 1.0)/vp.scale;
-        ctx.lineJoin='round'; ctx.lineCap='round';
-        if(isSelected){
-          ctx.strokeStyle = `rgba(201,168,76,${(0.88*seaBorderAlpha).toFixed(2)})`;
-          ctx.setLineDash([]);
-        } else {
-          ctx.strokeStyle = `rgba(50,120,200,${(0.22*seaBorderAlpha).toFixed(2)})`;
-          ctx.setLineDash([4/vp.scale, 4/vp.scale]);
-        }
-        ctx.beginPath();
-        for(const e of edges){
-          if(e.x0<wx0-50&&e.x1<wx0-50) continue;
-          if(e.x0>wx1+50&&e.x1>wx1+50) continue;
-          ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
-        }
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
+    const selZi = (typeof G.selSea === 'number' && G.selSea >= 0) ? G.selSea : -1;
+    const seaPulse = 0.7 + 0.3*Math.sin(Date.now()/220);
+    const R_sea = HEX_GRID.hexR;
 
-      // Label — spaced italic, fades at low zoom
-      if(seaLabelAlpha<=0) return;
-      if(z.x<wx0-80||z.x>wx1+80||z.y<wy0-40||z.y>wy1+40) return;
-      const fs=Math.max(5,Math.min(z.fs||7,28));
-      ctx.font=`italic ${fs}px Cinzel,serif`;
-      ctx.fillStyle=`rgba(65,135,200,${(0.55*seaLabelAlpha).toFixed(2)})`;
-      ctx.shadowColor='rgba(0,0,0,.85)'; ctx.shadowBlur=4/vp.scale;
-      ctx.textAlign='left'; ctx.textBaseline='middle';
-      const name=z.t||'';
-      const spacing=fs*0.28;
-      const widths=name.split('').map(ch=>ctx.measureText(ch).width+spacing);
-      const totalW=widths.reduce((s,w)=>s+w,0)-spacing;
-      let lx=z.x-totalW/2;
-      for(let li=0;li<name.length;li++){
-        ctx.fillText(name[li],lx,z.y); lx+=widths[li];
+    // Sea selection: blue-white pulse fill on all hexes of selected zone
+    if(selZi >= 0 && _seaZonePositions[selZi]){
+      const z = _seaZonePositions[selZi];
+      const selPulse = 0.10 + 0.07*Math.sin(Date.now()/220);
+      if(z.hexIds && z.hexIds.length){
+        for(const hi of z.hexIds){
+          const h = _hexCache[hi]; if(!h) continue;
+          if(h.x<wx0-R_sea*3||h.x>wx1+R_sea*3||h.y<wy0-R_sea*3||h.y>wy1+R_sea*3) continue;
+          hexPath(ctx,h.x,h.y,R_sea+0.3/vp.scale);
+          ctx.fillStyle=`rgba(180,220,255,${selPulse})`;
+          ctx.fill();
+        }
       }
+    }
+
+    // PASS A: black shadow (same style as nation borders)
+    ctx.strokeStyle=`rgba(0,0,0,${(0.75*seaBorderAlpha).toFixed(2)})`;
+    ctx.lineWidth=3.5/vp.scale;
+    ctx.lineJoin='round'; ctx.lineCap='round';
+    ctx.beginPath();
+    _seaZonePositions.forEach((z,zi)=>{
+      const edges = _seaZoneBorderEdges&&_seaZoneBorderEdges[zi]; if(!edges) return;
+      for(const e of edges){
+        if(e.x0<wx0-50&&e.x1<wx0-50) continue;
+        if(e.x0>wx1+50&&e.x1>wx1+50) continue;
+        ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
+      }
+    });
+    ctx.stroke();
+
+    // PASS B: gold (non-selected zones)
+    ctx.strokeStyle=`rgba(201,168,76,${(0.75*seaBorderAlpha).toFixed(2)})`;
+    ctx.lineWidth=2.0/vp.scale;
+    ctx.lineJoin='round'; ctx.lineCap='round';
+    ctx.beginPath();
+    _seaZonePositions.forEach((z,zi)=>{
+      if(zi === selZi) return;
+      const edges = _seaZoneBorderEdges&&_seaZoneBorderEdges[zi]; if(!edges) return;
+      for(const e of edges){
+        if(e.x0<wx0-50&&e.x1<wx0-50) continue;
+        if(e.x0>wx1+50&&e.x1>wx1+50) continue;
+        ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
+      }
+    });
+    ctx.stroke();
+
+    // PASS C: selected zone pulsing gold with glow
+    if(selZi >= 0 && _seaZoneBorderEdges && _seaZoneBorderEdges[selZi]){
+      const selEdges = _seaZoneBorderEdges[selZi];
+      ctx.strokeStyle=`rgba(255,215,0,${seaPulse.toFixed(2)})`;
+      ctx.lineWidth=2.5/vp.scale;
+      ctx.lineJoin='round'; ctx.lineCap='round';
+      ctx.shadowColor='rgba(255,160,0,0.8)';
+      ctx.shadowBlur=4/vp.scale;
+      ctx.beginPath();
+      for(const e of selEdges){
+        if(e.x0<wx0-50&&e.x1<wx0-50) continue;
+        if(e.x0>wx1+50&&e.x1>wx1+50) continue;
+        ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
+      }
+      ctx.stroke();
       ctx.shadowBlur=0;
-    });
-  } else if(!_seaZonePositions){
-    // Fallback: no HEX_GRID
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    getSeaLabels().forEach(sl=>{
-      if(sl.x<wx0-40||sl.x>wx1+40||sl.y<wy0-20||sl.y>wy1+20) return;
-      ctx.font=`italic ${Math.max(5,Math.min(sl.fs||7,24))}px Cinzel,serif`;
-      ctx.fillStyle='rgba(100,170,230,.65)';
-      ctx.fillText(sl.t,sl.x,sl.y);
-    });
+    }
   }
 
   // ── HEX_GRID mode ─────────────────────────────────────────
@@ -1367,6 +1409,36 @@ function drawMap(){
   });
 
   ctx.restore();
+
+  // ── Sea zone labels (drawn in screen space, always on top) ──
+  if(_seaZonePositions && seaLabelAlpha > 0){
+    const selZi2 = (typeof G.selSea === 'number' && G.selSea >= 0) ? G.selSea : -1;
+    ctx.save();
+    ctx.translate(vp.tx, vp.ty);
+    ctx.scale(vp.scale, vp.scale);
+    _seaZonePositions.forEach((z, zi)=>{
+      if(z.x<wx0-80||z.x>wx1+80||z.y<wy0-40||z.y>wy1+40) return;
+      const fs = Math.max(5, Math.min(z.fs||7, 28));
+      const isSelLabel = zi === selZi2;
+      ctx.font = `italic ${isSelLabel ? fs+1 : fs}px Cinzel,serif`;
+      ctx.fillStyle = isSelLabel
+        ? `rgba(255,235,120,${(0.95*seaLabelAlpha).toFixed(2)})`
+        : `rgba(80,160,230,${(0.70*seaLabelAlpha).toFixed(2)})`;
+      ctx.shadowColor = 'rgba(0,0,0,.98)';
+      ctx.shadowBlur = isSelLabel ? 6/vp.scale : 4/vp.scale;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      const name = z.t||'';
+      const spacing = fs*0.28;
+      const widths = name.split('').map(ch=>ctx.measureText(ch).width+spacing);
+      const totalW = widths.reduce((s,w)=>s+w,0)-spacing;
+      let lx = z.x-totalW/2;
+      for(let li=0; li<name.length; li++){
+        ctx.fillText(name[li], lx, z.y); lx+=widths[li];
+      }
+      ctx.shadowBlur=0;
+    });
+    ctx.restore();
+  }
 
   // ── Draw queued order arrows (screen space) ──────────────
   function drawOrderArrow(fsx, fsy, tsx, tsy, color, dashColor, label){

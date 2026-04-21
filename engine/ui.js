@@ -388,15 +388,21 @@ function onCanvasClick(wx,wy){
   // Always hide popup when canvas is clicked
   hideProvPopup();
 
-  // Stage 0 → clicked nothing: deselect
+  // Stage 0 → clicked nothing: check for sea zone, else deselect
   if(i<0){
-    G.sel=-1; G.selStage=0; G.selHex=null;
+    const zi = (typeof hitSeaZone === 'function') ? hitSeaZone(wx, wy) : -1;
+    if(zi >= 0){
+      G.selSea = (G.selSea === zi) ? -1 : zi;
+      G.sel = -1; G.selStage = 0; G.selHex = null;
+      scheduleDraw(); chkBtns(); return;
+    }
+    G.selSea = -1; G.sel=-1; G.selStage=0; G.selHex=null;
     scheduleDraw(); chkBtns(); return;
   }
 
   if(G.sel !== i){
     // Clicked a DIFFERENT province → stage 1: select province
-    G.sel=i; G.selStage=1; G.selHex=null;
+    G.sel=i; G.selStage=1; G.selHex=null; G.selSea=-1;
     if(window._instabAnimY) window._instabAnimY[i]=undefined;
     scheduleDraw(); updateSP(i); chkBtns();
     if(window.innerWidth<=900) switchTab('info');

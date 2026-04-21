@@ -139,7 +139,7 @@ function startGame(){
   G.fleet = [];
 
   G.moveFrom = -1; G.moveMode = false;
-  G.navalMode = false; G.navalFrom = -1; G.sel = -1; G.selStage = 0; G.selHex = null;
+  G.navalMode = false; G.navalFrom = -1; G.sel = -1; G.selStage = 0; G.selHex = null; G.selSea = -1;
 
   G.aiPersonality = {};
   G.ceasefire = {};
