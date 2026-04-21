@@ -753,13 +753,18 @@ function drawMap(){
     _seaZonePositions.forEach((z,zi)=>{
       const edges = _seaZoneBorderEdges&&_seaZoneBorderEdges[zi];
       if(edges&&edges.length){
-        // Border ONLY when a province adjacent to this zone is selected
+        // Border: always draw a subtle dashed outline; highlight (solid gold) when adjacent province selected
         const isSelected = G.sel>=0 && z.hexIds && z.hexIds.length>0 &&
           z.hexIds.some(hi=>_hexCache[hi]?.p === G.sel);
-        if(!isSelected) return; // no border unless selected
-        ctx.strokeStyle = `rgba(201,168,76,${(0.88*seaBorderAlpha).toFixed(2)})`;
-        ctx.lineWidth = 2.0/vp.scale;
+        ctx.lineWidth = (isSelected ? 2.0 : 1.0)/vp.scale;
         ctx.lineJoin='round'; ctx.lineCap='round';
+        if(isSelected){
+          ctx.strokeStyle = `rgba(201,168,76,${(0.88*seaBorderAlpha).toFixed(2)})`;
+          ctx.setLineDash([]);
+        } else {
+          ctx.strokeStyle = `rgba(50,120,200,${(0.22*seaBorderAlpha).toFixed(2)})`;
+          ctx.setLineDash([4/vp.scale, 4/vp.scale]);
+        }
         ctx.beginPath();
         for(const e of edges){
           if(e.x0<wx0-50&&e.x1<wx0-50) continue;
@@ -767,6 +772,7 @@ function drawMap(){
           ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
         }
         ctx.stroke();
+        ctx.setLineDash([]);
       }
 
       // Label — spaced italic, fades at low zoom
