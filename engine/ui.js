@@ -400,15 +400,13 @@ function hexToRgb(hex){
 function onCanvasClick(wx,wy){
   const i=hitProv(wx,wy);
 
-  // Special modes — bypass selection logic
+  // Special modes
   if(G.navalMode&&G.navalFrom>=0){
     if(i<0){
-      // Check if clicked a sea zone while in naval mode
-      const zi = (typeof hitSeaZone === 'function') ? hitSeaZone(wx, wy) : -1;
-      if(zi >= 0){
-        G.selSea = zi; G.navalSeaZone = zi;
+      const zi=(typeof hitSeaZone==='function')?hitSeaZone(wx,wy):-1;
+      if(zi>=0){
+        G.selSea=zi;G.navalSeaZone=zi;
         scheduleDraw();
-        setTimeout(function(){ if(typeof _drawSeaZoneOverlay==='function') _drawSeaZoneOverlay(); }, 30);
         popup('⚓ Sea zone selected — click a coastal province to land troops');
         return;
       }
@@ -421,22 +419,20 @@ function onCanvasClick(wx,wy){
   }
   if(G.moveMode&&G.moveFrom>=0){
     if(i<0){
-      // If the from-province has a port, let them click a sea zone to trigger naval
-      const zi = (typeof hitSeaZone === 'function') ? hitSeaZone(wx, wy) : -1;
-      if(zi >= 0 && (typeof canLaunchNaval==='function') && canLaunchNaval(G.moveFrom)){
-        const fromProv = G.moveFrom;
+      const zi=(typeof hitSeaZone==='function')?hitSeaZone(wx,wy):-1;
+      if(zi>=0&&(typeof canLaunchNaval==='function')&&canLaunchNaval(G.moveFrom)){
+        const fromProv=G.moveFrom;
         cancelMove();
-        G.navalFrom = fromProv; G.navalMode = true;
-        G.selSea = zi; G.navalSeaZone = zi;
-        const mb = document.getElementById('move-banner');
-        if(mb){ mb.style.display='block'; mb.className='naval'; mb.textContent='⚓ NAVAL MODE — click destination coast'; }
-        ['sp-btn-naval','mob-btn-naval'].forEach(id => {
-          const b = document.getElementById(id);
-          if(b){ b.classList.add('active-naval'); const am = b.querySelector('.am'); if(am) am.textContent='Cancel Naval'; }
+        G.navalFrom=fromProv;G.navalMode=true;
+        G.selSea=zi;G.navalSeaZone=zi;
+        const mb=document.getElementById('move-banner');
+        if(mb){mb.style.display='block';mb.className='naval';mb.textContent='⚓ NAVAL MODE — click destination coast';}
+        ['sp-btn-naval','mob-btn-naval'].forEach(id=>{
+          const b=document.getElementById(id);
+          if(b){b.classList.add('active-naval');const am=b.querySelector('.am');if(am)am.textContent='Cancel Naval';}
         });
         scheduleDraw();
-        setTimeout(function(){ if(typeof _drawSeaZoneOverlay==='function') _drawSeaZoneOverlay(); }, 30);
-        popup('⚓ Naval mode via '+( (typeof SEA_ZONES!=='undefined'&&SEA_ZONES[zi]) ? SEA_ZONES[zi].name : 'sea') +' — click a coast to land');
+        popup('⚓ Naval via '+((typeof SEA_ZONES!=='undefined'&&SEA_ZONES[zi])?SEA_ZONES[zi].name:'sea')+' — click a coast to land');
         return;
       }
       cancelMove();return;
@@ -453,43 +449,39 @@ function onCanvasClick(wx,wy){
     return;
   }
 
-  // ── Staged selection ──────────────────────────────────────
   hideProvPopup();
 
   if(i<0){
-    const zi = (typeof hitSeaZone === 'function') ? hitSeaZone(wx, wy) : -1;
-    if(zi >= 0){
-      G.selSea = zi;
-      G.sel = -1; G.selStage = 0; G.selHex = null;
-      forceRedraw(); chkBtns();
-      if(typeof showSeaZoneInfo === 'function') showSeaZoneInfo(zi);
-      if(window.innerWidth <= 900) switchTab('info');
-      setTimeout(function(){ if(typeof _drawSeaZoneOverlay==='function') _drawSeaZoneOverlay(); }, 30);
+    const zi=(typeof hitSeaZone==='function')?hitSeaZone(wx,wy):-1;
+    if(zi>=0){
+      G.selSea=zi;G.sel=-1;G.selStage=0;G.selHex=null;
+      forceRedraw();chkBtns();
+      // Draw overlay once after the main canvas has redrawn
+      setTimeout(function(){if(typeof _drawSeaZoneOverlay==='function')_drawSeaZoneOverlay();},50);
+      if(typeof showSeaZoneInfo==='function')showSeaZoneInfo(zi);
+      if(window.innerWidth<=900)switchTab('info');
       return;
     }
-    G.selSea = -1; G.sel=-1; G.selStage=0; G.selHex=null;
-    if(typeof restoreRegionTab==='function') restoreRegionTab();
-    scheduleDraw(); chkBtns(); return;
+    G.selSea=-1;G.sel=-1;G.selStage=0;G.selHex=null;
+    if(typeof restoreRegionTab==='function')restoreRegionTab();
+    scheduleDraw();chkBtns();return;
   }
 
-  if(G.sel !== i){
-    G.sel=i; G.selStage=1; G.selHex=null; G.selSea=-1;
-    if(window._instabAnimY) window._instabAnimY[i]=undefined;
-    restoreRegionTab(); scheduleDraw(); updateSP(i); chkBtns();
-    if(window.innerWidth<=900) switchTab('info');
+  if(G.sel!==i){
+    G.sel=i;G.selStage=1;G.selHex=null;G.selSea=-1;
+    if(window._instabAnimY)window._instabAnimY[i]=undefined;
+    restoreRegionTab();scheduleDraw();updateSP(i);chkBtns();
+    if(window.innerWidth<=900)switchTab('info');
     panToProvince(i);
-    setTimeout(function(){ if(typeof _drawSeaZoneOverlay==='function') _drawSeaZoneOverlay(); if(typeof _drawPortIcons==='function') _drawPortIcons(); }, 30);
   } else {
-    const h = (typeof hitHex === 'function') ? hitHex(wx,wy) : null;
-    if(G.selStage === 1){
-      G.selStage=2; G.selHex=h;
-      scheduleDraw();
-    } else if(G.selStage === 2){
-      if(h && G.selHex && h.r===G.selHex.r && h.c===G.selHex.c){
-        G.sel=-1; G.selStage=0; G.selHex=null;
-        scheduleDraw(); chkBtns();
+    const h=(typeof hitHex==='function')?hitHex(wx,wy):null;
+    if(G.selStage===1){
+      G.selStage=2;G.selHex=h;scheduleDraw();
+    } else if(G.selStage===2){
+      if(h&&G.selHex&&h.r===G.selHex.r&&h.c===G.selHex.c){
+        G.sel=-1;G.selStage=0;G.selHex=null;scheduleDraw();chkBtns();
       } else {
-        G.selHex=h; scheduleDraw();
+        G.selHex=h;scheduleDraw();
       }
     }
   }
