@@ -365,7 +365,7 @@ function scheduleDraw(){
   requestAnimationFrame(() => {
     _drawPending = false;
     drawMap();
-    if(G.sel >= 0 || G.moveMode || G.navalMode || _atkSelectMode) scheduleDraw();
+    if(G.sel >= 0 || G.selSea >= 0 || G.moveMode || G.navalMode || _atkSelectMode) scheduleDraw();
     if(G.mapMode === 'instab' && window._instabAnimY){
       if(Object.values(window._instabAnimY).some(v => v !== undefined && Math.abs(v) < 5)) scheduleDraw();
     }
@@ -746,10 +746,10 @@ function drawMap(){
   // ── Global optimisation: skip redundant redraws ────────
   // Build a cheap state key; if it matches last frame, bail out
   // (only works when nothing animates — pulse/instab animation always differs)
-  const _isAnimating = G.sel>=0||G.moveMode||G.navalMode||_atkSelectMode
+  const _isAnimating = G.sel>=0||G.selSea>=0||G.moveMode||G.navalMode||_atkSelectMode
     ||(G.mapMode==='instab'&&window._instabAnimY&&Object.keys(window._instabAnimY).length);
   if(!_isAnimating){
-    const _dk=`${vp.scale.toFixed(4)},${vp.tx.toFixed(1)},${vp.ty.toFixed(1)},${G.mapMode},${G.tick},${G.sel}`;
+    const _dk=`${vp.scale.toFixed(4)},${vp.tx.toFixed(1)},${vp.ty.toFixed(1)},${G.mapMode},${G.tick},${G.sel},${G.selSea}`;
     if(_dk===window._lastDrawKey){ return; }
     window._lastDrawKey=_dk;
   } else {
@@ -780,17 +780,18 @@ function drawMap(){
   // Labels drawn AFTER ctx.restore() to appear above all hexes
   const seaLabelAlpha = Math.min(1, Math.max(0, (vp.scale - 0.20) / 0.15));
 
-  // ── Sea zone selection fill (no borders, just subtle white fill) ──
+  // ── Sea zone selection fill — pulsing white like province selection ──
   if(_hexCache&&_hexCache.length&&_seaZonePositions&&G.selSea>=0){
     const selZi = G.selSea;
     const z = _seaZonePositions[selZi];
     const R_sea = HEX_GRID.hexR;
+    const seaPulse = 0.06 + 0.06*Math.sin(Date.now()/220);
     if(z && z.hexIds){
       for(const hi of z.hexIds){
         const h = _hexCache[hi]; if(!h) continue;
         if(h.x<wx0-R_sea*3||h.x>wx1+R_sea*3||h.y<wy0-R_sea*3||h.y>wy1+R_sea*3) continue;
-        hexPath(ctx,h.x,h.y,R_sea+0.3/vp.scale);
-        ctx.fillStyle='rgba(255,255,255,0.10)';
+        hexPath(ctx,h.x,h.y,R_sea+1.0/vp.scale);
+        ctx.fillStyle=`rgba(255,255,255,${seaPulse.toFixed(3)})`;
         ctx.fill();
       }
     }
@@ -820,6 +821,15 @@ function drawMap(){
         ctx.fill();
       }
     } else {
+
+    // PASS 0: Sea hexes — fill with ocean color, no gap/border visible
+    for(const h of _hexCache){
+      if(!h.sea) continue;
+      if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad) continue;
+      hexPath(ctx,h.x,h.y,R+1.0/vp.scale);  // slight oversize to eliminate gaps
+      ctx.fillStyle='#0e1e35';
+      ctx.fill();
+    }
 
     // PASS 1: Unowned land (sea=0, p=-1) — terrain color at 50% opacity
     ctx.globalAlpha=0.5;
