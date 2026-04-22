@@ -2369,157 +2369,141 @@ else{window.addEventListener('toc-map-ready',_doSessionRestore,{once:true});}
   setTimeout(_patchZoomReset, 500);
 })();
 
-// ── PATCH 2: Sea zone highlight on canvas ─────────────────────────────────────
-// After each draw, overlay selected sea zone hexes with a teal tint
+// ── SEA ZONE OVERLAY — draws only on demand, zero RAF overhead ───────────────
+// Called explicitly after clicks. Never runs in the render loop.
+window._drawSeaZoneOverlay = function(){
+  const zi = (typeof G !== 'undefined') ? G.selSea : -1;
+  if(!(zi >= 0)) return;
+  const cv = document.getElementById('map-canvas');
+  if(!cv) return;
+  const ctx = cv.getContext('2d');
+  if(!ctx) return;
+  if(typeof SEA_ZONES === 'undefined' || !SEA_ZONES[zi]) return;
+  if(typeof HEX_GRID === 'undefined' || !HEX_GRID || !HEX_GRID.hexes) return;
+  if(typeof vp === 'undefined') return;
+  const zone = SEA_ZONES[zi];
+  if(!zone.hexIds || !zone.hexIds.length) return;
+  const idSet = new Set(zone.hexIds);
+  const hexR = HEX_GRID.hexR;
+  const W = Math.sqrt(3) * hexR, H = 2 * hexR;
+  ctx.save();
+  ctx.translate(vp.tx, vp.ty);
+  ctx.scale(vp.scale, vp.scale);
+  HEX_GRID.hexes.forEach(function(h, idx){
+    if(!idSet.has(idx)) return;
+    const x = W * h.c + (h.r % 2 ? W / 2 : 0);
+    const y = H * 0.75 * h.r;
+    ctx.beginPath();
+    for(let i = 0; i < 6; i++){
+      const a = Math.PI / 6 + Math.PI / 3 * i;
+      if(i === 0) ctx.moveTo(x + hexR * Math.cos(a), y + hexR * Math.sin(a));
+      else ctx.lineTo(x + hexR * Math.cos(a), y + hexR * Math.sin(a));
+    }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(40,200,220,0.25)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(80,220,255,0.65)';
+    ctx.lineWidth = 1.2 / vp.scale;
+    ctx.stroke();
+  });
+  ctx.restore();
+};
+
+// ── PORT ICONS — drawn on demand after scheduleDraw settles ──────────────────
+// Uses a second hidden canvas layered over map-canvas to avoid triggering redraws.
 (function(){
-  let _drawHookInstalled = false;
-  function _installSeaHighlightHook(){
-    if(_drawHookInstalled) return;
-    if(typeof scheduleDraw !== 'function') return;
-    _drawHookInstalled = true;
-    const _origSched = scheduleDraw;
-    window.scheduleDraw = function(){
-      _origSched.apply(this, arguments);
-    };
-    // Hook into requestAnimationFrame to draw overlay AFTER main draw
-    const _origRAF = window.requestAnimationFrame;
-    let _hookPending = false;
-    window.requestAnimationFrame = function(cb){
-      return _origRAF.call(window, function(ts){
-        cb(ts);
-        if(!_hookPending){
-          _hookPending = true;
-          _origRAF.call(window, function(){
-            _hookPending = false;
-            _drawSeaZoneOverlay();
-            _drawPortIcons();
-          });
-        }
-      });
-    };
+  var _portCanvas = null;
+
+  function _ensurePortCanvas(){
+    if(_portCanvas) return _portCanvas;
+    const wrap = document.getElementById('map-wrap');
+    if(!wrap) return null;
+    const mc = document.getElementById('map-canvas');
+    if(!mc) return null;
+    const c = document.createElement('canvas');
+    c.id = 'port-overlay-canvas';
+    c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3';
+    wrap.appendChild(c);
+    _portCanvas = c;
+    return c;
   }
 
-  function _drawSeaZoneOverlay(){
-    const zi = (typeof G !== 'undefined') ? G.selSea : -1;
-    if(zi < 0 || zi == null) return;
-    const cv = document.getElementById('map-canvas');
-    if(!cv) return;
-    const ctx = cv.getContext('2d');
-    if(!ctx) return;
-    // Get hex cache
-    const cache = typeof _hexCache !== 'undefined' ? _hexCache : null;
-    if(!cache) return;
-    const zones = (typeof SEA_ZONES !== 'undefined') ? SEA_ZONES : null;
-    if(!zones || !zones[zi]) return;
-    const zone = zones[zi];
-    const hexIds = zone.hexIds;
-    if(!hexIds || !hexIds.length) return;
-    // Build a Set of hex flat indices to highlight
-    const idSet = new Set(hexIds);
-    const hexR = (typeof HEX_GRID !== 'undefined' && HEX_GRID) ? HEX_GRID.hexR : 18;
-    const scale = (typeof vp !== 'undefined') ? vp.scale : 1;
-    const tx = (typeof vp !== 'undefined') ? vp.tx : 0;
-    const ty = (typeof vp !== 'undefined') ? vp.ty : 0;
-    ctx.save();
-    ctx.translate(tx, ty);
-    ctx.scale(scale, scale);
-    // Draw teal glow on each sea hex in the zone
-    const W = Math.sqrt(3) * hexR;
-    const H = 2 * hexR;
-    const hexGrid = (typeof HEX_GRID !== 'undefined') ? HEX_GRID : null;
-    if(!hexGrid || !hexGrid.hexes) { ctx.restore(); return; }
-    hexGrid.hexes.forEach((h, idx) => {
-      if(!idSet.has(idx)) return;
-      const x = W * h.c + (h.r % 2 ? W / 2 : 0);
-      const y = H * 0.75 * h.r;
-      ctx.beginPath();
-      for(let i = 0; i < 6; i++){
-        const a = Math.PI / 6 + Math.PI / 3 * i;
-        if(i === 0) ctx.moveTo(x + hexR * Math.cos(a), y + hexR * Math.sin(a));
-        else ctx.lineTo(x + hexR * Math.cos(a), y + hexR * Math.sin(a));
-      }
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(40,200,220,0.28)';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(80,220,255,0.7)';
-      ctx.lineWidth = 1.2 / scale;
-      ctx.stroke();
-    });
-    ctx.restore();
-  }
-
-  window._drawSeaZoneOverlay = _drawSeaZoneOverlay;
-
-  // Draw port icons near sea zone labels for coastal provinces with ports
-  function _drawPortIcons(){
-    const cv = document.getElementById('map-canvas');
-    if(!cv) return;
-    const ctx = cv.getContext('2d');
-    if(!ctx) return;
+  window._drawPortIcons = function(){
     if(typeof G === 'undefined' || typeof PROVINCES === 'undefined') return;
-    const scale = (typeof vp !== 'undefined') ? vp.scale : 1;
-    const tx = (typeof vp !== 'undefined') ? vp.tx : 0;
-    const ty = (typeof vp !== 'undefined') ? vp.ty : 0;
-    const hexR = (typeof HEX_GRID !== 'undefined' && HEX_GRID) ? HEX_GRID.hexR : 18;
-    const W = Math.sqrt(3) * hexR;
-    const H = 2 * hexR;
-    const hexGrid = (typeof HEX_GRID !== 'undefined') ? HEX_GRID : null;
-    if(!hexGrid || !hexGrid.hexes) return;
-
-    // Find provinces with ports
-    PROVINCES.forEach((p, pi) => {
+    if(typeof HEX_GRID === 'undefined' || !HEX_GRID || !HEX_GRID.hexes) return;
+    if(typeof vp === 'undefined') return;
+    const cv = _ensurePortCanvas();
+    if(!cv) return;
+    const mc = document.getElementById('map-canvas');
+    if(!mc) return;
+    // Sync size
+    if(cv.width !== mc.width || cv.height !== mc.height){
+      cv.width = mc.width; cv.height = mc.height;
+    }
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    const hexR = HEX_GRID.hexR;
+    const W = Math.sqrt(3) * hexR, H = 2 * hexR;
+    // Pre-build sea hex lookup once per call
+    const seaHexPos = [];
+    HEX_GRID.hexes.forEach(function(h){
+      if(h.sea) seaHexPos.push({x: W*h.c+(h.r%2?W/2:0), y: H*0.75*h.r});
+    });
+    PROVINCES.forEach(function(p, pi){
       if(!(G.buildings[pi]||[]).includes('port')) return;
       if(!p.isCoastal) return;
-      // Find a sea-adjacent hex of this province and draw ⚓ near it
-      // Use province centroid cx/cy
       const cx2 = p.cx, cy2 = p.cy;
-      // Find nearest sea hex
-      let seaHex = null, minDist = Infinity;
-      hexGrid.hexes.forEach((h) => {
-        if(!h.sea) return;
-        const hx = W * h.c + (h.r % 2 ? W / 2 : 0);
-        const hy = H * 0.75 * h.r;
-        const d = Math.hypot(hx - cx2, hy - cy2);
-        if(d < minDist){ minDist = d; seaHex = {x: hx, y: hy}; }
+      let best = null, bestD = Infinity;
+      seaHexPos.forEach(function(s){
+        const d = Math.hypot(s.x - cx2, s.y - cy2);
+        if(d < bestD){ bestD = d; best = s; }
       });
-      if(!seaHex) return;
-      // Place icon halfway between centroid and closest sea hex
-      const ix = (cx2 + seaHex.x) / 2;
-      const iy = (cy2 + seaHex.y) / 2;
-      const screenX = ix * scale + tx;
-      const screenY = iy * scale + ty;
-      // Draw cyan anchor icon
-      const fs = Math.max(10, Math.min(16, scale * hexR * 0.7));
+      if(!best) return;
+      const ix = (cx2 + best.x) / 2;
+      const iy = (cy2 + best.y) / 2;
+      const sx = ix * vp.scale + vp.tx;
+      const sy = iy * vp.scale + vp.ty;
+      const fs = Math.max(10, Math.min(18, vp.scale * hexR * 0.75));
       ctx.save();
-      ctx.font = `${fs}px serif`;
+      ctx.font = fs + 'px serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      // Cyan glow
       ctx.shadowColor = 'rgba(40,200,240,0.9)';
-      ctx.shadowBlur = 6;
-      ctx.globalAlpha = 0.92;
-      ctx.fillText('⚓', screenX, screenY);
+      ctx.shadowBlur = 5;
+      ctx.globalAlpha = 0.9;
+      ctx.fillText('\u2693', sx, sy);
       ctx.restore();
     });
-  }
-  window._drawPortIcons = _drawPortIcons;
+  };
 
-  setTimeout(function(){
-    _installSeaHighlightHook();
-    // Also hook forceRedraw
-    if(typeof forceRedraw === 'function'){
-      const _origFR = forceRedraw;
-      window.forceRedraw = function(){
-        _origFR.apply(this, arguments);
-        setTimeout(function(){ _drawSeaZoneOverlay(); _drawPortIcons(); }, 16);
-      };
+  // Hook scheduleDraw to also refresh port canvas — but only once per frame
+  var _portTimer = null;
+  function _schedulePortRedraw(){
+    if(_portTimer) return;
+    _portTimer = setTimeout(function(){
+      _portTimer = null;
+      window._drawPortIcons();
+    }, 80); // 80ms after scheduleDraw — main draw has definitely finished
+  }
+
+  // Patch scheduleDraw once it exists
+  function _hookScheduleDraw(){
+    if(typeof scheduleDraw !== 'function') return false;
+    const _orig = window.scheduleDraw;
+    window.scheduleDraw = function(){
+      _orig.apply(this, arguments);
+      _schedulePortRedraw();
+    };
+    return true;
+  }
+
+  function _tryHook(){
+    if(!_hookScheduleDraw()){
+      setTimeout(_tryHook, 300);
     }
-  }, 800);
-  window.addEventListener('toc-map-ready', function(){
-    setTimeout(function(){
-      _installSeaHighlightHook();
-    }, 300);
-  }, {once:true});
+  }
+  window.addEventListener('toc-map-ready', function(){ setTimeout(_tryHook, 200); }, {once:true});
+  setTimeout(_tryHook, 600);
 })();
 </script>
 </body>
