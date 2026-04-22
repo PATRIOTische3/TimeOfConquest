@@ -201,6 +201,8 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 #map-wrap.panning{cursor:grabbing}
 #map-wrap.move-mode{cursor:crosshair}
 #map-canvas{width:100%;height:100%;display:block;touch-action:none;user-select:none}
+/* Mobile map padding — gives breathing room so edge provinces stay reachable */
+@media(max-width:900px){#map-wrap{padding:0 0 0 0}#map-canvas{box-sizing:border-box}}
 #move-banner{display:none;position:absolute;pointer-events:none;background:rgba(10,40,80,.88);border:1px solid rgba(80,200,80,.5);padding:clamp(3px,.4vh,6px) clamp(10px,1.2vw,18px);font-family:'Cinzel',serif;font-size:clamp(10px,1.1vw,15px);color:#80ff80;top:6px;left:50%;transform:translateX(-50%);white-space:nowrap;z-index:5}
 #move-banner.naval{color:#80e0ff;border-color:rgba(80,200,255,.5);background:rgba(10,30,60,.9)}
 #season-banner{display:none}
@@ -847,6 +849,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
         <button class="abtn war-btn" id="sp-btn-atk" onclick="openAttack()" disabled><span class="ic">⚔</span><span class="al"><span class="am">Attack / Declare War</span><span class="as" id="sp-atk-sub">Select adjacent enemy territory</span></span></button>
         <button class="abtn" onclick="openDraft()"><span class="ic">🪖</span><span class="al"><span class="am">Conscript Soldiers</span><span class="as">1,000 pop · 1 gold per soldier</span></span></button>
         <button class="abtn" id="sp-btn-move" onclick="toggleMoveMode()" disabled><span class="ic">🚶</span><span class="al"><span class="am">Move Army</span><span class="as" id="sp-move-sub">Select your territory first</span></span></button>
+        <button class="abtn" id="sp-btn-naval" onclick="toggleNavalMode()" disabled><span class="ic">⚓</span><span class="al"><span class="am">Naval Transport</span><span class="as">Requires coastal province + port</span></span></button>
         <div class="sp-sec">🎁 Appease Population</div>
         <button class="abtn" onclick="openAppease()"><span class="ic">🎁</span><span class="al"><span class="am">Appease Population</span><span class="as">Raise satisfaction in all provinces</span></span></button>
         <div class="sp-sec">🏗 Economy &amp; Building</div>
@@ -894,12 +897,13 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:2px 0">
         <button class="abtn" id="mob-btn-move" onclick="toggleMoveMode()" disabled><span class="ic">🚶</span><span class="al"><span class="am">Move Army</span></span></button>
         <button class="abtn war-btn" id="btn-atk" onclick="openAttack()" disabled><span class="ic">⚔</span><span class="al"><span class="am">Attack</span></span></button>
+        <button class="abtn" id="mob-btn-naval" onclick="toggleNavalMode()" disabled><span class="ic">⚓</span><span class="al"><span class="am" id="mob-naval-lbl">Naval Transport</span></span></button>
         <button class="abtn" onclick="openDraft()"><span class="ic">🪖</span><span class="al"><span class="am">Conscript</span></span></button>
         <button class="abtn" onclick="openTaxation()"><span class="ic">💰</span><span class="al"><span class="am">Economy</span></span></button>
         <button class="abtn" onclick="openAppease()"><span class="ic">🎁</span><span class="al"><span class="am">Appease</span></span></button>
         <button class="abtn" onclick="openBuild()"><span class="ic">🏗</span><span class="al"><span class="am">Build</span></span></button>
-        <button class="abtn" onclick="openSponsor()"><span class="ic">🔥</span><span class="al"><span class="am">Resistance</span></span></button>
         <button class="abtn" onclick="openLoan()"><span class="ic">🏦</span><span class="al"><span class="am">Take loan</span></span></button>
+        <button class="abtn" onclick="openSponsor()"><span class="ic">🔥</span><span class="al"><span class="am">Resistance</span></span></button>
       </div>
     </div>
     <div class="tpane" id="pane-diplo">
@@ -2334,6 +2338,189 @@ document.addEventListener('keydown',function(e){
 
 if(window._tocMapReady){_doSessionRestore();}
 else{window.addEventListener('toc-map-ready',_doSessionRestore,{once:true});}
+
+// ── PATCH 1: Map edge padding so provinces on borders are reachable ──────────
+// Wraps zoomReset to inject a viewport padding after the original reset
+(function(){
+  function _patchZoomReset(){
+    if(typeof zoomReset !== 'function') return;
+    const _orig = zoomReset;
+    window.zoomReset = function(){
+      _orig.apply(this, arguments);
+      // After reset, shrink the scale slightly to show map edges
+      if(typeof vp !== 'undefined'){
+        const PAD = window.innerWidth <= 900 ? 0.88 : 0.93;
+        const cv = document.getElementById('map-canvas');
+        if(!cv) return;
+        const cw = cv.width || cv.offsetWidth;
+        const ch = cv.height || cv.offsetHeight;
+        const oldScale = vp.scale;
+        vp.scale = oldScale * PAD;
+        // Re-center after scale change
+        vp.tx = vp.tx * PAD + cw * (1 - PAD) / 2;
+        vp.ty = vp.ty * PAD + ch * (1 - PAD) / 2;
+        if(typeof scheduleDraw === 'function') scheduleDraw();
+      }
+    };
+  }
+  // Try immediately, then also on map-ready event
+  _patchZoomReset();
+  window.addEventListener('toc-map-ready', _patchZoomReset, {once:true});
+  setTimeout(_patchZoomReset, 500);
+})();
+
+// ── PATCH 2: Sea zone highlight on canvas ─────────────────────────────────────
+// After each draw, overlay selected sea zone hexes with a teal tint
+(function(){
+  let _drawHookInstalled = false;
+  function _installSeaHighlightHook(){
+    if(_drawHookInstalled) return;
+    if(typeof scheduleDraw !== 'function') return;
+    _drawHookInstalled = true;
+    const _origSched = scheduleDraw;
+    window.scheduleDraw = function(){
+      _origSched.apply(this, arguments);
+    };
+    // Hook into requestAnimationFrame to draw overlay AFTER main draw
+    const _origRAF = window.requestAnimationFrame;
+    let _hookPending = false;
+    window.requestAnimationFrame = function(cb){
+      return _origRAF.call(window, function(ts){
+        cb(ts);
+        if(!_hookPending){
+          _hookPending = true;
+          _origRAF.call(window, function(){
+            _hookPending = false;
+            _drawSeaZoneOverlay();
+            _drawPortIcons();
+          });
+        }
+      });
+    };
+  }
+
+  function _drawSeaZoneOverlay(){
+    const zi = (typeof G !== 'undefined') ? G.selSea : -1;
+    if(zi < 0 || zi == null) return;
+    const cv = document.getElementById('map-canvas');
+    if(!cv) return;
+    const ctx = cv.getContext('2d');
+    if(!ctx) return;
+    // Get hex cache
+    const cache = typeof _hexCache !== 'undefined' ? _hexCache : null;
+    if(!cache) return;
+    const zones = (typeof SEA_ZONES !== 'undefined') ? SEA_ZONES : null;
+    if(!zones || !zones[zi]) return;
+    const zone = zones[zi];
+    const hexIds = zone.hexIds;
+    if(!hexIds || !hexIds.length) return;
+    // Build a Set of hex flat indices to highlight
+    const idSet = new Set(hexIds);
+    const hexR = (typeof HEX_GRID !== 'undefined' && HEX_GRID) ? HEX_GRID.hexR : 18;
+    const scale = (typeof vp !== 'undefined') ? vp.scale : 1;
+    const tx = (typeof vp !== 'undefined') ? vp.tx : 0;
+    const ty = (typeof vp !== 'undefined') ? vp.ty : 0;
+    ctx.save();
+    ctx.translate(tx, ty);
+    ctx.scale(scale, scale);
+    // Draw teal glow on each sea hex in the zone
+    const W = Math.sqrt(3) * hexR;
+    const H = 2 * hexR;
+    const hexGrid = (typeof HEX_GRID !== 'undefined') ? HEX_GRID : null;
+    if(!hexGrid || !hexGrid.hexes) { ctx.restore(); return; }
+    hexGrid.hexes.forEach((h, idx) => {
+      if(!idSet.has(idx)) return;
+      const x = W * h.c + (h.r % 2 ? W / 2 : 0);
+      const y = H * 0.75 * h.r;
+      ctx.beginPath();
+      for(let i = 0; i < 6; i++){
+        const a = Math.PI / 6 + Math.PI / 3 * i;
+        if(i === 0) ctx.moveTo(x + hexR * Math.cos(a), y + hexR * Math.sin(a));
+        else ctx.lineTo(x + hexR * Math.cos(a), y + hexR * Math.sin(a));
+      }
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(40,200,220,0.28)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(80,220,255,0.7)';
+      ctx.lineWidth = 1.2 / scale;
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  window._drawSeaZoneOverlay = _drawSeaZoneOverlay;
+
+  // Draw port icons near sea zone labels for coastal provinces with ports
+  function _drawPortIcons(){
+    const cv = document.getElementById('map-canvas');
+    if(!cv) return;
+    const ctx = cv.getContext('2d');
+    if(!ctx) return;
+    if(typeof G === 'undefined' || typeof PROVINCES === 'undefined') return;
+    const scale = (typeof vp !== 'undefined') ? vp.scale : 1;
+    const tx = (typeof vp !== 'undefined') ? vp.tx : 0;
+    const ty = (typeof vp !== 'undefined') ? vp.ty : 0;
+    const hexR = (typeof HEX_GRID !== 'undefined' && HEX_GRID) ? HEX_GRID.hexR : 18;
+    const W = Math.sqrt(3) * hexR;
+    const H = 2 * hexR;
+    const hexGrid = (typeof HEX_GRID !== 'undefined') ? HEX_GRID : null;
+    if(!hexGrid || !hexGrid.hexes) return;
+
+    // Find provinces with ports
+    PROVINCES.forEach((p, pi) => {
+      if(!(G.buildings[pi]||[]).includes('port')) return;
+      if(!p.isCoastal) return;
+      // Find a sea-adjacent hex of this province and draw ⚓ near it
+      // Use province centroid cx/cy
+      const cx2 = p.cx, cy2 = p.cy;
+      // Find nearest sea hex
+      let seaHex = null, minDist = Infinity;
+      hexGrid.hexes.forEach((h) => {
+        if(!h.sea) return;
+        const hx = W * h.c + (h.r % 2 ? W / 2 : 0);
+        const hy = H * 0.75 * h.r;
+        const d = Math.hypot(hx - cx2, hy - cy2);
+        if(d < minDist){ minDist = d; seaHex = {x: hx, y: hy}; }
+      });
+      if(!seaHex) return;
+      // Place icon halfway between centroid and closest sea hex
+      const ix = (cx2 + seaHex.x) / 2;
+      const iy = (cy2 + seaHex.y) / 2;
+      const screenX = ix * scale + tx;
+      const screenY = iy * scale + ty;
+      // Draw cyan anchor icon
+      const fs = Math.max(10, Math.min(16, scale * hexR * 0.7));
+      ctx.save();
+      ctx.font = `${fs}px serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      // Cyan glow
+      ctx.shadowColor = 'rgba(40,200,240,0.9)';
+      ctx.shadowBlur = 6;
+      ctx.globalAlpha = 0.92;
+      ctx.fillText('⚓', screenX, screenY);
+      ctx.restore();
+    });
+  }
+  window._drawPortIcons = _drawPortIcons;
+
+  setTimeout(function(){
+    _installSeaHighlightHook();
+    // Also hook forceRedraw
+    if(typeof forceRedraw === 'function'){
+      const _origFR = forceRedraw;
+      window.forceRedraw = function(){
+        _origFR.apply(this, arguments);
+        setTimeout(function(){ _drawSeaZoneOverlay(); _drawPortIcons(); }, 16);
+      };
+    }
+  }, 800);
+  window.addEventListener('toc-map-ready', function(){
+    setTimeout(function(){
+      _installSeaHighlightHook();
+    }, 300);
+  }, {once:true});
+})();
 </script>
 </body>
 </html>
