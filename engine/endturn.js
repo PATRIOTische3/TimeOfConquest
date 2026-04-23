@@ -3,7 +3,7 @@
 // ══════════════════════════════════════════════════════════
 
 function endTurn(){
-  setEB(true);cancelMove();cancelNaval();
+  setEB(true);cancelMove();
   try{
   // Advance one week; check if new month
   const newMonth = advanceWeek();
@@ -15,7 +15,6 @@ function endTurn(){
   processEpidemics(newMonth);
 
   // Fleet arrivals every week
-  resolveNavalArrivals();
   // Execute queued moves (instant, no animation needed)
   executeMoveQueue();
   processDraftQueue(); // advance draft timers every week
