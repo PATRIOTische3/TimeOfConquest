@@ -25,7 +25,8 @@ let G = {
   puppet:[],
   resistance:[],
   resistSponsor:[],
-  sel:-1, selStage:0, selHex:null, moveFrom:-1, moveMode:false,
+  fleet:[],
+  sel:-1, selStage:0, selHex:null, moveFrom:-1, moveMode:false, navalMode:false, navalFrom:-1,
   mapMode:'political',
   allianceOf:[],
   tick:0,
@@ -135,8 +136,10 @@ function startGame(){
   G.resPool = {oil:0, coal:0, grain:0, steel:0};
 
   G.loans = []; G.totalDebt = 0;
+  G.fleet = [];
+
   G.moveFrom = -1; G.moveMode = false;
-  G.sel = -1; G.selStage = 0; G.selHex = null; G.selSea = -1;
+  G.navalMode = false; G.navalFrom = -1; G.sel = -1; G.selStage = 0; G.selHex = null; G.selSea = -1;
 
   G.aiPersonality = {};
   G.ceasefire = {};

@@ -45,14 +45,15 @@ if(typeof MAX_BLD_CAP==='undefined') window.MAX_BLD_CAP=4;
 if(typeof MAX_BLD_NORM==='undefined') window.MAX_BLD_NORM=2;
 if(typeof BUILD_TURNS==='undefined'){
   window.BUILD_TURNS={
-    fort:8, factory:12, farm:6, mine:6,
+    fort:8, factory:12, port:10, farm:6, mine:6,
     barracks:6, railroad:10, hospital:8, arsenal:10,
-    fortification:8, airfield:10,
+    fortification:8, airfield:10, naval_base:12,
   };
 }
 if(typeof BUILDINGS==='undefined'){
   window.BUILDINGS={
     factory:       {name:'Factory',       icon:'🏭',desc:'Increases province income ×1.8',             cost:600},
+    port:          {name:'Port',          icon:'⚓',desc:'Enables naval transport from this province',  cost:500, needsCoast:true},
     mine:          {name:'Mine',          icon:'⛏', desc:'Boosts coal/iron/oil resource output',       cost:350},
     barracks:      {name:'Barracks',      icon:'🪖',desc:'Conscription 25% faster & cheaper',          cost:300},
     hospital:      {name:'Hospital',      icon:'🏥',desc:'Reduces disease severity in province',        cost:350},
