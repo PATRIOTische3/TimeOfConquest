@@ -1892,40 +1892,95 @@ function _startProjMapBg(proj){
 
   let mnX=Infinity,mxX=-Infinity,mnY=Infinity,mxY=-Infinity;
   hexData.forEach(h=>{mnX=Math.min(mnX,h.x);mxX=Math.max(mxX,h.x);mnY=Math.min(mnY,h.y);mxY=Math.max(mxY,h.y);});
-  const bndW=mxX-mnX+R*4, bndH=mxY-mnY+R*4;
+  const bndW=mxX-mnX+R*6, bndH=mxY-mnY+R*6;
 
-  let px=0, pd=1;
-  let _bgOpacity=0;
-  const _bgFadeTarget=0.22;
+  let px=0, pd=1, _bgOpacity=0, _t=0;
 
-  function hp2(x,y){
+  function hp2(x,y,r2){
     ctx2.beginPath();
-    for(let i=0;i<6;i++){const a=Math.PI/6+Math.PI/3*i;i?ctx2.lineTo(x+R*Math.cos(a),y+R*Math.sin(a)):ctx2.moveTo(x+R*Math.cos(a),y+R*Math.sin(a));}
+    for(let i=0;i<6;i++){const a=Math.PI/6+Math.PI/3*i;i?ctx2.lineTo(x+r2*Math.cos(a),y+r2*Math.sin(a)):ctx2.moveTo(x+r2*Math.cos(a),y+r2*Math.sin(a));}
     ctx2.closePath();
   }
 
   function frame(){
     if(!document.getElementById('s-proj')?.classList.contains('on')){_projBgRaf=null;return;}
     const cw=cv.width, ch=cv.height;
-    if(_bgOpacity<_bgFadeTarget)_bgOpacity=Math.min(_bgFadeTarget,_bgOpacity+0.005);
+    _t+=0.008;
+    if(_bgOpacity<1)_bgOpacity=Math.min(1,_bgOpacity+0.012);
+
     ctx2.clearRect(0,0,cw,ch);
-    const sc=Math.max(ch/bndH*1.06, cw/bndW*1.06);
+
+    // Deep ocean base
+    const bgGrad=ctx2.createLinearGradient(0,0,0,ch);
+    bgGrad.addColorStop(0,'#04080f');bgGrad.addColorStop(1,'#07101e');
+    ctx2.fillStyle=bgGrad;ctx2.fillRect(0,0,cw,ch);
+
+    // Map scale and pan
+    const sc=Math.max(ch/bndH*0.82,cw/bndW*0.82);
     const sw=bndW*sc, mp=Math.max(0,sw-cw);
-    px+=0.14*pd;if(px>=mp){px=mp;pd=-1;}if(px<=0){px=0;pd=1;}
-    const ox=(cw-sw)/2-(mp>0?px:0)-(mnX-R*2)*sc;
-    const oy=(ch-bndH*sc)/2-(mnY-R*2)*sc;
+    px+=0.18*pd;if(px>=mp){px=mp;pd=-1;}if(px<=0){px=0;pd=1;}
+    const ox=(cw-sw)/2-(mp>0?px:0)-(mnX-R*3)*sc;
+    const oy=(ch-bndH*sc)/2-(mnY-R*3)*sc;
+
     ctx2.save();
     ctx2.globalAlpha=_bgOpacity;
     ctx2.translate(ox,oy);ctx2.scale(sc,sc);
-    hexData.forEach(h=>{hp2(h.x,h.y);ctx2.fillStyle=h.col;ctx2.fill();ctx2.strokeStyle='rgba(0,0,0,.3)';ctx2.lineWidth=.3/sc;ctx2.stroke();});
+
+    // Soft sea glow under hexes
+    ctx2.save();ctx2.globalAlpha=0.06;
+    hexDataRich.forEach(h=>{hp2(h.x,h.y,R*2);ctx2.fillStyle='#1a4080';ctx2.fill();});
     ctx2.restore();
-    // Vignette overlay
-    const vg=ctx2.createRadialGradient(cw/2,ch/2,ch*.08,cw/2,ch/2,ch*.95);
-    vg.addColorStop(0,'rgba(6,8,14,.55)');vg.addColorStop(1,'rgba(6,8,14,.97)');
+
+    // Main hexes
+    hexDataRich.forEach(h=>{
+      ctx2.shadowColor='rgba(0,0,0,0.65)';ctx2.shadowBlur=4/sc;
+      hp2(h.x,h.y,R*0.97);
+      ctx2.fillStyle=h.col;ctx2.fill();
+      ctx2.shadowBlur=0;
+      ctx2.strokeStyle='rgba(0,0,0,0.5)';ctx2.lineWidth=0.5/sc;ctx2.stroke();
+    });
+
+    // Gold shimmer sweep
+    const shimX=(Math.sin(_t)*0.5+0.5)*(bndW+bndH*2)-bndH;
+    ctx2.save();ctx2.globalAlpha=0.09;
+    hexDataRich.forEach(h=>{
+      const d=h.x+h.y-shimX;
+      if(Math.abs(d)<R*10){
+        const a2=1-Math.abs(d)/(R*10);
+        hp2(h.x,h.y,R*0.97);
+        ctx2.fillStyle=`rgba(201,168,76,${a2*0.6})`;ctx2.fill();
+      }
+    });
+    ctx2.restore();
+
+    ctx2.restore();
+
+    // ── Edge dissolve ─────────────────────────────────
+    const cx2=cw/2,cy2=ch/2;
+    const vg=ctx2.createRadialGradient(cx2,cy2,Math.min(cw,ch)*0.18,cx2,cy2,Math.max(cw,ch)*0.84);
+    vg.addColorStop(0,'rgba(6,8,14,0)');
+    vg.addColorStop(0.42,'rgba(6,8,14,0.18)');
+    vg.addColorStop(0.68,'rgba(6,8,14,0.58)');
+    vg.addColorStop(0.85,'rgba(6,8,14,0.88)');
+    vg.addColorStop(1,'rgba(6,8,14,0.98)');
     ctx2.fillStyle=vg;ctx2.fillRect(0,0,cw,ch);
+
+    // Top/bottom hard edge bars
+    const tg=ctx2.createLinearGradient(0,0,0,ch*0.25);
+    tg.addColorStop(0,'rgba(6,8,14,.96)');tg.addColorStop(1,'rgba(6,8,14,0)');
+    ctx2.fillStyle=tg;ctx2.fillRect(0,0,cw,ch*0.25);
+    const bg2=ctx2.createLinearGradient(0,ch*0.75,0,ch);
+    bg2.addColorStop(0,'rgba(6,8,14,0)');bg2.addColorStop(1,'rgba(6,8,14,.96)');
+    ctx2.fillStyle=bg2;ctx2.fillRect(0,ch*0.75,cw,ch*0.25);
+
+    // Center text readability tint
+    const ct=ctx2.createRadialGradient(cx2,cy2,0,cx2,cy2,Math.min(cw,ch)*0.55);
+    ct.addColorStop(0,'rgba(6,8,14,0.42)');ct.addColorStop(1,'rgba(6,8,14,0)');
+    ctx2.fillStyle=ct;ctx2.fillRect(0,0,cw,ch);
+
     _projBgRaf=requestAnimationFrame(frame);
   }
-  // Small delay so the proj screen is fully visible before measuring
+
   setTimeout(()=>{
     cv.width=window.innerWidth;cv.height=window.innerHeight;
     _projBgRaf=requestAnimationFrame(frame);
