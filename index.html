@@ -575,6 +575,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <button class="btn" onclick="show('worlds');refreshWorldsList()" style="margin-top:12px">▶ Single Player</button>
     <button class="btn" onclick="show('mp')" style="border-color:#4080c0;color:#80b8f0">⚡ Local</button>
   </div>
+  <button class="screen-settings-btn" onclick="window.open('editor.html','_blank')" title="Map Editor" style="bottom:52px">🛠️</button>
   <button class="screen-settings-btn" onclick="openSettings()" title="Settings">⚙</button>
   <div id="version-label" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;color:rgba(100,88,60,.45);white-space:nowrap;pointer-events:none;user-select:none">powered by v…</div>
 </div>
@@ -679,6 +680,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 <!-- WORLDS -->
 <div class="scr" id="s-worlds">
   <canvas id="worlds-map-bg"></canvas>
+  <button class="screen-settings-btn" onclick="window.open('editor.html','_blank')" title="Map Editor" style="bottom:52px">🛠️</button>
   <button class="screen-settings-btn" onclick="openSettings()" title="Settings">⚙</button>
   <div id="worlds-panel">
     <div class="worlds-header">
