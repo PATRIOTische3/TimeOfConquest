@@ -68,6 +68,8 @@ var _hexCache        = null;
 var _hexByRC         = null;
 var _provBorderHexes = null;
 var _provCentroid    = null;
+var _seaZonePositions = null;
+var _seaZoneBorderEdges = null;
 
 function buildHexCache(){
   if(typeof HEX_GRID === 'undefined' || !HEX_GRID || !HEX_GRID.hexes){
@@ -152,6 +154,84 @@ function buildHexCache(){
 
   // ── Sea zone membership + label positions ─────────────────
   // Primary: SEA_ZONES[zi].hexIds exported directly from editor (exact membership).
+  // Fallback for old maps without hexIds: proximity assignment from cx/cy centroid.
+  _seaZonePositions = null;
+  _seaZoneBorderEdges = null;
+  if(typeof SEA_ZONES !== 'undefined' && SEA_ZONES?.length){
+    const zoneHexIds = SEA_ZONES.map(() => []);
+
+    const hasExportedHexIds = SEA_ZONES.every(z => Array.isArray(z.hexIds) && z.hexIds.length > 0);
+
+    if(hasExportedHexIds){
+      // New format: hexIds in SEA_ZONES map directly to HEX_GRID.hexes indices
+      // which equal _hexCache indices (same array order)
+      SEA_ZONES.forEach((z, zi) => {
+        z.hexIds.forEach(hi => {
+          if(hi >= 0 && hi < _hexCache.length) zoneHexIds[zi].push(hi);
+        });
+      });
+    } else {
+      // Legacy fallback: assign each sea hex to nearest zone centroid.
+      // Editor coords use hcx = R*√3*(c+r%2*0.5)+R (has +R origin offset).
+      // Game coords have no offset, so: game_coord = editor_coord - R
+      const seedX = SEA_ZONES.map(z => z.cx - R);
+      const seedY = SEA_ZONES.map(z => z.cy - R);
+      for(let hi = 0; hi < _hexCache.length; hi++){
+        const h = _hexCache[hi];
+        if(!h.sea) continue;
+        let bestZ = 0, bestD = Infinity;
+        for(let z = 0; z < SEA_ZONES.length; z++){
+          const dx = h.x - seedX[z], dy = h.y - seedY[z];
+          const d = dx*dx + dy*dy;
+          if(d < bestD){ bestD = d; bestZ = z; }
+        }
+        zoneHexIds[bestZ].push(hi);
+      }
+    }
+
+    // Precompute outer boundary edges per zone using _hexByRC (O(1) lookup, exact)
+    // Neighbour offsets for pointy-top offset hex grid:
+    const EVEN_NB_Z = [[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]];
+    const ODD_NB_Z  = [[-1,-1],[-1,0],[0,1],[1,0],[1,-1],[0,-1]];
+
+    _seaZoneBorderEdges = SEA_ZONES.map(() => []);
+    zoneHexIds.forEach((ids, zi) => {
+      const zSet = new Set(ids);
+      for(const hi of ids){
+        const h = _hexCache[hi];
+        if(!h) continue;
+        const nbs = h.r%2===0 ? EVEN_NB_Z : ODD_NB_Z;
+        for(let d = 0; d < 6; d++){
+          const [dr, dc] = nbs[d];
+          const nr = h.r+dr, nc = h.c+dc;
+          const niIdx = (_hexByRC[nr] && _hexByRC[nr][nc] !== undefined) ? _hexByRC[nr][nc] : -1;
+          if(niIdx >= 0 && zSet.has(niIdx)) continue; // same zone — interior edge
+          // Outer boundary: store as {x0,y0,x1,y1} object for viewport culling
+          const a1 = Math.PI/6 + Math.PI/3*d;
+          const a2 = Math.PI/6 + Math.PI/3*((d+1)%6);
+          _seaZoneBorderEdges[zi].push({
+            x0: h.x + Math.cos(a1)*R, y0: h.y + Math.sin(a1)*R,
+            x1: h.x + Math.cos(a2)*R, y1: h.y + Math.sin(a2)*R,
+          });
+        }
+      }
+    });
+
+    // Label position = true centroid of assigned hexes
+    _seaZonePositions = SEA_ZONES.map((z, zi) => {
+      const ids = zoneHexIds[zi];
+      let cx, cy;
+      if(ids.length){
+        cx = ids.reduce((s,i) => s + _hexCache[i].x, 0) / ids.length;
+        cy = ids.reduce((s,i) => s + _hexCache[i].y, 0) / ids.length;
+      } else {
+        // Fallback to editor centroid converted to game space
+        cx = z.cx - R; cy = z.cy - R;
+      }
+      return {t:z.name, x:cx, y:cy, fs:z.fontSize||7, hexIds:ids};
+    });
+  }
+
   _computeMapBounds();
 }
 
@@ -219,54 +299,34 @@ function provColor(i){
   return natColor(o);
 }
 
-// Fast hex→rgb (no string ops at call-site)
-const _hexRgbCache = Object.create(null);
-function _hexToRgb(h){
-  if(_hexRgbCache[h]) return _hexRgbCache[h];
-  const v = parseInt((h||'#181620').replace('#',''), 16);
-  return (_hexRgbCache[h] = [(v>>16)&255, (v>>8)&255, v&255]);
-}
-
-// Blend hex color `base` toward `tint` by factor t — memoized on (base,tint,t2dp)
-const _tintCache = Object.create(null);
+// Blend hex color `base` toward `tint` by factor t (0=base, 1=tint)
 function _tintHex(base, tint, t){
-  const key = base + tint + (t*100|0);
-  if(_tintCache[key]) return _tintCache[key];
   try{
-    const b=_hexToRgb(base||'#181620'), c=_hexToRgb(tint||'#000000');
-    const it=1-t;
-    const r=(b[0]*it+c[0]*t+0.5)|0, g=(b[1]*it+c[1]*t+0.5)|0, bl=(b[2]*it+c[2]*t+0.5)|0;
-    const out='#'+(r<16?'0':'')+r.toString(16)+(g<16?'0':'')+g.toString(16)+(bl<16?'0':'')+bl.toString(16);
-    return (_tintCache[key]=out);
+    const p=s=>parseInt(s,16);
+    const b=(base||'#181620').replace('#','');
+    const c=(tint||'#000000').replace('#','');
+    const r=Math.round(p(b.slice(0,2))*(1-t)+p(c.slice(0,2))*t);
+    const g=Math.round(p(b.slice(2,4))*(1-t)+p(c.slice(2,4))*t);
+    const bl=Math.round(p(b.slice(4,6))*(1-t)+p(c.slice(4,6))*t);
+    return '#'+[r,g,bl].map(v=>Math.max(0,Math.min(255,v)).toString(16).padStart(2,'0')).join('');
   }catch(e){return base||'#181620';}
 }
 
-// ── PROVINCE COLOR CACHE ─────────────────────────────────
-// Invalidated on tick or mapMode change. Saves thousands of _tintHex calls/frame.
-let _provColorCache = null;
-let _provColorTick = -1;
-let _provColorMode = '';
-let _provColorWar  = '';  // stringified war state for invalidation
-
-function _provColorKey(){
-  // Cheap war-state snapshot: which nations player is at war with
-  const w = G.war[G.playerNation];
-  return w ? w.map((v,i)=>v?i:-1).filter(x=>x>=0).join(',') : '';
+// ── SEA LABELS ────────────────────────────────────────────
+function getSeaLabels(){
+  if(_seaZonePositions) return _seaZonePositions;
+  if(typeof SEA_ZONES !== 'undefined' && SEA_ZONES?.length)
+    return SEA_ZONES.map(z => ({t:z.name, x:z.cx, y:z.cy, fs:z.fontSize||7}));
+  return [
+    {t:'ATLANTIC',  x:40,  y:300, fs:7}, {t:'NORTH SEA', x:182, y:224, fs:7},
+    {t:'NORW. SEA', x:185, y:160, fs:7}, {t:'BALTIC',    x:303, y:226, fs:7},
+    {t:'MED.',      x:155, y:462, fs:7}, {t:'MED.',      x:253, y:460, fs:7},
+    {t:'MED. E',    x:372, y:458, fs:7}, {t:'ADRIATIC',  x:304, y:394, fs:7},
+    {t:'AEGEAN',    x:394, y:430, fs:7}, {t:'BLACK SEA', x:440, y:376, fs:7},
+    {t:'CASPIAN',   x:568, y:364, fs:7}, {t:'ARCTIC',    x:360, y:72,  fs:7},
+    {t:'BARENTS',   x:508, y:96,  fs:7},
+  ];
 }
-
-function provColorCached(i){
-  const tick = G.tick, mode = G.mapMode||'political';
-  const warKey = _provColorKey();
-  if(_provColorCache && _provColorTick===tick && _provColorMode===mode && _provColorWar===warKey){
-    return _provColorCache[i] || ((_provColorCache[i]=provColor(i)));
-  }
-  // Invalidate
-  _provColorCache = new Array(PROVINCES.length);
-  _provColorTick = tick; _provColorMode = mode; _provColorWar = warKey;
-  _provColorCache[i] = provColor(i);
-  return _provColorCache[i];
-}
-
 
 // ── CANVAS SETUP ─────────────────────────────────────────
 var canvas = document.getElementById('map-canvas');
@@ -305,7 +365,7 @@ function scheduleDraw(){
   requestAnimationFrame(() => {
     _drawPending = false;
     drawMap();
-    if(G.sel >= 0 || G.moveMode || _atkSelectMode) scheduleDraw();
+    if(G.sel >= 0 || G.selSea >= 0 || G.moveMode || G.navalMode || _atkSelectMode) scheduleDraw();
     if(G.mapMode === 'instab' && window._instabAnimY){
       if(Object.values(window._instabAnimY).some(v => v !== undefined && Math.abs(v) < 5)) scheduleDraw();
     }
@@ -520,6 +580,34 @@ function hitHex(wx, wy){
   return best;
 }
 
+function hitSeaZone(wx, wy){
+  if(!_hexCache||!_hexByRC||!_seaZonePositions) return -1;
+  const R = HEX_GRID.hexR, W2 = Math.sqrt(3)*R, H2 = 2*R;
+  const approxRow = Math.round(wy / (H2*.75));
+  const startRow  = Math.max(0, approxRow-2);
+  const endRow    = Math.min((_hexByRC?.length||0)-1, approxRow+2);
+  for(let r = startRow; r <= endRow; r++){
+    if(!_hexByRC[r]) continue;
+    const offset    = r%2 ? W2/2 : 0;
+    const approxCol = Math.round((wx - offset) / W2);
+    for(let c = Math.max(0, approxCol-2); c <= approxCol+2; c++){
+      const idx = _hexByRC[r][c];
+      if(idx === undefined) continue;
+      const h = _hexCache[idx];
+      if(!h.sea) continue;
+      const dx = wx-h.x, dy = wy-h.y;
+      if(dx*dx+dy*dy < R*R*1.5){
+        // Find which sea zone this hex belongs to
+        for(let zi=0; zi<_seaZonePositions.length; zi++){
+          const z = _seaZonePositions[zi];
+          if(z.hexIds && z.hexIds.includes(idx)) return zi;
+        }
+      }
+    }
+  }
+  return -1;
+}
+
 function provScreenPos(i){
   if(_provCentroid && _provCentroid[i] && _provCentroid[i].x)
     return toScreen(_provCentroid[i].x, _provCentroid[i].y);
@@ -658,10 +746,10 @@ function drawMap(){
   // ── Global optimisation: skip redundant redraws ────────
   // Build a cheap state key; if it matches last frame, bail out
   // (only works when nothing animates — pulse/instab animation always differs)
-  const _isAnimating = G.sel>=0||G.moveMode||_atkSelectMode
+  const _isAnimating = G.sel>=0||G.selSea>=0||G.moveMode||G.navalMode||_atkSelectMode
     ||(G.mapMode==='instab'&&window._instabAnimY&&Object.keys(window._instabAnimY).length);
   if(!_isAnimating){
-    const _dk=`${vp.scale.toFixed(4)},${vp.tx.toFixed(1)},${vp.ty.toFixed(1)},${G.mapMode},${G.tick},${G.sel}`;
+    const _dk=`${vp.scale.toFixed(4)},${vp.tx.toFixed(1)},${vp.ty.toFixed(1)},${G.mapMode},${G.tick},${G.sel},${G.selSea}`;
     if(_dk===window._lastDrawKey){ return; }
     window._lastDrawKey=_dk;
   } else {
@@ -675,14 +763,12 @@ function drawMap(){
   grad.addColorStop(0,'#08162a');grad.addColorStop(1,'#0c1e38');
   ctx.fillStyle=grad;ctx.fillRect(0,0,CW,CH);
 
-  // Grid overlay (subtle) — batched into one stroke call
+  // Grid overlay (subtle)
   ctx.strokeStyle='rgba(50,110,190,.045)';ctx.lineWidth=.5;
   const gs=40*vp.scale;
   const ox=((vp.tx%gs)+gs)%gs,oy=((vp.ty%gs)+gs)%gs;
-  ctx.beginPath();
-  for(let x=ox;x<CW;x+=gs){ctx.moveTo(x,0);ctx.lineTo(x,CH);}
-  for(let y=oy;y<CH;y+=gs){ctx.moveTo(0,y);ctx.lineTo(CW,y);}
-  ctx.stroke();
+  for(let x=ox;x<CW;x+=gs){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,CH);ctx.stroke();}
+  for(let y=oy;y<CH;y+=gs){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(CW,y);ctx.stroke();}
 
   // Clip to visible bounds for performance
   const [wx0,wy0]=toWorld(0,0),[wx1,wy1]=toWorld(CW,CH);
@@ -692,6 +778,24 @@ function drawMap(){
 
   // ── Sea zone borders (inside transform) ─────────────────
   // Labels drawn AFTER ctx.restore() to appear above all hexes
+  const seaLabelAlpha = Math.min(1, Math.max(0, (vp.scale - 0.20) / 0.15));
+
+  // ── Sea zone selection fill — pulsing white like province selection ──
+  if(_hexCache&&_hexCache.length&&_seaZonePositions&&G.selSea>=0){
+    const selZi = G.selSea;
+    const z = _seaZonePositions[selZi];
+    const R_sea = HEX_GRID.hexR;
+    const seaPulse = 0.06 + 0.06*Math.sin(Date.now()/220);
+    if(z && z.hexIds){
+      for(const hi of z.hexIds){
+        const h = _hexCache[hi]; if(!h) continue;
+        if(h.x<wx0-R_sea*3||h.x>wx1+R_sea*3||h.y<wy0-R_sea*3||h.y>wy1+R_sea*3) continue;
+        hexPath(ctx,h.x,h.y,R_sea+1.0/vp.scale);
+        ctx.fillStyle=`rgba(255,255,255,${seaPulse.toFixed(3)})`;
+        ctx.fill();
+      }
+    }
+  }
 
     // ── HEX_GRID mode ─────────────────────────────────────────
   if(_hexCache&&_hexCache.length){
@@ -709,7 +813,7 @@ function drawMap(){
         const c = _provCentroid[pi];
         if(!c || !c.x) continue;
         if(c.x < wx0-pad*2||c.x > wx1+pad*2) continue;
-        const col = provColorCached(pi);
+        const col = provColor(pi);
         const approxR = PROVINCES[pi].hexCount ? Math.sqrt(PROVINCES[pi].hexCount) * R * 1.1 : R*2;
         ctx.fillStyle = col;
         ctx.beginPath();
@@ -743,7 +847,7 @@ function drawMap(){
       if(h.sea||h.p<0)continue;
       if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
       hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
-      ctx.fillStyle=provColorCached(h.p);
+      ctx.fillStyle=provColor(h.p);
       ctx.fill();
     }
 
@@ -858,33 +962,29 @@ function drawMap(){
     // Province borders fade at low zoom for performance + readability
     const provBorderAlpha = useLOD ? 0 : Math.min(1, Math.max(0, (vp.scale - 0.18) / 0.12));
 
-    // ── Per-frame snapshots — avoid repeated lookups in tight loops ──
-    const _owner = G.owner;
-    const _PN    = G.playerNation;
-    const _warSet = new Set();
-    if(G.war[_PN]) G.war[_PN].forEach((v,i)=>{ if(v) _warSet.add(i); });
-    const _allySet = new Set();
-    for(let ni=0;ni<NATIONS.length;ni++){ if(ni!==_PN && areAllies(_PN,ni)) _allySet.add(ni); }
-    const _edges = window._provBorderEdges;
-
     if(provBorderAlpha > 0){
       if(!G.mapMode || G.mapMode==='political'){
 
-        // ── BORDERS: 4 passes (single loop each, owner read from snapshot) ──
-        const PL = PROVINCES.length;
+        // ── BORDERS: 4 passes ────────────────────────────────────
+        // For every province, _provBorderEdges[pi] contains all external edges.
+        // e.isProvBorder = true  → land↔land (different province)
+        // e.isProvBorder = false → land↔sea or map edge
+        // e.nbProv = neighbour province index (-1 if sea/edge)
+        // oA = current owner of this province; oB = current owner of neighbour
 
         // PASS 4A: Intra-nation province borders (thin, dim)
+        // Condition: both provinces owned by the SAME nation currently
         ctx.strokeStyle=`rgba(0,0,0,${(0.25*provBorderAlpha).toFixed(2)})`;
         ctx.lineWidth=1.0/vp.scale;
         ctx.lineJoin='round'; ctx.lineCap='round';
         ctx.beginPath();
-        for(let pi=0;pi<PL;pi++){
-          const oA=_owner[pi]; if(oA<0) continue;
-          const edges=_edges[pi]; if(!edges) continue;
+        for(let pi=0;pi<PROVINCES.length;pi++){
+          const oA=G.owner[pi]; if(oA<0) continue;
+          const edges=window._provBorderEdges[pi]; if(!edges) continue;
           for(const e of edges){
             if(!e.isProvBorder) continue;
-            const oB=e.nbProv>=0?_owner[e.nbProv]:-1;
-            if(oB<0||oA!==oB) continue;
+            const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
+            if(oB<0||oA!==oB) continue;  // only same-owner pairs
             if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
             if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
             ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
@@ -896,10 +996,10 @@ function drawMap(){
         ctx.strokeStyle=`rgba(100,80,30,${(0.55*provBorderAlpha).toFixed(2)})`;
         ctx.lineWidth=1.0/vp.scale;
         ctx.beginPath();
-        for(let pi=0;pi<PL;pi++){
-          const edges=_edges[pi]; if(!edges) continue;
+        for(let pi=0;pi<PROVINCES.length;pi++){
+          const edges=window._provBorderEdges[pi]; if(!edges) continue;
           for(const e of edges){
-            if(e.isProvBorder) continue;
+            if(e.isProvBorder) continue;  // skip land-land
             if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
             if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
             ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
@@ -907,74 +1007,97 @@ function drawMap(){
         }
         ctx.stroke();
 
-        // PASS 4C+4D: Nation borders — single loop, dispatch to gold/red path
-        ctx.lineJoin='round'; ctx.lineCap='round';
-        // Pre-build gold path and red path in one pass
-        const _goldPts=[], _redPts=[];
-        for(let pi=0;pi<PL;pi++){
-          const oA=_owner[pi];
-          const edges=_edges[pi]; if(!edges) continue;
-          const oAwar=_warSet.has(oA);
-          for(const e of edges){
-            if(!e.isProvBorder) continue;
-            const oB=e.nbProv>=0?_owner[e.nbProv]:-1;
-            if(oB<0||oA===oB) continue;
-            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
-            if(oAwar||_warSet.has(oB)) _redPts.push(e);
-            else _goldPts.push(e);
-          }
-        }
-        // Black shadow (both sets)
+        // PASS 4C: Nation borders black shadow
         ctx.lineWidth=3.5/vp.scale;
         ctx.strokeStyle=`rgba(0,0,0,${(0.85*provBorderAlpha).toFixed(2)})`;
+        ctx.lineJoin='round'; ctx.lineCap='round';
         ctx.beginPath();
-        for(const e of _goldPts){ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);}
-        for(const e of _redPts) {ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);}
+        for(let pi=0;pi<PROVINCES.length;pi++){
+          const oA=G.owner[pi];
+          const edges=window._provBorderEdges[pi]; if(!edges) continue;
+          for(const e of edges){
+            if(!e.isProvBorder) continue;
+            const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
+            if(oB<0||oA===oB) continue;  // only different-owner pairs
+            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
+          }
+        }
         ctx.stroke();
-        // Gold
+
+        // PASS 4D: Nation borders gold (non-war) / red (at war)
         ctx.lineWidth=2.0/vp.scale;
+        ctx.lineJoin='round'; ctx.lineCap='round';
+        // Gold pass
         ctx.strokeStyle=`rgba(201,168,76,${(0.90*provBorderAlpha).toFixed(2)})`;
         ctx.beginPath();
-        for(const e of _goldPts){ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);}
+        for(let pi=0;pi<PROVINCES.length;pi++){
+          const oA=G.owner[pi];
+          const edges=window._provBorderEdges[pi]; if(!edges) continue;
+          for(const e of edges){
+            if(!e.isProvBorder) continue;
+            const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
+            if(oB<0||oA===oB) continue;
+            if(atWar(G.playerNation,oA)||atWar(G.playerNation,oB)) continue;
+            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
+          }
+        }
         ctx.stroke();
-        // Red
+        // Red pass (war)
         ctx.strokeStyle=`rgba(220,50,40,${(0.90*provBorderAlpha).toFixed(2)})`;
         ctx.beginPath();
-        for(const e of _redPts){ctx.moveTo(e.x0,e.y0);ctx.lineTo(e.x1,e.y1);}
+        for(let pi=0;pi<PROVINCES.length;pi++){
+          const oA=G.owner[pi];
+          const edges=window._provBorderEdges[pi]; if(!edges) continue;
+          for(const e of edges){
+            if(!e.isProvBorder) continue;
+            const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
+            if(oB<0||oA===oB) continue;
+            if(!atWar(G.playerNation,oA)&&!atWar(G.playerNation,oB)) continue;
+            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
+            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
+            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
+          }
+        }
         ctx.stroke();
 
       } else if(G.mapMode === 'army'){
-        // Army mode borders — use snapshot vars
+        // Army mode: gold=mine, white=ally, red=enemy
+        const PN=G.playerNation;
+        // Shadow
         ctx.lineWidth=3.5/vp.scale; ctx.strokeStyle=`rgba(0,0,0,${(0.85*provBorderAlpha).toFixed(2)})`;
         ctx.lineJoin='round'; ctx.lineCap='round'; ctx.beginPath();
-        for(let pi=0;pi<PL;pi++){
-          const oA=_owner[pi];
-          const edges=_edges[pi]; if(!edges) continue;
+        for(let pi=0;pi<PROVINCES.length;pi++){
+          const oA=G.owner[pi];
+          const edges=window._provBorderEdges&&window._provBorderEdges[pi]; if(!edges) continue;
           for(const e of edges){
             if(!e.isProvBorder) continue;
-            const oB=e.nbProv>=0?_owner[e.nbProv]:-1; if(oB<0||oA===oB) continue;
-            const inv=oA===_PN||oB===_PN||_allySet.has(oA)||_allySet.has(oB)||_warSet.has(oA)||_warSet.has(oB);
+            const oB=e.nbProv>=0?G.owner[e.nbProv]:-1; if(oB<0||oA===oB) continue;
+            const inv=oA===PN||oB===PN||(oA>=0&&areAllies(PN,oA))||(oB>=0&&areAllies(PN,oB))||atWar(PN,oA)||atWar(PN,oB);
             if(!inv) continue;
             if(e.x0<wx0-pad&&e.x1<wx0-pad)continue; if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
             ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
           }
         }
         ctx.stroke();
+        // Color passes
         const bCfgs=[
-          {c:`rgba(201,168,76,${(0.95*provBorderAlpha).toFixed(2)})`,  t:(oA,oB)=>oA===_PN||oB===_PN},
-          {c:`rgba(210,210,210,${(0.80*provBorderAlpha).toFixed(2)})`, t:(oA,oB)=>(_allySet.has(oA)||_allySet.has(oB))&&oA!==_PN&&oB!==_PN},
-          {c:`rgba(220,50,40,${(0.90*provBorderAlpha).toFixed(2)})`,   t:(oA,oB)=>_warSet.has(oA)||_warSet.has(oB)},
+          {c:`rgba(201,168,76,${(0.95*provBorderAlpha).toFixed(2)})`,  t:(oA,oB)=>oA===PN||oB===PN},
+          {c:`rgba(210,210,210,${(0.80*provBorderAlpha).toFixed(2)})`, t:(oA,oB)=>(oA>=0&&areAllies(PN,oA)||oB>=0&&areAllies(PN,oB))&&oA!==PN&&oB!==PN},
+          {c:`rgba(220,50,40,${(0.90*provBorderAlpha).toFixed(2)})`,   t:(oA,oB)=>atWar(PN,oA)||atWar(PN,oB)},
         ];
         ctx.lineWidth=2.0/vp.scale; ctx.lineJoin='round'; ctx.lineCap='round';
         for(const {c,t} of bCfgs){
           ctx.strokeStyle=c; ctx.beginPath();
-          for(let pi=0;pi<PL;pi++){
-            const oA=_owner[pi];
-            const edges=_edges[pi]; if(!edges) continue;
+          for(let pi=0;pi<PROVINCES.length;pi++){
+            const oA=G.owner[pi];
+            const edges=window._provBorderEdges&&window._provBorderEdges[pi]; if(!edges) continue;
             for(const e of edges){
               if(!e.isProvBorder) continue;
-              const oB=e.nbProv>=0?_owner[e.nbProv]:-1; if(oB<0||oA===oB) continue;
+              const oB=e.nbProv>=0?G.owner[e.nbProv]:-1; if(oB<0||oA===oB) continue;
               if(!t(oA,oB)) continue;
               if(e.x0<wx0-pad&&e.x1<wx0-pad)continue; if(e.x0>wx1+pad&&e.x1>wx1+pad)continue;
               ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
@@ -983,13 +1106,13 @@ function drawMap(){
           ctx.stroke();
         }
       } else {
-        // Other modes: simple thin dark border
+        // Other non-political modes: simple thin dark border
         ctx.strokeStyle=`rgba(0,0,0,${(0.50*provBorderAlpha).toFixed(2)})`;
         ctx.lineWidth=0.8/vp.scale;
         ctx.lineJoin='round';ctx.lineCap='round';
         ctx.beginPath();
-        for(let pi=0;pi<PL;pi++){
-          const edges=_edges[pi];
+        for(let pi=0;pi<PROVINCES.length;pi++){
+          const edges=window._provBorderEdges&&window._provBorderEdges[pi];
           if(!edges)continue;
           for(const e of edges){
             if(!e.isProvBorder)continue;
@@ -1047,14 +1170,16 @@ function drawMap(){
       }
     }
 
-    // PASS 6: Move/attack targets — colored pulse overlay
+    // PASS 6: Move/attack/naval targets — colored pulse overlay
     const isMov=G.moveMode&&G.moveFrom>=0;
-    if(isMov||_atkSelectMode){
+    const isNav=G.navalMode&&G.navalFrom>=0;
+    if(isMov||isNav||_atkSelectMode){
       const pulse2=0.15+0.1*Math.sin(Date.now()/180);
       for(let pi=0;pi<PROVINCES.length;pi++){
         let col=null;
         if(isMov&&isMoveTgt(pi)) col=`rgba(80,255,80,${pulse2})`;
         else if(_atkSelectMode&&isAtkSrc(pi)) col=`rgba(255,80,80,${pulse2})`;
+        else if(isNav&&navalDests(G.navalFrom).includes(pi)) col=`rgba(80,200,255,${pulse2})`;
         if(!col)continue;
         for(const h of _hexCache){
           if(h.sea||h.p!==pi)continue;
@@ -1072,7 +1197,7 @@ function drawMap(){
     if(p.cx<wx0-30||p.cx>wx1+30||p.cy<wy0-30||p.cy>wy1+30)return;
     const r=scaledR(i);
     hexPath(ctx,p.cx,p.cy,r+0.4/vp.scale);
-    ctx.fillStyle=provColorCached(i);ctx.fill();
+    ctx.fillStyle=provColor(i);ctx.fill();
   });
   // Borders between different owners only
   PROVINCES.forEach((p,i)=>{
@@ -1245,6 +1370,36 @@ function drawMap(){
 
   ctx.restore();
 
+  // ── Sea zone labels (drawn in screen space, always on top) ──
+  if(_seaZonePositions && seaLabelAlpha > 0){
+    const selZi2 = (typeof G.selSea === 'number' && G.selSea >= 0) ? G.selSea : -1;
+    ctx.save();
+    ctx.translate(vp.tx, vp.ty);
+    ctx.scale(vp.scale, vp.scale);
+    _seaZonePositions.forEach((z, zi)=>{
+      if(z.x<wx0-80||z.x>wx1+80||z.y<wy0-40||z.y>wy1+40) return;
+      const fs = Math.max(5, Math.min(z.fs||7, 28));
+      const isSelLabel = zi === selZi2;
+      ctx.font = `italic ${isSelLabel ? fs+1 : fs}px Cinzel,serif`;
+      ctx.fillStyle = isSelLabel
+        ? `rgba(255,235,120,${(0.95*seaLabelAlpha).toFixed(2)})`
+        : `rgba(80,160,230,${(0.70*seaLabelAlpha).toFixed(2)})`;
+      ctx.shadowColor = 'rgba(0,0,0,.98)';
+      ctx.shadowBlur = isSelLabel ? 6/vp.scale : 4/vp.scale;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      const name = z.t||'';
+      const spacing = fs*0.28;
+      const widths = name.split('').map(ch=>ctx.measureText(ch).width+spacing);
+      const totalW = widths.reduce((s,w)=>s+w,0)-spacing;
+      let lx = z.x-totalW/2;
+      for(let li=0; li<name.length; li++){
+        ctx.fillText(name[li], lx, z.y); lx+=widths[li];
+      }
+      ctx.shadowBlur=0;
+    });
+    ctx.restore();
+  }
+
   // ── Draw queued order arrows (screen space) ──────────────
   function drawOrderArrow(fsx, fsy, tsx, tsy, color, dashColor, label){
     ctx.save();
@@ -1301,12 +1456,6 @@ function drawMap(){
 }
 
 function updateMapOverlayHTML(){
-  // ── Dirty-check: skip full rebuild if key state unchanged ──
-  // Include vp.scale so zoom-in/out always re-renders the overlay
-  const _scaleKey = typeof vp !== 'undefined' ? (vp.scale*100|0) : 0;
-  const _overlayKey = `${G.mapMode||''}|${G.tick}|${G.sel}|${G.playerNation}|${_scaleKey}`;
-  if(window._lastOverlayKey === _overlayKey) return;
-  window._lastOverlayKey = _overlayKey;
   let el = document.getElementById('map-overlay-panel');
   if(!el){
     el = document.createElement('div');

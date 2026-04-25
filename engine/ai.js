@@ -12,9 +12,7 @@
 function doAI(fullMonth=true){
 // fullMonth=true → income, buildings, conscript, upkeep
 // fullMonth=false (weekly) → attacks, army movements only
-  const _alive = aliveNations(); // computed once per doAI call
-  const _aiBld = G.buildings;   // shared reference — avoids repeated property chain
-  for(const ai of _alive){
+  for(const ai of aliveNations()){
     const ar=regsOf(ai);if(!ar.length)continue;
     const aio=IDEOLOGIES[NATIONS[ai]&&NATIONS[ai].ideology||'nationalism'];
     const s=season();
@@ -29,27 +27,30 @@ function doAI(fullMonth=true){
     if(fullMonth){
       // ── Income ──────────────────────────────────────────
       for(const r of ar){
-        const bR=_aiBld[r]||[];
         let inc=G.income[r];
-        if(bR.includes('factory'))inc=Math.floor(inc*1.8);
-        if(bR.includes('palace'))inc=Math.floor(inc*1.15);
+        if((G.buildings[r]||[]).includes('factory'))inc=Math.floor(inc*1.8);
+        if((G.buildings[r]||[]).includes('palace'))inc=Math.floor(inc*1.15);
         G.gold[ai]+=Math.floor(inc*aio.income*.78);
       }
 
       // ── Smart buildings ──────────────────────────────────
+      // Aggressive: builds barracks+factory first; Defensive: fortress first
       const capIdx=ar.find(r=>PROVINCES[r]&&PROVINCES[r].isCapital);
       const borderProvs=ar.filter(r=>(NB[r]||[]).some(nb=>{const o=G.owner[nb];return o>=0&&o!==ai&&!areAllies(ai,o);}));
       const buildBudget=Math.floor(G.gold[ai]*(aggressive?0.25:0.2));
       let bSpent=0;
 
+      // Priority list of (province, building, reason)
       const buildQueue=[];
+      // Fortresses on borders
       for(const r of borderProvs){
-        const blds=_aiBld[r]||[];
+        const blds=G.buildings[r]||[];
         if(!blds.includes('fortress')&&!(buildQueue.some(b=>b.r===r&&b.bld==='fortress')))
           buildQueue.push({r,bld:'fortress',priority:aggressive?2:4});
       }
+      // Fortress on capital
       if(capIdx!==undefined){
-        const blds=_aiBld[capIdx]||[];
+        const blds=G.buildings[capIdx]||[];
         if(!blds.includes('fortress'))buildQueue.push({r:capIdx,bld:'fortress',priority:5});
         if(!blds.includes('palace'))buildQueue.push({r:capIdx,bld:'palace',priority:4});
         if(!blds.includes('barracks'))buildQueue.push({r:capIdx,bld:'barracks',priority:aggressive?5:3});
@@ -57,13 +58,13 @@ function doAI(fullMonth=true){
       }
       // Barracks on high-pop border provinces
       for(const r of borderProvs){
-        if(G.pop[r]>20000&&!(_aiBld[r]||[]).includes('barracks'))
+        if(G.pop[r]>20000&&!(G.buildings[r]||[]).includes('barracks'))
           buildQueue.push({r,bld:'barracks',priority:aggressive?3:2});
       }
       // Factories in interior high-income provinces
       const interior=ar.filter(r=>!borderProvs.includes(r));
       for(const r of interior.slice(0,3)){
-        if(!(_aiBld[r]||[]).includes('factory'))
+        if(!(G.buildings[r]||[]).includes('factory'))
           buildQueue.push({r,bld:'factory',priority:2});
       }
 
@@ -72,7 +73,7 @@ function doAI(fullMonth=true){
         if(bSpent>=buildBudget)break;
         const cost=BUILDINGS[bld]&&BUILDINGS[bld].cost||300;
         if(G.gold[ai]>=cost*0.9&&bSpent+cost<=buildBudget){
-          const blds=_aiBld[r]||[];
+          const blds=G.buildings[r]||[];
           const maxSlots=PROVINCES[r]&&PROVINCES[r].isCapital?5:3;
           if(!blds.includes(bld)&&blds.length<maxSlots){
             G.gold[ai]-=cost; bSpent+=cost;
@@ -116,7 +117,7 @@ function doAI(fullMonth=true){
       if(G.puppet.includes(ai)){
         G.gold[G.playerNation]+=Math.floor(ar.reduce((sum,r)=>{
           let inc=G.income[r];
-          if((_aiBld[r]||[]).includes('factory'))inc=Math.floor(inc*1.8);
+          if((G.buildings[r]||[]).includes('factory'))inc=Math.floor(inc*1.8);
           return sum+inc;
         },0)*.3);
       }
@@ -150,7 +151,7 @@ function doAI(fullMonth=true){
           }
           // Prefer capitals and provinces with buildings
           const hasCap=PROVINCES[nb]&&PROVINCES[nb].isCapital;
-          const hasBld=(_aiBld[nb]||[]).length>0;
+          const hasBld=(G.buildings[nb]||[]).length>0;
           const ratio=G.army[r]/Math.max(1,G.army[nb]);
           const minRatio=aggressive?1.2:1.8;
           if(ratio>=minRatio){
@@ -166,16 +167,15 @@ function doAI(fullMonth=true){
         const sendFrac=aggressive?0.55:0.4;
         const send=Math.max(1,Math.floor(G.army[fr2]*sendFrac));
         if(def>=0&&def!==ai){G.war[ai][def]=true;G.war[def][ai]=true;}
-        const bldTo2=_aiBld[to2]||[];
-        const frt=bldTo2.includes('fortress')?1.6:1;
+        const frt=(G.buildings[to2]||[]).includes('fortress')?1.6:1;
         const terrMod=s.winterTerrain?.includes(PROVINCES[to2]?.terrain)?s.moveMod:1.0;
         const win=send*aio.atk*terrMod*rf(.75,1.25)>G.army[to2]*provTerrainDef(to2)*frt*rf(.75,1.25);
         if(win){
           const al=Math.floor(send*rf(.15,.3));
           G.army[fr2]-=send;G.army[to2]=Math.max(50,send-al);G.owner[to2]=ai;
           G.instab[to2]=ri(30,60);G.assim[to2]=ri(5,20);
-          if(bldTo2.includes('fortress'))
-            G.buildings[to2]=bldTo2.filter(b=>b!=='fortress');
+          if((G.buildings[to2]||[]).includes('fortress'))
+            G.buildings[to2]=(G.buildings[to2]||[]).filter(b=>b!=='fortress');
           if(def===G.playerNation){
             addLog(`⚔ ${ownerName(ai)} seized ${PROVINCES[to2].name}!`,'war');
             if(!G._enemyAttackQueue)G._enemyAttackQueue=[];

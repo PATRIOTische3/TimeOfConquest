@@ -56,28 +56,26 @@ function endTurn(){
 
   // ── Player income + growth ─────────────────────────────
   const taxRate=G.taxRate??25;
-  const taxMod=taxRate/100;
-  const taxIncomeFactor=0.4+taxMod*2.4;
-  const taxBaseline = taxRate<=10?80:taxRate<=25?70:taxRate<=40?60:taxRate<=60?50:taxRate<=80?38:28;
-  const natSatBase = Math.round((io.popGrowth>1?72:io.atk>1.2?55:65)*0.4 + taxBaseline*0.6);
-  const atWarWithAnyone=G.war[PN]?.some(w=>w);
-  const _bld = G.buildings;  // reference, not copy
+  const taxMod=taxRate/100; // 0 to 1
+  // Tax income multiplier: 0% tax = 0 income from pop taxes, 100% = full
+  // Base province income stays, pop-based tax bonus scales with taxRate
   regsOf(PN).forEach(r=>{
     const sat=G.satisfaction[r]??70;
     const satIncomeMod=sat<40?0.80:1.0;
     const reformMod=G.reforming?0.80:1.0;
-    const bldR = _bld[r]||[];
 
     let inc=G.income[r];
-    if(bldR.includes('factory'))inc=Math.floor(inc*1.8);
-    if(bldR.includes('palace'))inc=Math.floor(inc*1.15);
+    if((G.buildings[r]||[]).includes('factory'))inc=Math.floor(inc*1.8);
+    if((G.buildings[r]||[]).includes('palace'))inc=Math.floor(inc*1.15);
+    // Tax rate scales income: 25% base = full income, lower = less, higher = more
+    const taxIncomeFactor=0.4+taxMod*2.4; // 0% tax→0.4x income, 25%→1.0x, 50%→1.6x, 100%→2.8x
     inc=Math.floor(inc*io.income*satIncomeMod*reformMod*(1-Math.min(.5,G.instab[r]/100))*s.incomeMod*taxIncomeFactor);
     G.gold[PN]+=inc;
 
     // Population growth
     let pgr=G.pop[r]*.005*io.popGrowth*(sat<40?0.5:sat<60?0.8:1.0);
-    if(bldR.includes('hospital'))pgr*=1.1;
-    if(bldR.includes('granary'))pgr*=1.15;
+    if((G.buildings[r]||[]).includes('hospital'))pgr*=1.1;
+    if((G.buildings[r]||[]).includes('granary'))pgr*=1.15;
     G.pop[r]+=Math.floor(pgr);
 
     // Assimilation passive (old assim field — kept for compat display)
@@ -95,8 +93,8 @@ function endTurn(){
     else if(!isConquered) instabDec = ri(1,3)*(io.instabDecay||1); // own historical: normal decay below 25
     // Buildings still help on own provinces
     if(!isConquered){
-      if(bldR.includes('fortress'))instabDec+=5;
-      if(bldR.includes('palace'))instabDec+=6;
+      if((G.buildings[r]||[]).includes('fortress'))instabDec+=5;
+      if((G.buildings[r]||[]).includes('palace'))instabDec+=6;
     }
     G.instab[r]=Math.max(instabFloor, instab - instabDec);
 
@@ -140,20 +138,23 @@ function endTurn(){
     // Disease effects now in processEpidemics
 
     // ── Satisfaction update ──────────────────────────────
-    const natSat = natSatBase;
+    const taxBaseline = taxRate<=10?80:taxRate<=25?70:taxRate<=40?60:taxRate<=60?50:taxRate<=80?38:28;
+    const natSat = Math.round((io.popGrowth>1?72:io.atk>1.2?55:65)*0.4 + taxBaseline*0.6);
     let satDelta=0;
     if(sat<natSat) satDelta+=ri(1,3);
-    if(sat>natSat) satDelta-=ri(0,1);
+    if(sat>natSat) satDelta-=ri(0,1); // reduced: was 0-2
+    // instab affects sat only at very high levels, and more mildly
     if(G.instab[r]>70) satDelta-=1;
     if(G.instab[r]>90) satDelta-=1;
-    if(atWarWithAnyone) satDelta-=ri(0,1);
-    if(G.reforming) satDelta-=ri(0,1);
+    const atWarWithAnyone=G.war[PN]?.some(w=>w);
+    if(atWarWithAnyone) satDelta-=ri(0,1); // reduced: was 0-2
+    if(G.reforming) satDelta-=ri(0,1);    // reduced: was 1-3
     if(G.provDisease?.[r]){
       const ep=G.epidemics?.find(e=>e.id===G.provDisease[r]&&e.active);
       if(ep) satDelta-=ri(1,Math.ceil(ep.type.satHit/6)); // milder: was /4
     }
-    if(bldR.includes('palace')) satDelta+=ri(1,2);
-    if(bldR.includes('hospital')) satDelta+=1;
+    if((G.buildings[r]||[]).includes('palace')) satDelta+=ri(1,2);
+    if((G.buildings[r]||[]).includes('hospital')) satDelta+=1;
     if(G.taxMood&&G.taxMood[r]){
       satDelta+=Math.sign(G.taxMood[r])*Math.min(4,Math.ceil(Math.abs(G.taxMood[r])/3));
       G.taxMood[r]=Math.abs(G.taxMood[r])<0.5?0:G.taxMood[r]*0.88;

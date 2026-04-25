@@ -41,6 +41,13 @@ function chkBtns(){
   sEl('atk-sub', peace ? `Peace — ${peaceTurnsLeft()}wk` : ok?`${PROVINCES[fr].short}→${PROVINCES[si].short}`:'Select enemy');
   if(ok){window._af=fr;window._at=si;}
 
+  // Naval button: enabled if own coastal province with port
+  const canNaval = isOwn && (typeof canLaunchNaval==='function') && canLaunchNaval(si);
+  ['sp-btn-naval','mob-btn-naval'].forEach(id=>{
+    const b=document.getElementById(id);
+    if(!b) return;
+    b.disabled = !canNaval;
+  });
 }
 
 // NOTE: openMo/closeMo/openModal/closeModal/popup/addLog/setEB live in ui.js
@@ -51,12 +58,14 @@ document.addEventListener('keydown', e=>{
     hideProvPopup();
     if(_atkSelectMode) cancelAtkSelect();
     if(G.moveMode) cancelMove();
+    if(G.navalMode) cancelNaval();
   }
 });
 
 
 // ── MOVEMENT ──────────────────────────────────────────────
 function toggleMoveMode(){
+  if(G.navalMode)cancelNaval();
   if(G.moveMode){cancelMove();return;}
   const si=G.sel;
   if(si<0||G.owner[si]!==G.playerNation||G.army[si]<1){popup('Select your territory first!');return;}
