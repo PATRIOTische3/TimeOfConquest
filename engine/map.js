@@ -68,8 +68,6 @@ var _hexCache        = null;
 var _hexByRC         = null;
 var _provBorderHexes = null;
 var _provCentroid    = null;
-var _seaZonePositions = null;
-var _seaZoneBorderEdges = null;
 
 function buildHexCache(){
   if(typeof HEX_GRID === 'undefined' || !HEX_GRID || !HEX_GRID.hexes){
@@ -154,84 +152,6 @@ function buildHexCache(){
 
   // ── Sea zone membership + label positions ─────────────────
   // Primary: SEA_ZONES[zi].hexIds exported directly from editor (exact membership).
-  // Fallback for old maps without hexIds: proximity assignment from cx/cy centroid.
-  _seaZonePositions = null;
-  _seaZoneBorderEdges = null;
-  if(typeof SEA_ZONES !== 'undefined' && SEA_ZONES?.length){
-    const zoneHexIds = SEA_ZONES.map(() => []);
-
-    const hasExportedHexIds = SEA_ZONES.every(z => Array.isArray(z.hexIds) && z.hexIds.length > 0);
-
-    if(hasExportedHexIds){
-      // New format: hexIds in SEA_ZONES map directly to HEX_GRID.hexes indices
-      // which equal _hexCache indices (same array order)
-      SEA_ZONES.forEach((z, zi) => {
-        z.hexIds.forEach(hi => {
-          if(hi >= 0 && hi < _hexCache.length) zoneHexIds[zi].push(hi);
-        });
-      });
-    } else {
-      // Legacy fallback: assign each sea hex to nearest zone centroid.
-      // Editor coords use hcx = R*√3*(c+r%2*0.5)+R (has +R origin offset).
-      // Game coords have no offset, so: game_coord = editor_coord - R
-      const seedX = SEA_ZONES.map(z => z.cx - R);
-      const seedY = SEA_ZONES.map(z => z.cy - R);
-      for(let hi = 0; hi < _hexCache.length; hi++){
-        const h = _hexCache[hi];
-        if(!h.sea) continue;
-        let bestZ = 0, bestD = Infinity;
-        for(let z = 0; z < SEA_ZONES.length; z++){
-          const dx = h.x - seedX[z], dy = h.y - seedY[z];
-          const d = dx*dx + dy*dy;
-          if(d < bestD){ bestD = d; bestZ = z; }
-        }
-        zoneHexIds[bestZ].push(hi);
-      }
-    }
-
-    // Precompute outer boundary edges per zone using _hexByRC (O(1) lookup, exact)
-    // Neighbour offsets for pointy-top offset hex grid:
-    const EVEN_NB_Z = [[-1,0],[-1,1],[0,1],[1,1],[1,0],[0,-1]];
-    const ODD_NB_Z  = [[-1,-1],[-1,0],[0,1],[1,0],[1,-1],[0,-1]];
-
-    _seaZoneBorderEdges = SEA_ZONES.map(() => []);
-    zoneHexIds.forEach((ids, zi) => {
-      const zSet = new Set(ids);
-      for(const hi of ids){
-        const h = _hexCache[hi];
-        if(!h) continue;
-        const nbs = h.r%2===0 ? EVEN_NB_Z : ODD_NB_Z;
-        for(let d = 0; d < 6; d++){
-          const [dr, dc] = nbs[d];
-          const nr = h.r+dr, nc = h.c+dc;
-          const niIdx = (_hexByRC[nr] && _hexByRC[nr][nc] !== undefined) ? _hexByRC[nr][nc] : -1;
-          if(niIdx >= 0 && zSet.has(niIdx)) continue; // same zone — interior edge
-          // Outer boundary: store as {x0,y0,x1,y1} object for viewport culling
-          const a1 = Math.PI/6 + Math.PI/3*d;
-          const a2 = Math.PI/6 + Math.PI/3*((d+1)%6);
-          _seaZoneBorderEdges[zi].push({
-            x0: h.x + Math.cos(a1)*R, y0: h.y + Math.sin(a1)*R,
-            x1: h.x + Math.cos(a2)*R, y1: h.y + Math.sin(a2)*R,
-          });
-        }
-      }
-    });
-
-    // Label position = true centroid of assigned hexes
-    _seaZonePositions = SEA_ZONES.map((z, zi) => {
-      const ids = zoneHexIds[zi];
-      let cx, cy;
-      if(ids.length){
-        cx = ids.reduce((s,i) => s + _hexCache[i].x, 0) / ids.length;
-        cy = ids.reduce((s,i) => s + _hexCache[i].y, 0) / ids.length;
-      } else {
-        // Fallback to editor centroid converted to game space
-        cx = z.cx - R; cy = z.cy - R;
-      }
-      return {t:z.name, x:cx, y:cy, fs:z.fontSize||7, hexIds:ids};
-    });
-  }
-
   _computeMapBounds();
 }
 
@@ -348,21 +268,6 @@ function provColorCached(i){
 }
 
 
-function getSeaLabels(){
-  if(_seaZonePositions) return _seaZonePositions;
-  if(typeof SEA_ZONES !== 'undefined' && SEA_ZONES?.length)
-    return SEA_ZONES.map(z => ({t:z.name, x:z.cx, y:z.cy, fs:z.fontSize||7}));
-  return [
-    {t:'ATLANTIC',  x:40,  y:300, fs:7}, {t:'NORTH SEA', x:182, y:224, fs:7},
-    {t:'NORW. SEA', x:185, y:160, fs:7}, {t:'BALTIC',    x:303, y:226, fs:7},
-    {t:'MED.',      x:155, y:462, fs:7}, {t:'MED.',      x:253, y:460, fs:7},
-    {t:'MED. E',    x:372, y:458, fs:7}, {t:'ADRIATIC',  x:304, y:394, fs:7},
-    {t:'AEGEAN',    x:394, y:430, fs:7}, {t:'BLACK SEA', x:440, y:376, fs:7},
-    {t:'CASPIAN',   x:568, y:364, fs:7}, {t:'ARCTIC',    x:360, y:72,  fs:7},
-    {t:'BARENTS',   x:508, y:96,  fs:7},
-  ];
-}
-
 // ── CANVAS SETUP ─────────────────────────────────────────
 var canvas = document.getElementById('map-canvas');
 var ctx    = canvas.getContext('2d');
@@ -400,7 +305,7 @@ function scheduleDraw(){
   requestAnimationFrame(() => {
     _drawPending = false;
     drawMap();
-    if(G.sel >= 0 || G.selSea >= 0 || G.moveMode || G.navalMode || _atkSelectMode) scheduleDraw();
+    if(G.sel >= 0 || G.moveMode || _atkSelectMode) scheduleDraw();
     if(G.mapMode === 'instab' && window._instabAnimY){
       if(Object.values(window._instabAnimY).some(v => v !== undefined && Math.abs(v) < 5)) scheduleDraw();
     }
@@ -615,34 +520,6 @@ function hitHex(wx, wy){
   return best;
 }
 
-function hitSeaZone(wx, wy){
-  if(!_hexCache||!_hexByRC||!_seaZonePositions) return -1;
-  const R = HEX_GRID.hexR, W2 = Math.sqrt(3)*R, H2 = 2*R;
-  const approxRow = Math.round(wy / (H2*.75));
-  const startRow  = Math.max(0, approxRow-2);
-  const endRow    = Math.min((_hexByRC?.length||0)-1, approxRow+2);
-  for(let r = startRow; r <= endRow; r++){
-    if(!_hexByRC[r]) continue;
-    const offset    = r%2 ? W2/2 : 0;
-    const approxCol = Math.round((wx - offset) / W2);
-    for(let c = Math.max(0, approxCol-2); c <= approxCol+2; c++){
-      const idx = _hexByRC[r][c];
-      if(idx === undefined) continue;
-      const h = _hexCache[idx];
-      if(!h.sea) continue;
-      const dx = wx-h.x, dy = wy-h.y;
-      if(dx*dx+dy*dy < R*R*1.5){
-        // Find which sea zone this hex belongs to
-        for(let zi=0; zi<_seaZonePositions.length; zi++){
-          const z = _seaZonePositions[zi];
-          if(z.hexIds && z.hexIds.includes(idx)) return zi;
-        }
-      }
-    }
-  }
-  return -1;
-}
-
 function provScreenPos(i){
   if(_provCentroid && _provCentroid[i] && _provCentroid[i].x)
     return toScreen(_provCentroid[i].x, _provCentroid[i].y);
@@ -781,10 +658,10 @@ function drawMap(){
   // ── Global optimisation: skip redundant redraws ────────
   // Build a cheap state key; if it matches last frame, bail out
   // (only works when nothing animates — pulse/instab animation always differs)
-  const _isAnimating = G.sel>=0||G.selSea>=0||G.moveMode||G.navalMode||_atkSelectMode
+  const _isAnimating = G.sel>=0||G.moveMode||_atkSelectMode
     ||(G.mapMode==='instab'&&window._instabAnimY&&Object.keys(window._instabAnimY).length);
   if(!_isAnimating){
-    const _dk=`${vp.scale.toFixed(4)},${vp.tx.toFixed(1)},${vp.ty.toFixed(1)},${G.mapMode},${G.tick},${G.sel},${G.selSea}`;
+    const _dk=`${vp.scale.toFixed(4)},${vp.tx.toFixed(1)},${vp.ty.toFixed(1)},${G.mapMode},${G.tick},${G.sel}`;
     if(_dk===window._lastDrawKey){ return; }
     window._lastDrawKey=_dk;
   } else {
@@ -815,24 +692,6 @@ function drawMap(){
 
   // ── Sea zone borders (inside transform) ─────────────────
   // Labels drawn AFTER ctx.restore() to appear above all hexes
-  const seaLabelAlpha = Math.min(1, Math.max(0, (vp.scale - 0.20) / 0.15));
-
-  // ── Sea zone selection fill — pulsing white like province selection ──
-  if(_hexCache&&_hexCache.length&&_seaZonePositions&&G.selSea>=0){
-    const selZi = G.selSea;
-    const z = _seaZonePositions[selZi];
-    const R_sea = HEX_GRID.hexR;
-    const seaPulse = 0.06 + 0.06*Math.sin(Date.now()/220);
-    if(z && z.hexIds){
-      for(const hi of z.hexIds){
-        const h = _hexCache[hi]; if(!h) continue;
-        if(h.x<wx0-R_sea*3||h.x>wx1+R_sea*3||h.y<wy0-R_sea*3||h.y>wy1+R_sea*3) continue;
-        hexPath(ctx,h.x,h.y,R_sea+1.0/vp.scale);
-        ctx.fillStyle=`rgba(255,255,255,${seaPulse.toFixed(3)})`;
-        ctx.fill();
-      }
-    }
-  }
 
     // ── HEX_GRID mode ─────────────────────────────────────────
   if(_hexCache&&_hexCache.length){
@@ -1188,16 +1047,14 @@ function drawMap(){
       }
     }
 
-    // PASS 6: Move/attack/naval targets — colored pulse overlay
+    // PASS 6: Move/attack targets — colored pulse overlay
     const isMov=G.moveMode&&G.moveFrom>=0;
-    const isNav=G.navalMode&&G.navalFrom>=0;
-    if(isMov||isNav||_atkSelectMode){
+    if(isMov||_atkSelectMode){
       const pulse2=0.15+0.1*Math.sin(Date.now()/180);
       for(let pi=0;pi<PROVINCES.length;pi++){
         let col=null;
         if(isMov&&isMoveTgt(pi)) col=`rgba(80,255,80,${pulse2})`;
         else if(_atkSelectMode&&isAtkSrc(pi)) col=`rgba(255,80,80,${pulse2})`;
-        else if(isNav&&navalDests(G.navalFrom).includes(pi)) col=`rgba(80,200,255,${pulse2})`;
         if(!col)continue;
         for(const h of _hexCache){
           if(h.sea||h.p!==pi)continue;
@@ -1388,36 +1245,6 @@ function drawMap(){
 
   ctx.restore();
 
-  // ── Sea zone labels (drawn in screen space, always on top) ──
-  if(_seaZonePositions && seaLabelAlpha > 0){
-    const selZi2 = (typeof G.selSea === 'number' && G.selSea >= 0) ? G.selSea : -1;
-    ctx.save();
-    ctx.translate(vp.tx, vp.ty);
-    ctx.scale(vp.scale, vp.scale);
-    _seaZonePositions.forEach((z, zi)=>{
-      if(z.x<wx0-80||z.x>wx1+80||z.y<wy0-40||z.y>wy1+40) return;
-      const fs = Math.max(5, Math.min(z.fs||7, 28));
-      const isSelLabel = zi === selZi2;
-      ctx.font = `italic ${isSelLabel ? fs+1 : fs}px Cinzel,serif`;
-      ctx.fillStyle = isSelLabel
-        ? `rgba(255,235,120,${(0.95*seaLabelAlpha).toFixed(2)})`
-        : `rgba(80,160,230,${(0.70*seaLabelAlpha).toFixed(2)})`;
-      ctx.shadowColor = 'rgba(0,0,0,.98)';
-      ctx.shadowBlur = isSelLabel ? 6/vp.scale : 4/vp.scale;
-      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      const name = z.t||'';
-      const spacing = fs*0.28;
-      const widths = name.split('').map(ch=>ctx.measureText(ch).width+spacing);
-      const totalW = widths.reduce((s,w)=>s+w,0)-spacing;
-      let lx = z.x-totalW/2;
-      for(let li=0; li<name.length; li++){
-        ctx.fillText(name[li], lx, z.y); lx+=widths[li];
-      }
-      ctx.shadowBlur=0;
-    });
-    ctx.restore();
-  }
-
   // ── Draw queued order arrows (screen space) ──────────────
   function drawOrderArrow(fsx, fsy, tsx, tsy, color, dashColor, label){
     ctx.save();
@@ -1475,7 +1302,9 @@ function drawMap(){
 
 function updateMapOverlayHTML(){
   // ── Dirty-check: skip full rebuild if key state unchanged ──
-  const _overlayKey = `${G.mapMode||''}|${G.tick}|${G.sel}|${G.playerNation}`;
+  // Include vp.scale so zoom-in/out always re-renders the overlay
+  const _scaleKey = typeof vp !== 'undefined' ? (vp.scale*100|0) : 0;
+  const _overlayKey = `${G.mapMode||''}|${G.tick}|${G.sel}|${G.playerNation}|${_scaleKey}`;
   if(window._lastOverlayKey === _overlayKey) return;
   window._lastOverlayKey = _overlayKey;
   let el = document.getElementById('map-overlay-panel');
