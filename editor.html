@@ -27,7 +27,7 @@ html,body{height:100%;overflow:hidden;background:var(--dark);color:var(--text);f
 .pb.sec{background:rgba(0,0,0,.3);border-color:var(--border);color:var(--dim)}
 .pb.sec:hover{border-color:var(--border2);color:var(--text);box-shadow:none}
 .psl{font-family:'Cinzel',serif;font-size:8px;letter-spacing:3px;color:var(--dim);text-transform:uppercase;border-bottom:1px solid rgba(42,36,24,.4);padding-bottom:5px}
-.pc{display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(0,0,0,.4);border:1px solid var(--border);cursor:default;transition:border-color .14s,background .14s}
+.pc{display:flex;align-items:center;gap:12px;padding:11px 14px;background:rgba(0,0,0,.4);border:1px solid var(--border);cursor:pointer;transition:border-color .14s,background .14s,box-shadow .14s}
 .pc:hover{border-color:var(--border2);background:rgba(201,168,76,.03)}
 .pc.active-proj{border-color:rgba(201,168,76,.55);background:rgba(201,168,76,.07)}
 .pci{flex:1;min-width:0}
@@ -408,25 +408,40 @@ let P=null; // active project
 function show(s){
   document.querySelectorAll('.scr').forEach(e=>e.classList.remove('on'));
   document.getElementById('s-'+s).classList.add('on');
-  if(s==='proj') renderProjList();
+  if(s==='proj'){
+    // Re-highlight the last edited project when returning from editor
+    if(P)_selectedProjId=P.id;
+    renderProjList();
+  }
 }
 
 // ── Projects screen ──────────────────────────────────
+let _selectedProjId=null;
+
 function renderProjList(){
   const list=getProjs(), el=document.getElementById('proj-list');
   const lastId=getLastEdited();
+  // Auto-select on first call
+  if(_selectedProjId===null){
+    _selectedProjId=lastId?+lastId:(list[0]?.id||null);
+  }
   if(!list.length){el.innerHTML='<div class="pe">No saved projects.<br>Create a new one to start mapping.</div>';_startProjMapBg(null);return;}
-  el.innerHTML=list.map(p=>`<div class="pc${p.id==lastId?' active-proj':''}">
+  el.innerHTML=list.map(p=>`<div class="pc${p.id===_selectedProjId?' active-proj':''}" onclick="selectProj(${p.id})">
     <div class="pci"><div class="pcn">${p.name}</div>
     <div class="pcs">${p.cols}×${p.rows} · ${(p.provinces||[]).length} provs · ${(p.nations||[]).length} nations · ${p.saved||'?'}</div></div>
     <div class="pcb">
-      <button class="xb op" onclick="openProj(${p.id})">Open</button>
-      <button class="xb" onclick="exportById(${p.id})">Export</button>
-      <button class="xb dl" onclick="delProj(${p.id})">Del</button>
+      <button class="xb op" onclick="event.stopPropagation();openProj(${p.id})">Open</button>
+      <button class="xb" onclick="event.stopPropagation();exportById(${p.id})">Export</button>
+      <button class="xb dl" onclick="event.stopPropagation();delProj(${p.id})">Del</button>
     </div></div>`).join('');
-  // Show last-edited map in background
-  const lastProj=lastId?list.find(p=>p.id==lastId):list[0];
-  _startProjMapBg(lastProj||null);
+  const selProj=list.find(p=>p.id===_selectedProjId)||list[0];
+  _startProjMapBg(selProj||null);
+}
+
+function selectProj(id){
+  if(_selectedProjId===id)return; // already selected
+  _selectedProjId=id;
+  renderProjList();
 }
 
 function createProject(){
@@ -1165,6 +1180,16 @@ document.addEventListener('keydown',e=>{
 
 function applyToHex(idx){
   if(!P||idx<0)return;
+  // Tab guard: prevent accidental hex edits when on wrong tab
+  if(activeTool==='land'||activeTool==='sea'){
+    if(activeTab!=='grid'&&activeTab!=='land')return;
+  }
+  if(activeTool==='prov'||activeTool==='erase'){
+    if(activeTab!=='prov')return;
+  }
+  if(activeTool==='pick'){
+    if(activeTab!=='prov'&&activeTab!=='nat')return;
+  }
   const affected = brushSize>1 ? brush(idx, brushSize) : [idx];
   affected.forEach(i=>{
     const h=P.hexes[i];if(!h)return;
@@ -1230,7 +1255,11 @@ canvas.addEventListener('mousedown',e=>{
       }
     }
   }
-  _pan.a=true;_pan.lx=e.clientX;_pan.ly=e.clientY;_moved=false;_ts={x:e.clientX,y:e.clientY,t:Date.now()};_painting=true;if(P)pushHistory();
+  _pan.a=true;_pan.lx=e.clientX;_pan.ly=e.clientY;_moved=false;_ts={x:e.clientX,y:e.clientY,t:Date.now()};
+  // Only allow painting on tabs that modify hexes
+  const paintAllowed=(activeTab==='grid'||activeTab==='land'||activeTab==='prov');
+  _painting=paintAllowed;
+  if(paintAllowed&&P)pushHistory();
 });
 window.addEventListener('mousemove',e=>{
   if(!_pan.a)return;
@@ -1499,14 +1528,19 @@ function editNat(id){
 }
 
 // ── Tabs ─────────────────────────────────────────────
+let activeTab='grid'; // track which tab is active
+
 function swTab(t){
+  activeTab=t;
   ['grid','land','prov','zone','nat'].forEach(k=>{
     document.getElementById('lt-'+k).classList.toggle('on',k===t);
     document.getElementById('p-'+k).classList.toggle('on',k===t);
   });
+  if(t==='grid'&&activeTool!=='land'&&activeTool!=='sea')setTool('land');
   if(t==='land'&&activeTool!=='land'&&activeTool!=='sea')setTool('land');
   if(t==='prov'&&activeTool!=='prov'&&activeTool!=='erase'&&activeTool!=='pick')setTool('prov');
-  if(t==='zone'){setTool('land');} // neutral tool when on labels tab
+  if(t==='zone'){setTool('land');}
+  if(t==='nat'){setTool('pick');}
 }
 
 // ── Modal ────────────────────────────────────────────
