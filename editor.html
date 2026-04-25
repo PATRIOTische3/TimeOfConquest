@@ -1142,15 +1142,15 @@ function zoomTrackLeave(){const tip=document.getElementById('zoom-tip');if(tip)t
 // Each tab remembers its own tool, terrain, brush size independently.
 // Switching tabs restores that tab's last state — nothing bleeds between tabs.
 const TAB_STATE={
-  grid: {tool:'land', terrain:'plains', brush:1},
-  land: {tool:'land', terrain:'plains', brush:1},
-  prov: {tool:'prov', terrain:'plains', brush:1},
-  zone: {tool:'none', terrain:'plains', brush:1},
-  nat:  {tool:'pick', terrain:'plains', brush:1},
+  grid: {tool:'bgmove', terrain:'plains', brush:1},
+  land: {tool:'land',   terrain:'plains', brush:1},
+  prov: {tool:'prov',   terrain:'plains', brush:1},
+  zone: {tool:'none',   terrain:'plains', brush:1},
+  nat:  {tool:'pick',   terrain:'plains', brush:1},
 };
-// Which tools are valid per tab (whitelist)
+// Which tools are valid per tab (whitelist). grid = view/navigate only.
 const TAB_TOOLS={
-  grid: ['land','sea','bgmove'],
+  grid: ['bgmove'],          // view-only — pan, zoom, BG image move
   land: ['land','sea','bgmove'],
   prov: ['prov','erase','pick','bgmove'],
   zone: ['bgmove'],
@@ -1283,8 +1283,8 @@ canvas.addEventListener('mousedown',e=>{
     }
   }
   _pan.a=true;_pan.lx=e.clientX;_pan.ly=e.clientY;_moved=false;_ts={x:e.clientX,y:e.clientY,t:Date.now()};
-  // Only allow painting on tabs that modify hexes
-  const paintAllowed=(activeTab==='grid'||activeTab==='land'||activeTab==='prov');
+  // Only allow painting on tabs that have hex-editing tools
+  const paintAllowed=(activeTab==='land'||activeTab==='prov');
   _painting=paintAllowed;
   if(paintAllowed&&P)pushHistory();
 });
@@ -1860,72 +1860,76 @@ function flash(msg,isErr){
 }
 
 // ── Project Screen Map Background ─────────────────────
-// Draws mini-map of the last-edited project in the background
 let _projBgRaf=null;
 function _startProjMapBg(proj){
   const cv=document.getElementById('proj-map-bg');
-  if(!cv){return;}
+  if(!cv)return;
   if(_projBgRaf){cancelAnimationFrame(_projBgRaf);_projBgRaf=null;}
-  // Resize canvas
-  cv.width=cv.offsetWidth||window.innerWidth;
-  cv.height=cv.offsetHeight||window.innerHeight;
-  const ctx=cv.getContext('2d');
-  if(!proj||!proj.hexes||!proj.hexes.length){ctx.clearRect(0,0,cv.width,cv.height);return;}
+  // Always use window size — offsetWidth is 0 when screen is hidden
+  cv.width=window.innerWidth;
+  cv.height=window.innerHeight;
+  const ctx2=cv.getContext('2d');
+  if(!proj||!proj.hexes||!proj.hexes.length){
+    ctx2.clearRect(0,0,cv.width,cv.height);return;
+  }
 
   const R=proj.hexR||18;
   const hcx=(c,r)=>R*Math.sqrt(3)*(c+(r%2)*0.5)+R;
   const hcy=(r)=>R*1.5*r+R;
 
-  // Build hex list with colors
   const natColors={};
   (proj.nations||[]).forEach(n=>{natColors[n.id]=n.color;});
   const provNat={};
   (proj.provinces||[]).forEach(p=>{provNat[p.id]=p.natId;});
 
+  // Show all land hexes; unassigned get a neutral dark color
   const hexData=proj.hexes.filter(h=>!h.sea).map(h=>{
     const natId=h.p!=null?provNat[h.p]:null;
     const col=natId!=null?(natColors[natId]||'#2a3a5a'):'#2a3a5a';
     return{x:hcx(h.c,h.r),y:hcy(h.r),col};
   });
-  if(!hexData.length){ctx.clearRect(0,0,cv.width,cv.height);return;}
+  if(!hexData.length){ctx2.clearRect(0,0,cv.width,cv.height);return;}
 
   let mnX=Infinity,mxX=-Infinity,mnY=Infinity,mxY=-Infinity;
   hexData.forEach(h=>{mnX=Math.min(mnX,h.x);mxX=Math.max(mxX,h.x);mnY=Math.min(mnY,h.y);mxY=Math.max(mxY,h.y);});
-  const bndW=mxX-mnX+R*4,bndH=mxY-mnY+R*4;
+  const bndW=mxX-mnX+R*4, bndH=mxY-mnY+R*4;
 
-  let px=0,pd=1;
-  let _bgOpacity=0; // fade in
+  let px=0, pd=1;
+  let _bgOpacity=0;
   const _bgFadeTarget=0.22;
 
-  function hp(x,y){
-    ctx.beginPath();
-    for(let i=0;i<6;i++){const a=Math.PI/6+Math.PI/3*i;i?ctx.lineTo(x+R*Math.cos(a),y+R*Math.sin(a)):ctx.moveTo(x+R*Math.cos(a),y+R*Math.sin(a));}
-    ctx.closePath();
+  function hp2(x,y){
+    ctx2.beginPath();
+    for(let i=0;i<6;i++){const a=Math.PI/6+Math.PI/3*i;i?ctx2.lineTo(x+R*Math.cos(a),y+R*Math.sin(a)):ctx2.moveTo(x+R*Math.cos(a),y+R*Math.sin(a));}
+    ctx2.closePath();
   }
 
   function frame(){
     if(!document.getElementById('s-proj')?.classList.contains('on')){_projBgRaf=null;return;}
-    const cw=cv.width||window.innerWidth,ch=cv.height||window.innerHeight;
-    // Fade in
-    if(_bgOpacity<_bgFadeTarget)_bgOpacity=Math.min(_bgFadeTarget,_bgOpacity+0.004);
-    ctx.clearRect(0,0,cw,ch);
-    const sc=Math.max(ch/bndH*1.06,cw/bndW*1.06);
-    const sw=bndW*sc,mp=Math.max(0,sw-cw);
+    const cw=cv.width, ch=cv.height;
+    if(_bgOpacity<_bgFadeTarget)_bgOpacity=Math.min(_bgFadeTarget,_bgOpacity+0.005);
+    ctx2.clearRect(0,0,cw,ch);
+    const sc=Math.max(ch/bndH*1.06, cw/bndW*1.06);
+    const sw=bndW*sc, mp=Math.max(0,sw-cw);
     px+=0.14*pd;if(px>=mp){px=mp;pd=-1;}if(px<=0){px=0;pd=1;}
     const ox=(cw-sw)/2-(mp>0?px:0)-(mnX-R*2)*sc;
     const oy=(ch-bndH*sc)/2-(mnY-R*2)*sc;
-    ctx.save();
-    ctx.globalAlpha=_bgOpacity;
-    ctx.translate(ox,oy);ctx.scale(sc,sc);
-    hexData.forEach(h=>{hp(h.x,h.y);ctx.fillStyle=h.col;ctx.fill();ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=.3/sc;ctx.stroke();});
-    ctx.restore();
-    // Vignette
-    const vg=ctx.createRadialGradient(cw/2,ch/2,ch*.08,cw/2,ch/2,ch*.95);
-    vg.addColorStop(0,'rgba(6,8,14,.58)');vg.addColorStop(1,'rgba(6,8,14,.96)');
-    ctx.fillStyle=vg;ctx.fillRect(0,0,cw,ch);
+    ctx2.save();
+    ctx2.globalAlpha=_bgOpacity;
+    ctx2.translate(ox,oy);ctx2.scale(sc,sc);
+    hexData.forEach(h=>{hp2(h.x,h.y);ctx2.fillStyle=h.col;ctx2.fill();ctx2.strokeStyle='rgba(0,0,0,.3)';ctx2.lineWidth=.3/sc;ctx2.stroke();});
+    ctx2.restore();
+    // Vignette overlay
+    const vg=ctx2.createRadialGradient(cw/2,ch/2,ch*.08,cw/2,ch/2,ch*.95);
+    vg.addColorStop(0,'rgba(6,8,14,.55)');vg.addColorStop(1,'rgba(6,8,14,.97)');
+    ctx2.fillStyle=vg;ctx2.fillRect(0,0,cw,ch);
     _projBgRaf=requestAnimationFrame(frame);
   }
-  _projBgRaf=requestAnimationFrame(frame);
+  // Small delay so the proj screen is fully visible before measuring
+  setTimeout(()=>{
+    cv.width=window.innerWidth;cv.height=window.innerHeight;
+    _projBgRaf=requestAnimationFrame(frame);
+  },30);
 }
 
 // Watch for proj screen becoming active
@@ -1936,10 +1940,7 @@ new MutationObserver(()=>{
 }).observe(document.getElementById('s-proj'),{attributes:true,attributeFilter:['class']});
 window.addEventListener('resize',()=>{
   const cv=document.getElementById('proj-map-bg');
-  if(cv&&document.getElementById('s-proj')?.classList.contains('on')){
-    cv.width=cv.offsetWidth||window.innerWidth;
-    cv.height=cv.offsetHeight||window.innerHeight;
-  }
+  if(cv){cv.width=window.innerWidth;cv.height=window.innerHeight;}
 });
 
 // ── Settings ─────────────────────────────────────────
