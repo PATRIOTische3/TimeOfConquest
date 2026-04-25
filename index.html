@@ -204,7 +204,7 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 /* Mobile map padding — gives breathing room so edge provinces stay reachable */
 @media(max-width:900px){#map-wrap{padding:0 0 0 0}#map-canvas{box-sizing:border-box}}
 #move-banner{display:none;position:absolute;pointer-events:none;background:rgba(10,40,80,.88);border:1px solid rgba(80,200,80,.5);padding:clamp(3px,.4vh,6px) clamp(10px,1.2vw,18px);font-family:'Cinzel',serif;font-size:clamp(10px,1.1vw,15px);color:#80ff80;top:6px;left:50%;transform:translateX(-50%);white-space:nowrap;z-index:5}
-
+#move-banner.naval{color:#80e0ff;border-color:rgba(80,200,255,.5);background:rgba(10,30,60,.9)}
 #season-banner{display:none}
 #res-tooltip{position:absolute;background:rgba(6,8,14,.95);border:1px solid var(--gold);padding:clamp(5px,.7vh,10px) clamp(7px,.9vw,13px);font-size:clamp(9px,.9vw,13px);pointer-events:none;z-index:20;display:none;min-width:clamp(120px,14vw,180px)}
 .rt-row{display:flex;justify-content:space-between;gap:10px;margin:2px 0;color:var(--text)}
@@ -237,7 +237,7 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .abtn.war-btn:hover:not(:disabled){border-color:var(--red2);color:#ff7070;background:rgba(130,26,26,.09)}
 .abtn.peace-btn:hover:not(:disabled){border-color:var(--green2);color:#7aff7a;background:rgba(26,100,40,.09)}
 .abtn.active-mode{border-color:#50ff50;color:#80ff80;background:rgba(26,120,26,.12)}
-
+.abtn.active-naval{border-color:#50c8ff;color:#80e8ff;background:rgba(20,80,140,.15)}
 .abtn .ic{font-size:clamp(13px,1.4vw,20px);flex-shrink:0}
 .abtn .al{display:flex;flex-direction:column}
 .abtn .am{font-size:clamp(9px,2.4vw,13px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -254,7 +254,7 @@ body{background:var(--dark);color:var(--text);font-family:'IM Fell English',seri
 .le-new{transform:translateX(-20px);opacity:0}
 .le-anim{transform:translateX(0)!important;opacity:1!important;transition:transform .35s cubic-bezier(.2,.8,.4,1),opacity .3s ease}
 .lt{color:var(--dim);flex-shrink:0;font-size:clamp(7px,.7vw,10px);min-width:clamp(40px,5vw,60px)}
-.lm.war{color:#ff8888}.lm.peace{color:#80e880}.lm.diplo{color:#80a8f8}.lm.event{color:#e0c060}.lm.info{color:#606060}.lm.vic{color:var(--gold2)}.lm.build{color:#70c0f8}.lm.revolt{color:#f06020}.lm.ideo{color:#b080f0}.lm.move{color:#80e880}.lm.resist{color:#ff9040}.lm.loan{color:#c0e080}.lm.season{color:#a0c8f0}
+.lm.war{color:#ff8888}.lm.peace{color:#80e880}.lm.diplo{color:#80a8f8}.lm.event{color:#e0c060}.lm.info{color:#606060}.lm.vic{color:var(--gold2)}.lm.build{color:#70c0f8}.lm.revolt{color:#f06020}.lm.ideo{color:#b080f0}.lm.move{color:#80e880}.lm.naval{color:#60e8ff}.lm.resist{color:#ff9040}.lm.loan{color:#c0e080}.lm.season{color:#a0c8f0}
 #bottom{background:rgba(6,4,14,0.55);backdrop-filter:blur(18px) saturate(1.5);-webkit-backdrop-filter:blur(18px) saturate(1.5);border-top:1px solid rgba(201,168,76,.15);flex-shrink:0;display:none;flex-direction:column}
 #tabs{display:flex;border-bottom:1px solid rgba(201,168,76,.12);background:rgba(8,5,18,0.72)}
 .tab{flex:1;padding:6px 2px;font-family:'Cinzel',serif;font-size:clamp(7px,2vw,9px);letter-spacing:.6px;text-transform:uppercase;color:var(--dim);background:transparent;border:none;cursor:pointer;transition:all .12s;text-align:center;border-bottom:2px solid transparent}
@@ -575,7 +575,6 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <button class="btn" onclick="show('worlds');refreshWorldsList()" style="margin-top:12px">▶ Single Player</button>
     <button class="btn" onclick="show('mp')" style="border-color:#4080c0;color:#80b8f0">⚡ Local</button>
   </div>
-  <button class="screen-settings-btn" onclick="window.open('editor.html','_blank')" title="Map Editor" style="bottom:52px">🛠️</button>
   <button class="screen-settings-btn" onclick="openSettings()" title="Settings">⚙</button>
   <div id="version-label" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;color:rgba(100,88,60,.45);white-space:nowrap;pointer-events:none;user-select:none">powered by v…</div>
 </div>
@@ -680,7 +679,6 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 <!-- WORLDS -->
 <div class="scr" id="s-worlds">
   <canvas id="worlds-map-bg"></canvas>
-  <button class="screen-settings-btn" onclick="window.open('editor.html','_blank')" title="Map Editor" style="bottom:52px">🛠️</button>
   <button class="screen-settings-btn" onclick="openSettings()" title="Settings">⚙</button>
   <div id="worlds-panel">
     <div class="worlds-header">
@@ -851,7 +849,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
         <button class="abtn war-btn" id="sp-btn-atk" onclick="openAttack()" disabled><span class="ic">⚔</span><span class="al"><span class="am">Attack / Declare War</span><span class="as" id="sp-atk-sub">Select adjacent enemy territory</span></span></button>
         <button class="abtn" onclick="openDraft()"><span class="ic">🪖</span><span class="al"><span class="am">Conscript Soldiers</span><span class="as">1,000 pop · 1 gold per soldier</span></span></button>
         <button class="abtn" id="sp-btn-move" onclick="toggleMoveMode()" disabled><span class="ic">🚶</span><span class="al"><span class="am">Move Army</span><span class="as" id="sp-move-sub">Select your territory first</span></span></button>
-
+        <button class="abtn" id="sp-btn-naval" onclick="toggleNavalMode()" disabled><span class="ic">⚓</span><span class="al"><span class="am">Naval Transport</span><span class="as">Requires coastal province + port</span></span></button>
         <div class="sp-sec">🎁 Appease Population</div>
         <button class="abtn" onclick="openAppease()"><span class="ic">🎁</span><span class="al"><span class="am">Appease Population</span><span class="as">Raise satisfaction in all provinces</span></span></button>
         <div class="sp-sec">🏗 Economy &amp; Building</div>
@@ -899,7 +897,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:2px 0">
         <button class="abtn" id="mob-btn-move" onclick="toggleMoveMode()" disabled><span class="ic">🚶</span><span class="al"><span class="am">Move Army</span></span></button>
         <button class="abtn war-btn" id="btn-atk" onclick="openAttack()" disabled><span class="ic">⚔</span><span class="al"><span class="am">Attack</span></span></button>
-
+        <button class="abtn" id="mob-btn-naval" onclick="toggleNavalMode()" disabled><span class="ic">⚓</span><span class="al"><span class="am" id="mob-naval-lbl">Naval Transport</span></span></button>
         <button class="abtn" onclick="openDraft()"><span class="ic">🪖</span><span class="al"><span class="am">Conscript</span></span></button>
         <button class="abtn" onclick="openTaxation()"><span class="ic">💰</span><span class="al"><span class="am">Economy</span></span></button>
         <button class="abtn" onclick="openAppease()"><span class="ic">🎁</span><span class="al"><span class="am">Appease</span></span></button>
@@ -996,7 +994,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 <script>
 // Load the first map from maps.json asynchronously (avoids deprecated sync XHR)
 (function(){
-  const MAP_GLOBALS=['PROVINCES','NATIONS','NB','HEX_GRID','LAND','INIT_ALLIANCES','IDEOLOGIES','TERRAIN','TOC_MAP_KEY','TOC_MAP_NAME','TOC_MAP_DESC'];
+  const MAP_GLOBALS=['PROVINCES','NATIONS','NB','HEX_GRID','SEA_ZONES','LAND','INIT_ALLIANCES','IDEOLOGIES','TERRAIN','TOC_MAP_KEY','TOC_MAP_NAME','TOC_MAP_DESC'];
   function patchAndExec(src){
     MAP_GLOBALS.forEach(g=>{
       src=src.replace(new RegExp('(^|\n)([ \t]*)(const|let)([ \t]+)'+g+'([ \t]*=)','g'),
@@ -1030,7 +1028,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 <script src="engine/time.js?v=1776587082"></script>
 <script src="engine/state.js?v=1776587082"></script>
 <script src="engine/map.js?v=1776587082"></script>
-
+<script src="engine/naval.js?v=1776587082"></script>
 <script src="engine/military.js?v=1776587082"></script>
 <script src="engine/assimilation.js?v=1776587082"></script>
 <script src="engine/economy.js?v=1776587082"></script>
@@ -1450,7 +1448,7 @@ window.refreshWorldsList=function(){
 
   // ── LOAD SCENARIO (with full game engine reinit) ───────────
   // Globals that map files declare and game.js reads
-  const _MAP_GLOBALS=['PROVINCES','NATIONS','NB','HEX_GRID','LAND','INIT_ALLIANCES','IDEOLOGIES','TERRAIN','TOC_MAP_KEY','TOC_MAP_NAME','TOC_MAP_DESC'];
+  const _MAP_GLOBALS=['PROVINCES','NATIONS','NB','HEX_GRID','SEA_ZONES','LAND','INIT_ALLIANCES','IDEOLOGIES','TERRAIN','TOC_MAP_KEY','TOC_MAP_NAME','TOC_MAP_DESC'];
 
   // Patch map source: rewrite `const/let FOO =` → `var FOO =`
   // Using var in global script scope creates a real window property,
@@ -2369,6 +2367,143 @@ else{window.addEventListener('toc-map-ready',_doSessionRestore,{once:true});}
   _patchZoomReset();
   window.addEventListener('toc-map-ready', _patchZoomReset, {once:true});
   setTimeout(_patchZoomReset, 500);
+})();
+
+// ── SEA ZONE OVERLAY — draws only on demand, zero RAF overhead ───────────────
+// Called explicitly after clicks. Never runs in the render loop.
+window._drawSeaZoneOverlay = function(){
+  const zi = (typeof G !== 'undefined') ? G.selSea : -1;
+  if(!(zi >= 0)) return;
+  const cv = document.getElementById('map-canvas');
+  if(!cv) return;
+  const ctx = cv.getContext('2d');
+  if(!ctx) return;
+  if(typeof SEA_ZONES === 'undefined' || !SEA_ZONES[zi]) return;
+  if(typeof HEX_GRID === 'undefined' || !HEX_GRID || !HEX_GRID.hexes) return;
+  if(typeof vp === 'undefined') return;
+  const zone = SEA_ZONES[zi];
+  if(!zone.hexIds || !zone.hexIds.length) return;
+  const idSet = new Set(zone.hexIds);
+  const hexR = HEX_GRID.hexR;
+  const W = Math.sqrt(3) * hexR, H = 2 * hexR;
+  ctx.save();
+  ctx.translate(vp.tx, vp.ty);
+  ctx.scale(vp.scale, vp.scale);
+  HEX_GRID.hexes.forEach(function(h, idx){
+    if(!idSet.has(idx)) return;
+    const x = W * h.c + (h.r % 2 ? W / 2 : 0);
+    const y = H * 0.75 * h.r;
+    ctx.beginPath();
+    for(let i = 0; i < 6; i++){
+      const a = Math.PI / 6 + Math.PI / 3 * i;
+      if(i === 0) ctx.moveTo(x + hexR * Math.cos(a), y + hexR * Math.sin(a));
+      else ctx.lineTo(x + hexR * Math.cos(a), y + hexR * Math.sin(a));
+    }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(40,200,220,0.25)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(80,220,255,0.65)';
+    ctx.lineWidth = 1.2 / vp.scale;
+    ctx.stroke();
+  });
+  ctx.restore();
+};
+
+// ── PORT ICONS — drawn on demand after scheduleDraw settles ──────────────────
+// Uses a second hidden canvas layered over map-canvas to avoid triggering redraws.
+(function(){
+  var _portCanvas = null;
+
+  function _ensurePortCanvas(){
+    if(_portCanvas) return _portCanvas;
+    const wrap = document.getElementById('map-wrap');
+    if(!wrap) return null;
+    const mc = document.getElementById('map-canvas');
+    if(!mc) return null;
+    const c = document.createElement('canvas');
+    c.id = 'port-overlay-canvas';
+    c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3';
+    wrap.appendChild(c);
+    _portCanvas = c;
+    return c;
+  }
+
+  window._drawPortIcons = function(){
+    if(typeof G === 'undefined' || typeof PROVINCES === 'undefined') return;
+    if(typeof HEX_GRID === 'undefined' || !HEX_GRID || !HEX_GRID.hexes) return;
+    if(typeof vp === 'undefined') return;
+    const cv = _ensurePortCanvas();
+    if(!cv) return;
+    const mc = document.getElementById('map-canvas');
+    if(!mc) return;
+    // Sync size
+    if(cv.width !== mc.width || cv.height !== mc.height){
+      cv.width = mc.width; cv.height = mc.height;
+    }
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    const hexR = HEX_GRID.hexR;
+    const W = Math.sqrt(3) * hexR, H = 2 * hexR;
+    // Pre-build sea hex lookup once per call
+    const seaHexPos = [];
+    HEX_GRID.hexes.forEach(function(h){
+      if(h.sea) seaHexPos.push({x: W*h.c+(h.r%2?W/2:0), y: H*0.75*h.r});
+    });
+    PROVINCES.forEach(function(p, pi){
+      if(!(G.buildings[pi]||[]).includes('port')) return;
+      if(!p.isCoastal) return;
+      const cx2 = p.cx, cy2 = p.cy;
+      let best = null, bestD = Infinity;
+      seaHexPos.forEach(function(s){
+        const d = Math.hypot(s.x - cx2, s.y - cy2);
+        if(d < bestD){ bestD = d; best = s; }
+      });
+      if(!best) return;
+      const ix = (cx2 + best.x) / 2;
+      const iy = (cy2 + best.y) / 2;
+      const sx = ix * vp.scale + vp.tx;
+      const sy = iy * vp.scale + vp.ty;
+      const fs = Math.max(10, Math.min(18, vp.scale * hexR * 0.75));
+      ctx.save();
+      ctx.font = fs + 'px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(40,200,240,0.9)';
+      ctx.shadowBlur = 5;
+      ctx.globalAlpha = 0.9;
+      ctx.fillText('\u2693', sx, sy);
+      ctx.restore();
+    });
+  };
+
+  // Hook scheduleDraw to also refresh port canvas — but only once per frame
+  var _portTimer = null;
+  function _schedulePortRedraw(){
+    if(_portTimer) return;
+    _portTimer = setTimeout(function(){
+      _portTimer = null;
+      window._drawPortIcons();
+    }, 80); // 80ms after scheduleDraw — main draw has definitely finished
+  }
+
+  // Patch scheduleDraw once it exists
+  function _hookScheduleDraw(){
+    if(typeof scheduleDraw !== 'function') return false;
+    const _orig = window.scheduleDraw;
+    window.scheduleDraw = function(){
+      _orig.apply(this, arguments);
+      _schedulePortRedraw();
+    };
+    return true;
+  }
+
+  function _tryHook(){
+    if(!_hookScheduleDraw()){
+      setTimeout(_tryHook, 300);
+    }
+  }
+  window.addEventListener('toc-map-ready', function(){ setTimeout(_tryHook, 200); }, {once:true});
+  setTimeout(_tryHook, 600);
 })();
 </script>
 </body>
