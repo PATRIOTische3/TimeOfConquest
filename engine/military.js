@@ -9,46 +9,65 @@ function peaceTurnsLeft(){ return Math.max(0, PEACE_WEEKS - (G.tick||0)); }
 function chkBtns(){
   const si=G.sel,PN=G.playerNation;
   const peace=inPeacePeriod();
-  const isOwn = si>=0 && G.owner[si]===PN;
-  const isEnemy = si>=0 && G.owner[si]>=0 && G.owner[si]!==PN;
-  const canAtk=!peace&&isEnemy;
-  const fr=canAtk?regsOf(PN).find(r=>G.army[r]>100&&NB[r]?.includes(si)):undefined;
-  const ok=fr!==undefined&&canAtk;
-  // Adjacent enemy but no army border? Attack button visible but disabled
-  const adjEnemy = isEnemy && !ok;
+  const isOwn  = si>=0 && G.owner[si]===PN;
+  const isEnemy= si>=0 && G.owner[si]>=0 && G.owner[si]!==PN;
 
-  // Move button: enabled only when own province selected
-  const canMove = isOwn && si>=0 && G.army[si]>=1;
+  // ── Unified Move/Attack button ────────────────────────
+  const canMove = isOwn && G.army[si]>=1;
+  const canAtk  = !peace && isEnemy &&
+    regsOf(PN).some(r=>G.army[r]>100&&NB[r]?.includes(si));
+  const isAttackContext = !isOwn && isEnemy;
+  const btnEnabled = canMove || canAtk;
+
   ['sp-btn-move','mob-btn-move'].forEach(id=>{
     const b=document.getElementById(id);
-    if(!b) return;
-    b.disabled = !canMove;
+    if(!b)return;
+    b.disabled=!btnEnabled;
+    const am=b.querySelector('.am');
+    const as=b.querySelector('.as');
+    const ic=b.querySelector('.ic');
+    if(isAttackContext){
+      b.classList.add('war-btn');
+      if(ic)ic.textContent='⚔';
+      if(am)am.textContent='Attack';
+      b.onclick=function(){openAttack();};
+    } else {
+      b.classList.remove('war-btn');
+      if(ic)ic.textContent='🚶';
+      if(am)am.textContent=G.moveMode?'Cancel Move':'Move Army';
+      b.onclick=function(){toggleMoveMode();};
+    }
+    if(as){
+      if(isAttackContext&&canAtk){
+        const fr2=regsOf(PN).find(r=>G.army[r]>100&&NB[r]?.includes(si));
+        as.textContent=fr2!==undefined?`${PROVINCES[fr2].short}→${PROVINCES[si].short}`:'No army on border';
+      } else if(isAttackContext&&peace){
+        as.textContent=`Peace — ${peaceTurnsLeft()} weeks left`;
+      } else if(isAttackContext){
+        as.textContent='No army on border';
+      } else {
+        as.textContent=canMove?'Click adjacent territory':'Select your territory';
+      }
+    }
   });
 
-  // Attack button
-  ['btn-atk','sp-btn-atk'].forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=!ok;});
-
-  // Update Move label based on context
-  const moveLabelEl = document.querySelector('#mob-btn-move .am');
-  if(moveLabelEl) moveLabelEl.textContent = 'Move Army';
-
-  const atkSub = peace
-    ? `Peace — ${peaceTurnsLeft()} weeks left`
-    : !isEnemy ? 'Select enemy territory'
-    : ok ? `${PROVINCES[fr].short}→${PROVINCES[si].short}`
-    : 'No army on border';
-  sEl('sp-atk-sub', atkSub);
-  sEl('atk-sub', peace ? `Peace — ${peaceTurnsLeft()}wk` : ok?`${PROVINCES[fr].short}→${PROVINCES[si].short}`:'Select enemy');
-  if(ok){window._af=fr;window._at=si;}
-
-  // Naval button: enabled if own coastal province with port
-  const canNaval = isOwn && (typeof canLaunchNaval==='function') && canLaunchNaval(si);
+  // Hide old separate attack buttons (merged into move/attack)
+  ['btn-atk','sp-btn-atk'].forEach(id=>{
+    const b=document.getElementById(id);
+    if(b)b.style.display='none';
+  });
+  // Hide naval buttons (naval triggered via port icon on map)
   ['sp-btn-naval','mob-btn-naval'].forEach(id=>{
     const b=document.getElementById(id);
-    if(!b) return;
-    b.disabled = !canNaval;
+    if(b)b.style.display='none';
   });
+
+  if(canAtk){
+    const fr3=regsOf(PN).find(r=>G.army[r]>100&&NB[r]?.includes(si));
+    if(fr3!==undefined){window._af=fr3;window._at=si;}
+  }
 }
+
 
 // NOTE: openMo/closeMo/openModal/closeModal/popup/addLog/setEB live in ui.js
 

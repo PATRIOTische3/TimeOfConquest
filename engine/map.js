@@ -780,22 +780,7 @@ function drawMap(){
   // Labels drawn AFTER ctx.restore() to appear above all hexes
   const seaLabelAlpha = Math.min(1, Math.max(0, (vp.scale - 0.20) / 0.15));
 
-  // ── Sea zone selection fill — pulsing white like province selection ──
-  if(_hexCache&&_hexCache.length&&_seaZonePositions&&G.selSea>=0){
-    const selZi = G.selSea;
-    const z = _seaZonePositions[selZi];
-    const R_sea = HEX_GRID.hexR;
-    const seaPulse = 0.06 + 0.06*Math.sin(Date.now()/220);
-    if(z && z.hexIds){
-      for(const hi of z.hexIds){
-        const h = _hexCache[hi]; if(!h) continue;
-        if(h.x<wx0-R_sea*3||h.x>wx1+R_sea*3||h.y<wy0-R_sea*3||h.y>wy1+R_sea*3) continue;
-        hexPath(ctx,h.x,h.y,R_sea+1.0/vp.scale);
-        ctx.fillStyle=`rgba(255,255,255,${seaPulse.toFixed(3)})`;
-        ctx.fill();
-      }
-    }
-  }
+  // Sea zone selection: no visual fill — toponym shown in province panel only.
 
     // ── HEX_GRID mode ─────────────────────────────────────────
   if(_hexCache&&_hexCache.length){
@@ -822,14 +807,8 @@ function drawMap(){
       }
     } else {
 
-    // PASS 0: Sea hexes — fill with ocean color, no gap/border visible
-    for(const h of _hexCache){
-      if(!h.sea) continue;
-      if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad) continue;
-      hexPath(ctx,h.x,h.y,R+1.0/vp.scale);  // slight oversize to eliminate gaps
-      ctx.fillStyle='#0e1e35';
-      ctx.fill();
-    }
+    // PASS 0: Sea hexes — NOT rendered; ocean background shows through naturally.
+    // Sea zone clicks are handled via hitSeaZone(); no visual needed here.
 
     // PASS 1: Unowned land (sea=0, p=-1) — terrain color at 50% opacity
     ctx.globalAlpha=0.5;
@@ -1332,6 +1311,38 @@ function drawMap(){
       if(p.isCapital){
         ctx.font=`${fs+3}px serif`;ctx.fillStyle='#f0d080';ctx.shadowColor='rgba(0,0,0,.8)';ctx.shadowBlur=2;
         ctx.fillText('★',px+labelR*.62,py-labelR*.55);ctx.shadowBlur=0;
+      }
+
+      // Port icon near coast — shown always (not just buildings mode) if port exists
+      if((G.buildings[i]||[]).includes('port') && G.owner[i]===G.playerNation){
+        const labelR2=_hexCache?HEX_GRID.hexR:scaledR(i);
+        // Find coast direction: edge toward sea
+        let portOffX=labelR2*0.8, portOffY=labelR2*0.6;
+        const edges=window._provBorderEdges&&window._provBorderEdges[i];
+        if(edges){
+          // Average direction of sea-facing edges
+          let sdx=0,sdy=0,sc=0;
+          for(const e of edges){
+            if(!e.isProvBorder){ // sea-facing
+              sdx+=(e.x0+e.x1)/2-px; sdy+=(e.y0+e.y1)/2-py; sc++;
+            }
+          }
+          if(sc>0){ const len=Math.sqrt(sdx*sdx+sdy*sdy)||1; portOffX=(sdx/len)*labelR2*0.85; portOffY=(sdy/len)*labelR2*0.75; }
+        }
+        const portX=px+portOffX, portY=py+portOffY;
+        const portFs=Math.max(5,Math.min(10,labelR2*0.55));
+        // Pulse if in naval mode from this province
+        const isNavalSrc=G.navalMode&&G.navalFrom===i;
+        if(isNavalSrc){
+          const pulse3=0.5+0.5*Math.abs(Math.sin(Date.now()/280));
+          ctx.globalAlpha=pulse3;
+        }
+        ctx.font=`${portFs}px serif`;
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.shadowColor='rgba(0,0,0,.9)';ctx.shadowBlur=3;
+        ctx.fillText('⚓',portX,portY);
+        ctx.shadowBlur=0;
+        ctx.globalAlpha=1.0;
       }
 
       if(G.mapMode==='buildings'&&G.buildings[i]?.length){

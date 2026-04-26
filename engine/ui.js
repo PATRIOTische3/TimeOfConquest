@@ -400,7 +400,37 @@ function hexToRgb(hex){
 function onCanvasClick(wx,wy){
   const i=hitProv(wx,wy);
 
-  // Special modes
+  // ── Port icon click → enter naval mode ───────────────
+  // Check if user clicked near the port icon of a coastal province with port
+  if(!G.navalMode && !G.moveMode && !_atkSelectMode){
+    const PN=G.playerNation;
+    for(let pi=0;pi<PROVINCES.length;pi++){
+      if(G.owner[pi]!==PN) continue;
+      if(!(G.buildings[pi]||[]).includes('port')) continue;
+      const hpos=_provCentroid&&_provCentroid[pi]&&_provCentroid[pi].x?_provCentroid[pi]:PROVINCES[pi];
+      const px=hpos.x||hpos.cx, py=hpos.y||hpos.cy;
+      const labelR=_hexCache?HEX_GRID.hexR:8;
+      // Compute port offset (same logic as drawMap)
+      let portOffX=labelR*0.8, portOffY=labelR*0.6;
+      const edges=window._provBorderEdges&&window._provBorderEdges[pi];
+      if(edges){
+        let sdx=0,sdy=0,sc=0;
+        for(const e of edges){if(!e.isProvBorder){sdx+=(e.x0+e.x1)/2-px;sdy+=(e.y0+e.y1)/2-py;sc++;}}
+        if(sc>0){const len=Math.sqrt(sdx*sdx+sdy*sdy)||1;portOffX=(sdx/len)*labelR*0.85;portOffY=(sdy/len)*labelR*0.75;}
+      }
+      const portX=px+portOffX, portY=py+portOffY;
+      const hitR=Math.max(labelR*0.6,5);
+      const dx=wx-portX,dy=wy-portY;
+      if(dx*dx+dy*dy<hitR*hitR){
+        // Port icon clicked — enter naval mode
+        G.sel=pi;G.selSea=-1;G.selStage=1;G.selHex=null;
+        toggleNavalMode();
+        return;
+      }
+    }
+  }
+
+
   if(G.navalMode&&G.navalFrom>=0){
     if(i<0){
       const zi=(typeof hitSeaZone==='function')?hitSeaZone(wx,wy):-1;
