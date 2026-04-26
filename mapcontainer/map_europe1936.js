@@ -3,7 +3,7 @@
 // Project : EUROPE1936
 // Date    : 2026-04-26
 // Grid    : 146 × 108 (hex R=18px)
-// Stats   : 131 provinces · 20 nations · 14 water labels · 9341 land hexes
+// Stats   : 131 provinces · 20 nations · 18 water labels · 9341 land hexes
 // ═══════════════════════════════════════════════════════
 
 // ── Map Identity (required by game engine) ──────────────
@@ -2618,6 +2618,78 @@ var WATER_LABELS = [
         "w": 350,
         "h": 300,
         "rot": 0
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "name": "BALEARIC SEA",
+    "x": 1280,
+    "y": 2250,
+    "fontSize": 24,
+    "rotation": -15,
+    "color": "rgba(65,135,200,0.55)",
+    "zones": [
+      {
+        "x": 1280,
+        "y": 2250,
+        "w": 300,
+        "h": 200,
+        "rot": -15
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "name": "TYRRHENIAN SEA",
+    "x": 2070,
+    "y": 2300,
+    "fontSize": 28,
+    "rotation": 15,
+    "color": "rgba(65,135,200,0.55)",
+    "zones": [
+      {
+        "x": 2070,
+        "y": 2300,
+        "w": 300,
+        "h": 300,
+        "rot": 15
+      }
+    ]
+  },
+  {
+    "id": 16,
+    "name": "LIGURIAN SEA",
+    "x": 1750,
+    "y": 2050,
+    "fontSize": 20,
+    "rotation": -15,
+    "color": "rgba(65,135,200,0.55)",
+    "zones": [
+      {
+        "x": 1750,
+        "y": 2050,
+        "w": 250,
+        "h": 150,
+        "rot": -15
+      }
+    ]
+  },
+  {
+    "id": 17,
+    "name": "NORWEGIAN SEA",
+    "x": 1600,
+    "y": 301,
+    "fontSize": 30,
+    "rotation": -40,
+    "color": "rgba(65,135,200,0.55)",
+    "zones": [
+      {
+        "x": 1600,
+        "y": 301,
+        "w": 400,
+        "h": 200,
+        "rot": -40
       }
     ]
   }
