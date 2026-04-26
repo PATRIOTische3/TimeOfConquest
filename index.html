@@ -574,6 +574,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <div class="i-rule"></div>
     <button class="btn" onclick="show('worlds');refreshWorldsList()" style="margin-top:12px">▶ Single Player</button>
     <button class="btn" onclick="show('mp')" style="border-color:#4080c0;color:#80b8f0">⚡ Local</button>
+    <button class="btn" onclick="window.location.href='editor.html'" style="border-color:rgba(201,168,76,.4);color:#c9a84c;margin-top:4px">🛠️ Map Editor</button>
   </div>
   <button class="screen-settings-btn" onclick="openSettings()" title="Settings">⚙</button>
   <div id="version-label" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;color:rgba(100,88,60,.45);white-space:nowrap;pointer-events:none;user-select:none">powered by v…</div>
@@ -683,7 +684,10 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
   <div id="worlds-panel">
     <div class="worlds-header">
       <div class="worlds-title">⚔ Campaigns</div>
-      <button class="worlds-back" onclick="show('intro')">← Back</button>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="btn" onclick="window.location.href='editor.html'" style="padding:5px 10px;font-size:9px;border-color:rgba(201,168,76,.4);color:#c9a84c">🛠️ Editor</button>
+        <button class="worlds-back" onclick="show('intro')">← Back</button>
+      </div>
     </div>
     <div class="worlds-rule"></div>
     <div class="worlds-actions">
@@ -788,6 +792,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <button class="save-btn-hud" onclick="openSaveMenu()">💾 Save</button>
     <button class="save-btn-hud" onclick="saveAndExit()" style="border-color:rgba(180,80,80,.5);color:#c08080">💾 Exit</button>
     <button class="save-btn-hud hud-settings-btn" onclick="openSettings()" title="Settings">⚙</button>
+    <button class="save-btn-hud hud-settings-btn" onclick="window.location.href='editor.html'" title="Map Editor" style="color:#c9a84c;border-color:rgba(201,168,76,.3)">🛠️</button>
     <button class="save-btn-hud" id="fast-mode-btn" onclick="toggleFastMode()" title="Fast mode — skip battle animations">▶▶</button>
   </div>
   <div id="game-body">
@@ -846,10 +851,10 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
       </div>
       <div id="sp-actions">
         <div class="sp-sec">⚔ Military Actions</div>
-        <button class="abtn war-btn" id="sp-btn-atk" onclick="openAttack()" disabled><span class="ic">⚔</span><span class="al"><span class="am">Attack / Declare War</span><span class="as" id="sp-atk-sub">Select adjacent enemy territory</span></span></button>
+        <button class="abtn" id="sp-btn-atk" onclick="openAttack()" disabled style="display:none"><span class="ic">⚔</span><span class="al"><span class="am">Attack</span><span class="as" id="sp-atk-sub">Select adjacent enemy territory</span></span></button>
         <button class="abtn" onclick="openDraft()"><span class="ic">🪖</span><span class="al"><span class="am">Conscript Soldiers</span><span class="as">1,000 pop · 1 gold per soldier</span></span></button>
         <button class="abtn" id="sp-btn-move" onclick="toggleMoveMode()" disabled><span class="ic">🚶</span><span class="al"><span class="am">Move Army</span><span class="as" id="sp-move-sub">Select your territory first</span></span></button>
-        <button class="abtn" id="sp-btn-naval" onclick="toggleNavalMode()" disabled><span class="ic">⚓</span><span class="al"><span class="am">Naval Transport</span><span class="as">Requires coastal province + port</span></span></button>
+        <button class="abtn" id="sp-btn-naval" onclick="toggleNavalMode()" disabled style="display:none"><span class="ic">⚓</span><span class="al"><span class="am">Naval Transport</span><span class="as">Requires coastal province + port</span></span></button>
         <div class="sp-sec">🎁 Appease Population</div>
         <button class="abtn" onclick="openAppease()"><span class="ic">🎁</span><span class="al"><span class="am">Appease Population</span><span class="as">Raise satisfaction in all provinces</span></span></button>
         <div class="sp-sec">🏗 Economy &amp; Building</div>
@@ -896,8 +901,8 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <div class="tpane" id="pane-act">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:2px 0">
         <button class="abtn" id="mob-btn-move" onclick="toggleMoveMode()" disabled><span class="ic">🚶</span><span class="al"><span class="am">Move Army</span></span></button>
-        <button class="abtn war-btn" id="btn-atk" onclick="openAttack()" disabled><span class="ic">⚔</span><span class="al"><span class="am">Attack</span></span></button>
-        <button class="abtn" id="mob-btn-naval" onclick="toggleNavalMode()" disabled><span class="ic">⚓</span><span class="al"><span class="am" id="mob-naval-lbl">Naval Transport</span></span></button>
+        <button class="abtn war-btn" id="btn-atk" onclick="openAttack()" disabled style="display:none"><span class="ic">⚔</span><span class="al"><span class="am">Attack</span></span></button>
+        <button class="abtn" id="mob-btn-naval" onclick="toggleNavalMode()" disabled style="display:none"><span class="ic">⚓</span><span class="al"><span class="am" id="mob-naval-lbl">Naval Transport</span></span></button>
         <button class="abtn" onclick="openDraft()"><span class="ic">🪖</span><span class="al"><span class="am">Conscript</span></span></button>
         <button class="abtn" onclick="openTaxation()"><span class="ic">💰</span><span class="al"><span class="am">Economy</span></span></button>
         <button class="abtn" onclick="openAppease()"><span class="ic">🎁</span><span class="al"><span class="am">Appease</span></span></button>
