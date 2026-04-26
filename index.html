@@ -574,9 +574,11 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <div class="i-rule"></div>
     <button class="btn" onclick="show('worlds');refreshWorldsList()" style="margin-top:12px">▶ Single Player</button>
     <button class="btn" onclick="show('mp')" style="border-color:#4080c0;color:#80b8f0">⚡ Local</button>
-    <button class="btn" onclick="window.location.href='editor.html'" style="border-color:rgba(201,168,76,.4);color:#c9a84c;margin-top:4px">🛠️ Map Editor</button>
   </div>
-  <button class="screen-settings-btn" onclick="openSettings()" title="Settings">⚙</button>
+  <div style="position:absolute;bottom:14px;right:14px;z-index:5;display:flex;flex-direction:column;gap:6px;align-items:center">
+    <button class="screen-settings-btn" onclick="window.location.href='editor.html'" title="Map Editor" style="position:static;color:rgba(201,168,76,.55);border-color:rgba(201,168,76,.25)">🛠️</button>
+    <button class="screen-settings-btn" onclick="openSettings()" title="Settings" style="position:static">⚙</button>
+  </div>
   <div id="version-label" style="position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;color:rgba(100,88,60,.45);white-space:nowrap;pointer-events:none;user-select:none">powered by v…</div>
 </div>
 
@@ -680,14 +682,14 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 <!-- WORLDS -->
 <div class="scr" id="s-worlds">
   <canvas id="worlds-map-bg"></canvas>
-  <button class="screen-settings-btn" onclick="openSettings()" title="Settings">⚙</button>
+  <div style="position:absolute;bottom:14px;right:14px;z-index:5;display:flex;flex-direction:column;gap:6px;align-items:center">
+    <button class="screen-settings-btn" onclick="window.location.href='editor.html'" title="Map Editor" style="position:static;color:rgba(201,168,76,.55);border-color:rgba(201,168,76,.25)">🛠️</button>
+    <button class="screen-settings-btn" onclick="openSettings()" title="Settings" style="position:static">⚙</button>
+  </div>
   <div id="worlds-panel">
     <div class="worlds-header">
       <div class="worlds-title">⚔ Campaigns</div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <button class="btn" onclick="window.location.href='editor.html'" style="padding:5px 10px;font-size:9px;border-color:rgba(201,168,76,.4);color:#c9a84c">🛠️ Editor</button>
-        <button class="worlds-back" onclick="show('intro')">← Back</button>
-      </div>
+      <button class="worlds-back" onclick="show('intro')">← Back</button>
     </div>
     <div class="worlds-rule"></div>
     <div class="worlds-actions">
@@ -792,7 +794,6 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
     <button class="save-btn-hud" onclick="openSaveMenu()">💾 Save</button>
     <button class="save-btn-hud" onclick="saveAndExit()" style="border-color:rgba(180,80,80,.5);color:#c08080">💾 Exit</button>
     <button class="save-btn-hud hud-settings-btn" onclick="openSettings()" title="Settings">⚙</button>
-    <button class="save-btn-hud hud-settings-btn" onclick="window.location.href='editor.html'" title="Map Editor" style="color:#c9a84c;border-color:rgba(201,168,76,.3)">🛠️</button>
     <button class="save-btn-hud" id="fast-mode-btn" onclick="toggleFastMode()" title="Fast mode — skip battle animations">▶▶</button>
   </div>
   <div id="game-body">
