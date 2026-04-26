@@ -233,6 +233,12 @@ function buildHexCache(){
   }
 
   _computeMapBounds();
+
+  // Invalidate all per-frame render caches on map reload
+  _provColorCache = null;
+  _provColorCacheTick = -1;
+  window._borderCache = null;
+  window._oceanGrad = null;
 }
 
 // ── TERRAIN COLORS ────────────────────────────────────────
@@ -245,6 +251,33 @@ const TC = {
 const REBEL_COLOR = '#c86820';
 
 // ── PROVINCE COLOR ────────────────────────────────────────
+// ── provColor cache — rebuilt once per G.tick+mapMode change ──────────────
+var _provColorCache = null;
+var _provColorCacheTick = -1;
+var _provColorCacheMode = '';
+var _provColorCacheWar  = '';  // war/pact state fingerprint
+
+function _buildProvColorCache(){
+  const PN = G.playerNation;
+  const warKey = G.war[PN] ? G.war[PN].join('') : '';
+  const tick = G.tick || 0;
+  if(_provColorCache && _provColorCacheTick === tick
+     && _provColorCacheMode === G.mapMode
+     && _provColorCacheWar  === warKey) return;
+  _provColorCacheTick = tick;
+  _provColorCacheMode = G.mapMode;
+  _provColorCacheWar  = warKey;
+  const n = PROVINCES.length;
+  _provColorCache = new Array(n);
+  for(let i = 0; i < n; i++) _provColorCache[i] = provColor(i);
+}
+
+function cachedProvColor(i){
+  if(!_provColorCache || _provColorCacheTick !== (G.tick||0)
+     || _provColorCacheMode !== G.mapMode) _buildProvColorCache();
+  return _provColorCache[i];
+}
+
 function provColor(i){
   const o = G.owner[i], m = G.mapMode;
 
@@ -334,6 +367,15 @@ var ctx    = canvas.getContext('2d');
 var CW = 0, CH = 0;
 var vp     = {scale:1, tx:0, ty:0};
 var _drawPending = false;
+
+// Returns effective map width (excluding right sidebar if visible)
+function _mapAreaWidth(){
+  const sp = document.getElementById('side-panel');
+  if(sp && sp.offsetWidth > 0 && window.innerWidth > 900){
+    return CW - sp.offsetWidth;
+  }
+  return CW;
+}
 
 function buildCanvas(){
   const wrap = document.getElementById('map-wrap');
@@ -491,27 +533,29 @@ function _computeMapBounds(){
 
 function clampViewport(){
   const {minX, maxX, minY, maxY} = _mapBounds;
-  const margin = Math.min(CW, CH) * 0.15;
-  vp.tx = Math.max(CW-margin-maxX*vp.scale, Math.min(margin-minX*vp.scale, vp.tx));
+  const MAW = _mapAreaWidth();
+  const margin = Math.min(MAW, CH) * 0.15;
+  vp.tx = Math.max(MAW-margin-maxX*vp.scale, Math.min(margin-minX*vp.scale, vp.tx));
   vp.ty = Math.max(CH-margin-maxY*vp.scale, Math.min(margin-minY*vp.scale, vp.ty));
 }
 
 function zoomBy(f, cx, cy){
-  if(cx === undefined){ cx = CW/2; cy = CH/2; }
+  if(cx === undefined){ cx = _mapAreaWidth()/2; cy = CH/2; }
   const ns = Math.max(.18, Math.min(9, vp.scale*f)), r = ns/vp.scale;
   vp.tx = cx - (cx - vp.tx)*r; vp.ty = cy - (cy - vp.ty)*r; vp.scale = ns;
   clampViewport(); scheduleDraw();
 }
 
 function zoomReset(){
+  const MAW = _mapAreaWidth(); // effective map width (excluding sidebar)
   if(_hexCache && _hexCache.length){
     const R = HEX_GRID.hexR;
     let mnX=Infinity, mxX=-Infinity, mnY=Infinity, mxY=-Infinity;
     for(const h of _hexCache){ mnX=Math.min(mnX,h.x); mxX=Math.max(mxX,h.x); mnY=Math.min(mnY,h.y); mxY=Math.max(mxY,h.y); }
     const minX=mnX-R*2, maxX=mxX+R*2, minY=mnY-R*2, maxY=mxY+R*2;
     const isMobile = CW < 600;
-    const s = Math.min(CW/(maxX-minX), CH/(maxY-minY)) * (isMobile ? 1.8 : 0.92);
-    vp.scale = s; vp.tx = (CW-(maxX-minX)*s)/2 - minX*s; vp.ty = (CH-(maxY-minY)*s)/2 - minY*s;
+    const s = Math.min(MAW/(maxX-minX), CH/(maxY-minY)) * (isMobile ? 1.8 : 0.92);
+    vp.scale = s; vp.tx = (MAW-(maxX-minX)*s)/2 - minX*s; vp.ty = (CH-(maxY-minY)*s)/2 - minY*s;
     _computeMapBounds(); scheduleDraw(); return;
   }
   if(!PROVINCES.length){ vp.scale=1; vp.tx=0; vp.ty=0; scheduleDraw(); return; }
@@ -519,8 +563,8 @@ function zoomReset(){
   for(const p of PROVINCES){ mnX=Math.min(mnX,p.cx); mxX=Math.max(mxX,p.cx); mnY=Math.min(mnY,p.cy); mxY=Math.max(mxY,p.cy); }
   const minX=mnX-25, maxX=mxX+25, minY=mnY-25, maxY=mxY+25;
   const isMobile2 = CW < 600;
-  const s = Math.min(CW/(maxX-minX), CH/(maxY-minY)) * (isMobile2 ? 1.8 : 0.88);
-  vp.scale = s; vp.tx = (CW-(maxX-minX)*s)/2 - minX*s; vp.ty = (CH-(maxY-minY)*s)/2 - minY*s;
+  const s = Math.min(MAW/(maxX-minX), CH/(maxY-minY)) * (isMobile2 ? 1.8 : 0.88);
+  vp.scale = s; vp.tx = (MAW-(maxX-minX)*s)/2 - minX*s; vp.ty = (CH-(maxY-minY)*s)/2 - minY*s;
   _computeMapBounds(); scheduleDraw();
 }
 
@@ -743,6 +787,9 @@ canvas.addEventListener('touchend', e => {
 function drawMap(){
   if(!ctx||!CW)return;
 
+  // Pre-build province color cache once per frame (avoids repeated _tintHex calls)
+  _buildProvColorCache();
+
   // ── Global optimisation: skip redundant redraws ────────
   // Build a cheap state key; if it matches last frame, bail out
   // (only works when nothing animates — pulse/instab animation always differs)
@@ -758,17 +805,17 @@ function drawMap(){
 
   ctx.clearRect(0,0,CW,CH);
 
-  // Ocean background
-  const grad=ctx.createLinearGradient(0,0,0,CH);
-  grad.addColorStop(0,'#08162a');grad.addColorStop(1,'#0c1e38');
-  ctx.fillStyle=grad;ctx.fillRect(0,0,CW,CH);
+  // Ocean background (cached gradient)
+  if(!window._oceanGrad || window._oceanGradH !== CH){
+    window._oceanGrad = ctx.createLinearGradient(0,0,0,CH);
+    window._oceanGrad.addColorStop(0,'#08162a');
+    window._oceanGrad.addColorStop(1,'#0c1e38');
+    window._oceanGradH = CH;
+  }
+  ctx.fillStyle = window._oceanGrad;
+  ctx.fillRect(0,0,CW,CH);
 
-  // Grid overlay (subtle)
-  ctx.strokeStyle='rgba(50,110,190,.045)';ctx.lineWidth=.5;
-  const gs=40*vp.scale;
-  const ox=((vp.tx%gs)+gs)%gs,oy=((vp.ty%gs)+gs)%gs;
-  for(let x=ox;x<CW;x+=gs){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,CH);ctx.stroke();}
-  for(let y=oy;y<CH;y+=gs){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(CW,y);ctx.stroke();}
+  // (grid overlay removed for performance)
 
   // Clip to visible bounds for performance
   const [wx0,wy0]=toWorld(0,0),[wx1,wy1]=toWorld(CW,CH);
@@ -778,7 +825,8 @@ function drawMap(){
 
   // ── Sea zone borders (inside transform) ─────────────────
   // Labels drawn AFTER ctx.restore() to appear above all hexes
-  const seaLabelAlpha = Math.min(1, Math.max(0, (vp.scale - 0.20) / 0.15));
+  // Sea zone labels: visible at all zoom levels (fade in very quickly from near-zero)
+  const seaLabelAlpha = Math.min(1, Math.max(0, (vp.scale - 0.08) / 0.08));
 
   // Sea zone selection: no visual fill — toponym shown in province panel only.
 
@@ -798,7 +846,7 @@ function drawMap(){
         const c = _provCentroid[pi];
         if(!c || !c.x) continue;
         if(c.x < wx0-pad*2||c.x > wx1+pad*2) continue;
-        const col = provColor(pi);
+        const col = cachedProvColor(pi);
         const approxR = PROVINCES[pi].hexCount ? Math.sqrt(PROVINCES[pi].hexCount) * R * 1.1 : R*2;
         ctx.fillStyle = col;
         ctx.beginPath();
@@ -826,7 +874,7 @@ function drawMap(){
       if(h.sea||h.p<0)continue;
       if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
       hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
-      ctx.fillStyle=provColor(h.p);
+      ctx.fillStyle=cachedProvColor(h.p);
       ctx.fill();
     }
 
@@ -944,104 +992,59 @@ function drawMap(){
     if(provBorderAlpha > 0){
       if(!G.mapMode || G.mapMode==='political'){
 
-        // ── BORDERS: 4 passes ────────────────────────────────────
-        // For every province, _provBorderEdges[pi] contains all external edges.
-        // e.isProvBorder = true  → land↔land (different province)
-        // e.isProvBorder = false → land↔sea or map edge
-        // e.nbProv = neighbour province index (-1 if sea/edge)
-        // oA = current owner of this province; oB = current owner of neighbour
+        // ── BORDERS: Path2D cache (rebuilt only on tick/war change) ────
+        if(!window._borderCache) window._borderCache = {};
+        const _bc = window._borderCache;
+        const PN4 = G.playerNation;
+        const _warFP = G.war[PN4] ? G.war[PN4].join('') : '';
+        const _borderKey = `${G.tick||0}_${_warFP}`;
 
-        // PASS 4A: Intra-nation province borders (thin, dim)
-        // Condition: both provinces owned by the SAME nation currently
-        ctx.strokeStyle=`rgba(0,0,0,${(0.25*provBorderAlpha).toFixed(2)})`;
-        ctx.lineWidth=1.0/vp.scale;
+        // Coastline path: static geometry, built once ever
+        if(!_bc.coast){
+          const cp = new Path2D();
+          for(let pi=0;pi<PROVINCES.length;pi++){
+            const edges=window._provBorderEdges[pi]; if(!edges) continue;
+            for(const e of edges){ if(!e.isProvBorder){ cp.moveTo(e.x0,e.y0); cp.lineTo(e.x1,e.y1); } }
+          }
+          _bc.coast = cp;
+        }
+
+        // Nation/intra border paths: rebuilt on ownership or war change
+        if(_bc._key !== _borderKey){
+          _bc._key = _borderKey;
+          const intraP=new Path2D(), shadowP=new Path2D(), goldP=new Path2D(), redP=new Path2D();
+          for(let pi=0;pi<PROVINCES.length;pi++){
+            const oA=G.owner[pi];
+            const edges=window._provBorderEdges[pi]; if(!edges) continue;
+            for(const e of edges){
+              if(!e.isProvBorder) continue;
+              const oB=e.nbProv>=0?G.owner[e.nbProv]:-1; if(oB<0) continue;
+              if(oA===oB){ intraP.moveTo(e.x0,e.y0); intraP.lineTo(e.x1,e.y1); }
+              else {
+                shadowP.moveTo(e.x0,e.y0); shadowP.lineTo(e.x1,e.y1);
+                if(atWar(PN4,oA)||atWar(PN4,oB)){ redP.moveTo(e.x0,e.y0); redP.lineTo(e.x1,e.y1); }
+                else { goldP.moveTo(e.x0,e.y0); goldP.lineTo(e.x1,e.y1); }
+              }
+            }
+          }
+          _bc.intra=intraP; _bc.shadow=shadowP; _bc.gold=goldP; _bc.red=redP;
+        }
+
         ctx.lineJoin='round'; ctx.lineCap='round';
-        ctx.beginPath();
-        for(let pi=0;pi<PROVINCES.length;pi++){
-          const oA=G.owner[pi]; if(oA<0) continue;
-          const edges=window._provBorderEdges[pi]; if(!edges) continue;
-          for(const e of edges){
-            if(!e.isProvBorder) continue;
-            const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
-            if(oB<0||oA!==oB) continue;  // only same-owner pairs
-            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
-            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
-          }
-        }
-        ctx.stroke();
-
-        // PASS 4B: Coastlines (land↔sea)
+        // PASS 4A: Intra-nation borders (thin, dim)
+        ctx.strokeStyle=`rgba(0,0,0,${(0.25*provBorderAlpha).toFixed(2)})`;
+        ctx.lineWidth=1.0/vp.scale; ctx.stroke(_bc.intra);
+        // PASS 4B: Coastlines
         ctx.strokeStyle=`rgba(100,80,30,${(0.55*provBorderAlpha).toFixed(2)})`;
-        ctx.lineWidth=1.0/vp.scale;
-        ctx.beginPath();
-        for(let pi=0;pi<PROVINCES.length;pi++){
-          const edges=window._provBorderEdges[pi]; if(!edges) continue;
-          for(const e of edges){
-            if(e.isProvBorder) continue;  // skip land-land
-            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
-            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
-          }
-        }
-        ctx.stroke();
-
-        // PASS 4C: Nation borders black shadow
+        ctx.lineWidth=1.0/vp.scale; ctx.stroke(_bc.coast);
+        // PASS 4C: Nation borders shadow
         ctx.lineWidth=3.5/vp.scale;
         ctx.strokeStyle=`rgba(0,0,0,${(0.85*provBorderAlpha).toFixed(2)})`;
-        ctx.lineJoin='round'; ctx.lineCap='round';
-        ctx.beginPath();
-        for(let pi=0;pi<PROVINCES.length;pi++){
-          const oA=G.owner[pi];
-          const edges=window._provBorderEdges[pi]; if(!edges) continue;
-          for(const e of edges){
-            if(!e.isProvBorder) continue;
-            const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
-            if(oB<0||oA===oB) continue;  // only different-owner pairs
-            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
-            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
-          }
-        }
-        ctx.stroke();
-
-        // PASS 4D: Nation borders gold (non-war) / red (at war)
+        ctx.stroke(_bc.shadow);
+        // PASS 4D: Nation borders gold/red
         ctx.lineWidth=2.0/vp.scale;
-        ctx.lineJoin='round'; ctx.lineCap='round';
-        // Gold pass
-        ctx.strokeStyle=`rgba(201,168,76,${(0.90*provBorderAlpha).toFixed(2)})`;
-        ctx.beginPath();
-        for(let pi=0;pi<PROVINCES.length;pi++){
-          const oA=G.owner[pi];
-          const edges=window._provBorderEdges[pi]; if(!edges) continue;
-          for(const e of edges){
-            if(!e.isProvBorder) continue;
-            const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
-            if(oB<0||oA===oB) continue;
-            if(atWar(G.playerNation,oA)||atWar(G.playerNation,oB)) continue;
-            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
-            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
-          }
-        }
-        ctx.stroke();
-        // Red pass (war)
-        ctx.strokeStyle=`rgba(220,50,40,${(0.90*provBorderAlpha).toFixed(2)})`;
-        ctx.beginPath();
-        for(let pi=0;pi<PROVINCES.length;pi++){
-          const oA=G.owner[pi];
-          const edges=window._provBorderEdges[pi]; if(!edges) continue;
-          for(const e of edges){
-            if(!e.isProvBorder) continue;
-            const oB=e.nbProv>=0?G.owner[e.nbProv]:-1;
-            if(oB<0||oA===oB) continue;
-            if(!atWar(G.playerNation,oA)&&!atWar(G.playerNation,oB)) continue;
-            if(e.x0<wx0-pad&&e.x1<wx0-pad) continue;
-            if(e.x0>wx1+pad&&e.x1>wx1+pad) continue;
-            ctx.moveTo(e.x0,e.y0); ctx.lineTo(e.x1,e.y1);
-          }
-        }
-        ctx.stroke();
+        ctx.strokeStyle=`rgba(201,168,76,${(0.90*provBorderAlpha).toFixed(2)})`; ctx.stroke(_bc.gold);
+        ctx.strokeStyle=`rgba(220,50,40,${(0.90*provBorderAlpha).toFixed(2)})`; ctx.stroke(_bc.red);
 
       } else if(G.mapMode === 'army'){
         // Army mode: gold=mine, white=ally, red=enemy
@@ -1381,7 +1384,7 @@ function drawMap(){
 
   ctx.restore();
 
-  // ── Sea zone labels (drawn in screen space, always on top) ──
+  // ── Sea zone labels (drawn in world space, always on top of ocean) ──
   if(_seaZonePositions && seaLabelAlpha > 0){
     const selZi2 = (typeof G.selSea === 'number' && G.selSea >= 0) ? G.selSea : -1;
     ctx.save();
@@ -1389,9 +1392,33 @@ function drawMap(){
     ctx.scale(vp.scale, vp.scale);
     _seaZonePositions.forEach((z, zi)=>{
       if(z.x<wx0-80||z.x>wx1+80||z.y<wy0-40||z.y>wy1+40) return;
-      const fs = Math.max(5, Math.min(z.fs||7, 28));
+      // Base font size from editor, scaled so labels stay readable at any zoom
+      const baseFs = z.fs || 7;
+      // At low zoom, inflate font size so labels are legible; cap at ~18px world-units
+      const fs = Math.max(6, Math.min(baseFs * Math.max(1, 0.5/vp.scale), 22));
       const isSelLabel = zi === selZi2;
       ctx.font = `italic ${isSelLabel ? fs+1 : fs}px Cinzel,serif`;
+      ctx.fillStyle = isSelLabel
+        ? `rgba(255,235,120,${(0.98*seaLabelAlpha).toFixed(2)})`
+        : `rgba(130,190,240,${(0.82*seaLabelAlpha).toFixed(2)})`;
+      ctx.shadowColor = 'rgba(0,0,0,.99)';
+      ctx.shadowBlur = isSelLabel ? 6/vp.scale : 5/vp.scale;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const name = z.t||'';
+      // Spaced letter rendering for nautical chart look
+      const spacing = fs * 0.32;
+      const chars = name.split('');
+      const widths = chars.map(ch=>ctx.measureText(ch).width + spacing);
+      const totalW = widths.reduce((s,w)=>s+w,0) - spacing;
+      let lx = z.x - totalW/2;
+      for(let li=0; li<chars.length; li++){
+        ctx.fillText(chars[li], lx + widths[li]/2 - spacing/2, z.y);
+        lx += widths[li];
+      }
+      ctx.shadowBlur=0;
+    });
+    ctx.restore();
+  }
       ctx.fillStyle = isSelLabel
         ? `rgba(255,235,120,${(0.95*seaLabelAlpha).toFixed(2)})`
         : `rgba(80,160,230,${(0.70*seaLabelAlpha).toFixed(2)})`;
