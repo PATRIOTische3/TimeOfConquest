@@ -258,8 +258,10 @@ var _provColorCacheMode = '';
 var _provColorCacheWar  = '';  // war/pact state fingerprint
 
 function _buildProvColorCache(){
+  if(!window.G||!window.PROVINCES||!PROVINCES.length) return;
   const PN = G.playerNation;
-  const warKey = G.war[PN] ? G.war[PN].join('') : '';
+  if(PN===undefined||PN===null) return;
+  const warKey = (G.war&&G.war[PN]) ? G.war[PN].join('') : '';
   const tick = G.tick || 0;
   if(_provColorCache && _provColorCacheTick === tick
      && _provColorCacheMode === G.mapMode
@@ -274,8 +276,10 @@ function _buildProvColorCache(){
 
 function cachedProvColor(i){
   if(!_provColorCache || _provColorCacheTick !== (G.tick||0)
-     || _provColorCacheMode !== G.mapMode) _buildProvColorCache();
-  return _provColorCache[i];
+     || _provColorCacheMode !== G.mapMode){
+    try{ _buildProvColorCache(); }catch(e){ return provColor(i); }
+  }
+  return _provColorCache[i] || provColor(i);
 }
 
 function provColor(i){
@@ -786,9 +790,10 @@ canvas.addEventListener('touchend', e => {
 // ── MAIN DRAW ─────────────────────────────────────────────
 function drawMap(){
   if(!ctx||!CW)return;
+  if(!window.PROVINCES||!window.PROVINCES.length||!window.G)return;
 
   // Pre-build province color cache once per frame (avoids repeated _tintHex calls)
-  _buildProvColorCache();
+  try{ _buildProvColorCache(); }catch(e){ _provColorCache=null; }
 
   // ── Global optimisation: skip redundant redraws ────────
   // Build a cheap state key; if it matches last frame, bail out
@@ -1033,18 +1038,18 @@ function drawMap(){
         ctx.lineJoin='round'; ctx.lineCap='round';
         // PASS 4A: Intra-nation borders (thin, dim)
         ctx.strokeStyle=`rgba(0,0,0,${(0.25*provBorderAlpha).toFixed(2)})`;
-        ctx.lineWidth=1.0/vp.scale; ctx.stroke(_bc.intra);
+        ctx.lineWidth=1.0/vp.scale; if(_bc.intra) ctx.stroke(_bc.intra);
         // PASS 4B: Coastlines
         ctx.strokeStyle=`rgba(100,80,30,${(0.55*provBorderAlpha).toFixed(2)})`;
-        ctx.lineWidth=1.0/vp.scale; ctx.stroke(_bc.coast);
+        ctx.lineWidth=1.0/vp.scale; if(_bc.coast) ctx.stroke(_bc.coast);
         // PASS 4C: Nation borders shadow
         ctx.lineWidth=3.5/vp.scale;
         ctx.strokeStyle=`rgba(0,0,0,${(0.85*provBorderAlpha).toFixed(2)})`;
-        ctx.stroke(_bc.shadow);
+        if(_bc.shadow) ctx.stroke(_bc.shadow);
         // PASS 4D: Nation borders gold/red
         ctx.lineWidth=2.0/vp.scale;
-        ctx.strokeStyle=`rgba(201,168,76,${(0.90*provBorderAlpha).toFixed(2)})`; ctx.stroke(_bc.gold);
-        ctx.strokeStyle=`rgba(220,50,40,${(0.90*provBorderAlpha).toFixed(2)})`; ctx.stroke(_bc.red);
+        ctx.strokeStyle=`rgba(201,168,76,${(0.90*provBorderAlpha).toFixed(2)})`; if(_bc.gold) ctx.stroke(_bc.gold);
+        ctx.strokeStyle=`rgba(220,50,40,${(0.90*provBorderAlpha).toFixed(2)})`; if(_bc.red) ctx.stroke(_bc.red);
 
       } else if(G.mapMode === 'army'){
         // Army mode: gold=mine, white=ally, red=enemy
