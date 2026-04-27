@@ -159,12 +159,14 @@ function buildHexCache(){
   _seaZoneBorderEdges = null;
 
   if(typeof WATER_LABELS !== 'undefined' && WATER_LABELS?.length){
-    // New format: each label has world-space x/y and name
     _seaZonePositions = WATER_LABELS.map((lb, i) => ({
       t: lb.name || '',
       x: lb.x,
       y: lb.y,
       fs: lb.fontSize || 13,
+      rotation: lb.rotation || 0,
+      zoneW: lb.zoneW || 200,
+      zoneH: lb.zoneH || 80,
       hexIds: [],
       id: lb.id || i,
     }));
@@ -604,7 +606,26 @@ function hitHex(wx, wy){
 }
 
 function hitSeaZone(wx, wy){
-  if(!_hexCache||!_hexByRC||!_seaZonePositions) return -1;
+  if(!_seaZonePositions || !_seaZonePositions.length) return -1;
+
+  // WATER_LABELS format: hit-test by proximity to label center (within zoneW/zoneH)
+  // Use generous radius so it's easy to tap on mobile
+  let best = -1, bestD = Infinity;
+  for(let zi=0; zi<_seaZonePositions.length; zi++){
+    const z = _seaZonePositions[zi];
+    const hw = (z.zoneW || 200) / 2;
+    const hh = (z.zoneH || 80) / 2;
+    // Bounding box hit
+    if(wx >= z.x - hw && wx <= z.x + hw && wy >= z.y - hh && wy <= z.y + hh){
+      const dx = wx - z.x, dy = wy - z.y;
+      const d = dx*dx + dy*dy;
+      if(d < bestD){ bestD = d; best = zi; }
+    }
+  }
+  if(best >= 0) return best;
+
+  // Fallback: hexIds-based (old SEA_ZONES format)
+  if(!_hexCache || !_hexByRC) return -1;
   const R = HEX_GRID.hexR, W2 = Math.sqrt(3)*R, H2 = 2*R;
   const approxRow = Math.round(wy / (H2*.75));
   const startRow  = Math.max(0, approxRow-2);
@@ -620,7 +641,6 @@ function hitSeaZone(wx, wy){
       if(!h.sea) continue;
       const dx = wx-h.x, dy = wy-h.y;
       if(dx*dx+dy*dy < R*R*1.5){
-        // Find which sea zone this hex belongs to
         for(let zi=0; zi<_seaZonePositions.length; zi++){
           const z = _seaZonePositions[zi];
           if(z.hexIds && z.hexIds.includes(idx)) return zi;
@@ -1378,39 +1398,30 @@ function drawMap(){
 
   ctx.restore();
 
-  // ── Sea zone labels ──────────────────────────────────────
+  // ── Sea / water labels — screen-space, static size, rotation ──
   if(_seaZonePositions && seaLabelAlpha > 0){
     const selZi2 = (typeof G.selSea === 'number' && G.selSea >= 0) ? G.selSea : -1;
-    ctx.save();
-    ctx.translate(vp.tx, vp.ty);
-    ctx.scale(vp.scale, vp.scale);
     _seaZonePositions.forEach((z, zi)=>{
-      if(z.x<wx0-80||z.x>wx1+80||z.y<wy0-40||z.y>wy1+40) return;
-      // Font size in world units: target ~14px on screen → 14/scale world units
-      const targetPx = 13;
-      const fs = targetPx / vp.scale;
+      const [sx, sy] = toScreen(z.x, z.y);
+      if(sx < -250 || sx > CW+250 || sy < -60 || sy > CH+60) return;
       const isSelLabel = zi === selZi2;
-      ctx.font = `italic ${isSelLabel ? fs*1.15 : fs}px Cinzel,serif`;
+      const screenFs = Math.max(8, Math.min(z.fs || 13, 22));
+      ctx.save();
+      ctx.translate(sx, sy);
+      if(z.rotation) ctx.rotate(z.rotation * Math.PI / 180);
+      ctx.font = `italic ${isSelLabel ? screenFs+2 : screenFs}px Cinzel,serif`;
       ctx.fillStyle = isSelLabel
         ? `rgba(255,235,120,${(0.98*seaLabelAlpha).toFixed(2)})`
-        : `rgba(140,200,255,${(0.82*seaLabelAlpha).toFixed(2)})`;
+        : `rgba(140,200,255,${(0.80*seaLabelAlpha).toFixed(2)})`;
       ctx.shadowColor = 'rgba(0,0,0,1)';
-      ctx.shadowBlur = 6/vp.scale;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      const name = (z.t||'').toUpperCase();
-      // Spaced letters for nautical look
-      const spacing = fs * 0.30;
-      const chars = name.split('');
-      const widths = chars.map(ch => ctx.measureText(ch).width + spacing);
-      const totalW = widths.reduce((s,w)=>s+w,0) - spacing;
-      let lx = z.x - totalW/2;
-      for(let li=0; li<chars.length; li++){
-        ctx.fillText(chars[li], lx + widths[li]/2 - spacing/2, z.y);
-        lx += widths[li];
-      }
-      ctx.shadowBlur=0;
+      ctx.shadowBlur = 5;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.letterSpacing = '2px';
+      ctx.fillText((z.t||'').toUpperCase(), 0, 0);
+      ctx.shadowBlur = 0;
+      ctx.restore();
     });
-    ctx.restore();
   }
 
   // ── Draw queued order arrows (screen space) ──────────────
