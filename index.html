@@ -1043,6 +1043,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 <script src="engine/ai.js?v=1776587082"></script>
 <script src="engine/endturn.js?v=1776587082"></script>
 <script src="engine/ui.js?v=1776587082"></script>
+<script src="engine/hex_warfare.js"></script>
 <script src="multiplayer.js"></script>
 <script>
 // ── SHARED MINI-MAP RENDERER (intro, worlds, setup) ──────────
@@ -1191,6 +1192,7 @@ function loadFromSlot(slot){
   show('game');
   setTimeout(()=>{
     buildHexCache();computeHexRadius();buildCanvas();zoomReset();
+    if(typeof hwOnLoad==='function') hwOnLoad();
     updateHUD();updateIdeoHUD();updateSeasonUI();
     // Pan to player capital on load
     const _lCapIdx = PROVINCES.findIndex(p => p.nation === G.playerNation && p.isCapital);
