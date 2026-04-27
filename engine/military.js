@@ -62,6 +62,25 @@ function chkBtns(){
     if(b)b.style.display='none';
   });
 
+  // Hex warfare move button — show when a hex is selected with army
+  const hexMoveBtn = document.getElementById('sp-btn-hexmove');
+  if (hexMoveBtn) {
+    let hexHasArmy = false;
+    if (G.selStage === 2 && G.selHex && typeof _hexCache !== 'undefined' && _hexCache) {
+      for (let i = 0; i < _hexCache.length; i++) {
+        if (_hexCache[i].r === G.selHex.r && _hexCache[i].c === G.selHex.c) {
+          const a = G.hexArmy && G.hexArmy[i];
+          if (a && a.nation === PN && a.amount > 0) { hexHasArmy = true; }
+          break;
+        }
+      }
+    }
+    hexMoveBtn.style.display = (isOwn && G.selStage === 2) ? 'flex' : 'none';
+    hexMoveBtn.disabled = !hexHasArmy;
+    const hms = document.getElementById('sp-hexmove-sub');
+    if (hms) hms.textContent = hexHasArmy ? 'Move selected hex army' : 'Select a hex with your army';
+  }
+
   if(canAtk){
     const fr3=regsOf(PN).find(r=>G.army[r]>100&&NB[r]?.includes(si));
     if(fr3!==undefined){window._af=fr3;window._at=si;}

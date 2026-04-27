@@ -50,21 +50,7 @@ if(typeof BUILD_TURNS==='undefined'){
     fortification:8, airfield:10, naval_base:12,
   };
 }
-if(typeof BUILDINGS==='undefined'){
-  window.BUILDINGS={
-    factory:       {name:'Factory',       icon:'🏭',desc:'Increases province income ×1.8',             cost:600},
-    port:          {name:'Port',          icon:'⚓',desc:'Enables naval transport from this province',  cost:500, needsCoast:true},
-    mine:          {name:'Mine',          icon:'⛏', desc:'Boosts coal/iron/oil resource output',       cost:350},
-    barracks:      {name:'Barracks',      icon:'🪖',desc:'Conscription 25% faster & cheaper',          cost:300},
-    hospital:      {name:'Hospital',      icon:'🏥',desc:'Reduces disease severity in province',        cost:350},
-    arsenal:       {name:'Arsenal',       icon:'⚙️', desc:'Increases army attack strength',             cost:500},
-    palace:        {name:'Palace',        icon:'🏛',desc:'Boosts satisfaction & income',               cost:600, capitalOnly:true},
-    granary:       {name:'Granary',       icon:'🌽',desc:'Increases grain output & pop growth',        cost:250},
-    oilwell:       {name:'Oil Well',      icon:'🛢',desc:'Produces oil resources',                     cost:350},
-    fortress:      {name:'Fortress',      icon:'🏯',desc:'Heavy defense bonus ×1.6',                  cost:450},
-    watchtower:    {name:'Watchtower',    icon:'🗼',desc:'Reveals exact army counts in adjacent provinces', cost:350},
-  };
-}
+// BUILDINGS defined in hex_warfare.js (hex-level system)
 
 function provTerrainDef(i){
   const p=PROVINCES[i]; if(!p) return 1;

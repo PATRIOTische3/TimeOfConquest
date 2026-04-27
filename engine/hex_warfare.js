@@ -980,32 +980,61 @@ function hwBuildMenuHTML(hexIdx) {
   const h = _hexCache[hexIdx];
   if (!h || h.sea || h.p < 0) return '';
   const nation = G.playerNation;
-  if (hwHexOwner(hexIdx) !== nation) return '';
-
+  const isOwn = hwHexOwner(hexIdx) === nation;
   const isCoastal = (h.nbIdx || []).some(ni => _hexCache[ni]?.sea);
-  let html = `<div style="font-size:8px;color:#666;letter-spacing:1px;margin-bottom:3px">BUILD ON HEX [${h.t}${isCoastal?' · COASTAL':''}]</div>`;
+  const existingBld = G.hexBuildings[hexIdx];
+  const underCon = G.hexConstruction[hexIdx];
+  const pi = h.p;
+
+  let html = `<div style="font-size:8px;color:#c9a84c;letter-spacing:1px;margin-bottom:4px;font-family:Cinzel,serif">HEX [${h.t.toUpperCase()}${isCoastal ? ' \u2693' : ''}]</div>`;
+
+  if (existingBld) {
+    const bDef = BUILDINGS[existingBld.type];
+    const isMyBld = existingBld.nation === nation;
+    html += `<div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:rgba(0,0,0,.3);border:1px solid rgba(201,168,76,.25);margin-bottom:4px">
+      <span style="font-size:14px">${bDef?.icon || '?'}</span>
+      <div style="flex:1">
+        <div style="font-size:9px;color:#e8d5a3;font-family:Cinzel,serif">${bDef?.name || existingBld.type}</div>
+        <div style="font-size:7px;color:#888">${isMyBld ? 'Your building' : 'Enemy building'}</div>
+      </div>
+      ${existingBld.type === 'barracks' && isMyBld ? `<button onclick="hwDraftToBarracks(${pi})" style="padding:3px 7px;font-size:8px;font-family:Cinzel,serif;background:rgba(20,14,4,.8);border:1px solid rgba(201,168,76,.6);color:#c9a84c;cursor:pointer">Draft</button>` : ''}
+    </div>`;
+    return html;
+  }
+
+  if (underCon) {
+    const bDef = BUILDINGS[underCon.type];
+    html += `<div style="padding:4px 6px;background:rgba(0,0,0,.3);border:1px solid rgba(160,140,60,.3);font-size:8px;color:#c9a84c">
+      \uD83C\uDFD7 ${bDef?.name || underCon.type} — ${underCon.turnsLeft} turns left
+    </div>`;
+    return html;
+  }
+
+  if (!isOwn) {
+    html += `<div style="font-size:8px;color:#666">You don\'t control this hex</div>`;
+    return html;
+  }
+
+  html += `<div style="font-size:8px;color:#666;margin-bottom:4px">Build on this hex:</div>`;
 
   for (const [type, bDef] of Object.entries(BUILDINGS)) {
     if (bDef.coastal && !isCoastal) continue;
     const check = hwCanBuildAt(hexIdx, type, nation);
     const canBuild = check === true;
-    const gold = G.gold[nation] || 0;
-    const affordable = gold >= bDef.cost;
     const disabled = !canBuild;
     const reason = disabled ? (typeof check === 'string' ? check : '') : '';
-
     html += `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid rgba(42,36,24,.25)">
       <span style="font-size:11px">${bDef.icon}</span>
       <div style="flex:1;min-width:0">
-        <div style="font-size:9px;color:${disabled?'#555':'#e8d5a3'};font-family:Cinzel,serif">${bDef.name}</div>
+        <div style="font-size:9px;color:${disabled ? '#555' : '#e8d5a3'};font-family:Cinzel,serif">${bDef.name}</div>
         <div style="font-size:7px;color:#666">${reason || bDef.desc}</div>
       </div>
       <button onclick="hwStartBuild(${hexIdx},'${type}')"
-        style="padding:3px 7px;font-size:8px;font-family:Cinzel,serif;letter-spacing:1px;
-               background:${canBuild?'rgba(20,14,4,.8)':'rgba(10,10,10,.5)'};
-               border:1px solid ${canBuild?'rgba(201,168,76,.6)':'rgba(60,60,60,.4)'};
-               color:${canBuild?'#c9a84c':'#444'};cursor:${canBuild?'pointer':'not-allowed'}"
-        ${disabled?'disabled':''}>
+        style="padding:3px 7px;font-size:8px;font-family:Cinzel,serif;
+               background:${canBuild ? 'rgba(20,14,4,.8)' : 'rgba(10,10,10,.5)'};
+               border:1px solid ${canBuild ? 'rgba(201,168,76,.6)' : 'rgba(60,60,60,.4)'};
+               color:${canBuild ? '#c9a84c' : '#444'};cursor:${canBuild ? 'pointer' : 'not-allowed'}"
+        ${disabled ? 'disabled' : ''}>
         ${bDef.cost}g
       </button>
     </div>`;
@@ -1014,8 +1043,6 @@ function hwBuildMenuHTML(hexIdx) {
 }
 
 // ── SERIALIZATION HELPERS ────────────────────────────────────────────────────
-// Make sure Sets are handled in autoSave (G.hexOwner/hexArmy/hexBuildings are
-// plain objects so they serialize fine with JSON.stringify)
 
 // Call after loadFromSlot to restore derived caches
 function hwOnLoad() {
@@ -1090,67 +1117,104 @@ function hwEndTurn() {
   }
 })();
 
-// ── UI HOOK: Inject hex build panel into province side-panel ─────────────────
-// Patches updateSP / showProvPanel if available, otherwise sets up observer.
-(function(){
-  function _patchProvPanel(){
-    // Try to find and augment the province panel update function
-    const _origFns = ['updateSP','showProvPanel','renderProvPanel','updateProvPanel'];
-    for(const fname of _origFns){
-      if(typeof window[fname] === 'function' && !window['_hw_'+fname+'Patched']){
-        const _orig = window[fname];
-        window[fname] = function(pi){
-          const ret = _orig.apply(this, arguments);
-          _hwInjectProvPanelUI(typeof pi === 'number' ? pi : G.sel);
-          return ret;
-        };
-        window['_hw_'+fname+'Patched'] = true;
-      }
+
+// ── HEX MOVE / ATTACK DIALOG ─────────────────────────────────────────────────
+
+function hwOpenHexMoveDialog() {
+  if (!_hexCache) return;
+  const selHex = G.selHex;
+  if (!selHex) { if(typeof popup==='function')popup('Click a province, then click a hex inside it'); return; }
+
+  let hexIdx = -1;
+  for (let i = 0; i < _hexCache.length; i++) {
+    if (_hexCache[i].r === selHex.r && _hexCache[i].c === selHex.c) { hexIdx = i; break; }
+  }
+  if (hexIdx < 0) { if(typeof popup==='function')popup('No hex selected'); return; }
+
+  const army = G.hexArmy[hexIdx];
+  if (!army || army.nation !== G.playerNation || army.amount <= 0) {
+    if(typeof popup==='function')popup('No your army on this hex. Select a hex with your troops.');
+    return;
+  }
+
+  const h = _hexCache[hexIdx];
+  const moves = [];
+  for (const ni of (h.nbIdx || [])) {
+    const nh = _hexCache[ni];
+    if (!nh || nh.sea) continue;
+    const action = hwCanMoveHexTo(hexIdx, ni, G.playerNation);
+    if (action === 'move' || action === 'attack') {
+      const cost = HEX_MOVE_COST[nh.t] || 1;
+      const defArmy = G.hexArmy[ni];
+      moves.push({ idx: ni, action, cost, nh, defArmy });
     }
   }
 
-  function _hwInjectProvPanelUI(pi){
-    if(typeof pi !== 'number' || pi < 0) return;
-    // Find hex-warfare status container or create it
-    let el = document.getElementById('hw-prov-status');
-    if(!el){
-      // Try to append to sp-actions or similar panel container
-      const parent = document.getElementById('sp-actions') || document.getElementById('sp-body');
-      if(!parent) return;
-      el = document.createElement('div');
-      el.id = 'hw-prov-status';
-      el.style.cssText = 'padding:4px 0;border-top:1px solid rgba(42,36,24,.4);margin-top:4px';
-      parent.appendChild(el);
-    }
-    if(typeof hwProvStatusHTML === 'function') el.innerHTML = hwProvStatusHTML(pi);
-
-    // Build menu for selected hex (selStage===2)
-    let bel = document.getElementById('hw-build-menu');
-    if(!bel){
-      const parent2 = document.getElementById('sp-actions') || document.getElementById('sp-body');
-      if(!parent2) return;
-      bel = document.createElement('div');
-      bel.id = 'hw-build-menu';
-      bel.style.cssText = 'padding:4px 0;border-top:1px solid rgba(42,36,24,.4);margin-top:4px';
-      parent2.appendChild(bel);
-    }
-    if(G.selStage === 2 && G.selHex !== null && G.selHex !== undefined){
-      if(typeof hwBuildMenuHTML === 'function') bel.innerHTML = hwBuildMenuHTML(G.selHex);
-    } else {
-      bel.innerHTML = '';
-    }
+  if (!moves.length) {
+    if(typeof popup==='function')popup('No valid moves — no movement points or all hexes blocked');
+    return;
   }
 
-  document.addEventListener('DOMContentLoaded', function(){
-    _patchProvPanel();
-    // Also observe G.sel / G.selHex changes via scheduleDraw wrapping
-    if(typeof window.scheduleDraw === 'function' && !window._hwSchedPatched){
-      const _origSched = window.scheduleDraw;
-      window.scheduleDraw = function(){
-        _hwInjectProvPanelUI(G.sel);
-        return _origSched.apply(this, arguments);
-      };
-      window._hwSchedPatched = true;
+  const max = army.amount;
+  let html = `<p class="mx">⚔ Hex army: <b>${fm(army.amount)}</b> · MP: <b>${army.movePoints}/${HEX_ARMY_MOVE_POINTS}</b></p>
+    <p class="mx" style="color:var(--dim);font-size:8px">Terrain: <b>${h.t}</b>. Click target hex below:</p>
+    <div class="tlist">`;
+
+  for (const m of moves) {
+    const icon = m.action === 'attack' ? '⚔' : '→';
+    const defStr = m.defArmy && m.defArmy.amount > 0 ? ` · def ${fm(m.defArmy.amount)}` : '';
+    html += `<div class="ti${m.action==='attack'?' ene':''}" onclick="hwDoHexMove(${hexIdx},${m.idx},document.getElementById('hw-mv-sl').value|0);closeMo()">
+      <span class="tn">${icon} [${m.nh.t}]${defStr}</span>
+      <span class="ta">${m.cost} MP</span>
+    </div>`;
+  }
+
+  html += `</div>
+    <div class="slider-w"><div class="slider-l"><span>Troops</span><span class="slider-v" id="hw-mv-sv">${fm(max)}</span></div>
+    <input type="range" id="hw-mv-sl" min="100" max="${max}" value="${max}"
+      oninput="document.getElementById('hw-mv-sv').textContent=fa(+this.value);this.style.setProperty('--pct',(+this.value/+this.max*100)+'%')"></div>`;
+
+  if (typeof openMo === 'function') openMo('⚔ HEX MOVEMENT', html, [{lbl:'Cancel',cls:'dim'}]);
+  setTimeout(() => {
+    const sl = document.getElementById('hw-mv-sl');
+    if (sl) sl.style.setProperty('--pct', '100%');
+  }, 40);
+}
+
+function hwDoHexMove(fromIdx, toIdx, amount) {
+  if (!amount || amount < 1) amount = G.hexArmy[fromIdx]?.amount || 0;
+  const action = hwCanMoveHexTo(fromIdx, toIdx, G.playerNation);
+  if (action === 'attack') {
+    const result = hwAttackHex(fromIdx, toIdx, amount);
+    if (result) {
+      const msg = result.win
+        ? `⚔ Victory! Losses: ${fm(result.attLoss)} vs ${fm(result.defLoss)}`
+        : `🛡 Repelled! Losses: ${fm(result.attLoss)} vs ${fm(result.defLoss)}`;
+      if (typeof popup === 'function') popup(msg);
     }
-  });
-})();
+  } else if (action === 'move') {
+    hwMoveArmy(fromIdx, toIdx, amount);
+    if (typeof popup === 'function') popup(`Moved ${fm(amount)} troops`);
+  } else {
+    if (typeof popup === 'function') popup(action);
+  }
+  if (typeof updateSP === 'function') updateSP(G.sel);
+  if (typeof chkBtns === 'function') chkBtns();
+}
+
+function hwDraftToBarracks(pi) {
+  const maxRec = hwProvMaxRecruit(pi, G.playerNation);
+  if (maxRec <= 0) { if(typeof popup==='function')popup('No barracks or no draft capacity'); return; }
+  const pop = G.pop[pi] || 0;
+  const popCap = Math.floor(pop / 10);
+  const canDraft = Math.max(0, popCap - (G.army[pi]||0));
+  if (canDraft <= 0) { if(typeof popup==='function')popup('Province at army capacity'); return; }
+  const actual = Math.min(maxRec, canDraft);
+  const cost = actual;
+  if ((G.gold[G.playerNation] || 0) < cost) { if(typeof popup==='function')popup(`Need ${fa(cost)} gold`); return; }
+  G.gold[G.playerNation] -= cost;
+  G.pop[pi] = Math.max(500, pop - actual);
+  hwDraft(pi, actual);
+  if (typeof updateHUD === 'function') updateHUD();
+  if (typeof updateSP === 'function') updateSP(pi);
+}

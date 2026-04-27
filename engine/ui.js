@@ -187,6 +187,7 @@ function updateSP(i){
     }else spcon.style.display='none';
   }
   sEl('sp-bld-sub',o===G.playerNation?(con?`Building: ${BUILDINGS[con.building]?.name}`:`${bldC}/${maxBld} slots`):'Select your territory');
+
   // Move/naval btns
   const canMove=o===G.playerNation&&G.army[i]>100;
   ['sp-btn-move','mob-btn-move'].forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=!canMove;});
@@ -201,8 +202,76 @@ function updateSP(i){
   const riif=document.getElementById('ri-if'),riiv=document.getElementById('ri-iv');
   if(riif){riif.style.width=inst+'%';riif.style.background=inst>70?'#c82808':inst>40?'#c08020':'#389828';}
   if(riiv)riiv.textContent=Math.round(inst)+'%';
+  // ── HEX WARFARE: status + hex build menu ────────────────
+  _hwUpdateProvPanel(i);
 }
 
+
+// ── HEX WARFARE PANEL INJECTION ──────────────────────────
+function _hwUpdateProvPanel(pi) {
+  if (typeof pi !== 'number' || pi < 0) return;
+
+  // ── Occupation/control status ──
+  let statEl = document.getElementById('hw-prov-status');
+  if (!statEl) {
+    statEl = document.createElement('div');
+    statEl.id = 'hw-prov-status';
+    statEl.style.cssText = 'border-top:1px solid rgba(42,36,24,.35);margin-top:3px;padding-top:3px';
+    const parent = document.getElementById('sp-con');
+    if (parent && parent.parentNode) parent.parentNode.insertBefore(statEl, parent.nextSibling);
+  }
+  statEl.innerHTML = (typeof hwProvStatusHTML === 'function') ? hwProvStatusHTML(pi) : '';
+
+  // ── Hex build menu (only when a hex is selected in this province) ──
+  let buildEl = document.getElementById('hw-build-menu');
+  if (!buildEl) {
+    buildEl = document.createElement('div');
+    buildEl.id = 'hw-build-menu';
+    buildEl.style.cssText = 'border-top:1px solid rgba(42,36,24,.35);margin-top:3px;padding-top:3px';
+    const spActions = document.getElementById('sp-actions');
+    if (spActions) {
+      // Insert at top of sp-actions, before the first sp-sec
+      const firstSec = spActions.querySelector('.sp-sec');
+      if (firstSec) spActions.insertBefore(buildEl, firstSec);
+      else spActions.prepend(buildEl);
+    }
+  }
+
+  if (G.selStage === 2 && G.selHex !== null && G.selHex !== undefined) {
+    // G.selHex stores {r, c, x, y} — get hexIdx from _hexCache
+    const hexIdx = _hwFindHexIdx(G.selHex);
+    if (hexIdx >= 0 && typeof hwBuildMenuHTML === 'function') {
+      buildEl.style.display = 'block';
+      buildEl.innerHTML = hwBuildMenuHTML(hexIdx);
+      // Show hex info header
+      const h = _hexCache && _hexCache[hexIdx];
+      const hOwner = h ? hwHexOwner(hexIdx) : -1;
+      const isOwn = hOwner === G.playerNation;
+      const hexArmy = G.hexArmy && G.hexArmy[hexIdx];
+      const hdr = `<div style="font-size:8px;color:#c9a84c;font-family:Cinzel,serif;letter-spacing:1px;margin-bottom:4px">
+        HEX [${h ? h.t : '?'}] ${h && (h.nbIdx||[]).some(ni=>_hexCache&&_hexCache[ni]?.sea) ? '⚓ COASTAL' : ''}
+        ${isOwn ? '<span style="color:#80c080">● YOURS</span>' : '<span style="color:#c06060">● ENEMY</span>'}
+        ${hexArmy && hexArmy.amount > 0 ? `<br><span style="color:#f0d080">⚔ ${fm(hexArmy.amount)} troops</span>` : ''}
+      </div>`;
+      buildEl.innerHTML = hdr + buildEl.innerHTML;
+    } else {
+      buildEl.style.display = 'none';
+    }
+  } else {
+    buildEl.style.display = 'none';
+  }
+}
+
+// Find hex index by {r, c} coords from selHex
+function _hwFindHexIdx(selHex) {
+  if (!selHex || !_hexCache) return -1;
+  // selHex has r, c properties
+  for (let i = 0; i < _hexCache.length; i++) {
+    const h = _hexCache[i];
+    if (h && h.r === selHex.r && h.c === selHex.c) return i;
+  }
+  return -1;
+}
 
 // NOTE: chkBtns() lives in military.js
 
@@ -507,11 +576,13 @@ function onCanvasClick(wx,wy){
     const h=(typeof hitHex==='function')?hitHex(wx,wy):null;
     if(G.selStage===1){
       G.selStage=2;G.selHex=h;scheduleDraw();
+      if(typeof updateSP==='function')updateSP(G.sel);
     } else if(G.selStage===2){
       if(h&&G.selHex&&h.r===G.selHex.r&&h.c===G.selHex.c){
         G.sel=-1;G.selStage=0;G.selHex=null;scheduleDraw();chkBtns();
       } else {
         G.selHex=h;scheduleDraw();
+        if(typeof updateSP==='function')updateSP(G.sel);
       }
     }
   }
