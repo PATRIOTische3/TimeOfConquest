@@ -162,6 +162,9 @@ function startGame(){
   });
 
   // Store campaign label so autoSave targets the right slot
+  // Init hex warfare engine (must be after buildHexCache in setTimeout, but seed data now)
+  G.hexOwner = {}; G.hexArmy = {}; G.hexBuildings = {}; G.hexConstruction = {};
+
   window._tocCampLabel = (document.getElementById('camp-title-display')?.textContent||'').trim().toUpperCase() || G.leaderName;
 
   show('game');
@@ -170,6 +173,7 @@ function startGame(){
     computeHexRadius();
     buildCanvas();
     zoomReset();
+    if(typeof hwInit==='function') hwInit();
     updateHUD(); updateIdeoHUD(); updateSeasonUI(); updateResCountsInPanel();
     // Pan to player's capital province immediately on game start
     const _capIdx = PROVINCES.findIndex(p => p.nation === SC && p.isCapital);

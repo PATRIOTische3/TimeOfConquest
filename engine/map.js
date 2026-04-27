@@ -864,12 +864,17 @@ function drawMap(){
     ctx.globalAlpha=1.0;
 
     // PASS 2: Province hexes — base color
-    for(const h of _hexCache){
+    for(let _hi2=0;_hi2<_hexCache.length;_hi2++){
+      const h=_hexCache[_hi2];
       if(h.sea||h.p<0)continue;
       if(h.x<wx0-pad||h.x>wx1+pad||h.y<wy0-pad||h.y>wy1+pad)continue;
       hexPath(ctx,h.x,h.y,R+0.3/vp.scale);
       ctx.fillStyle=provColor(h.p);
       ctx.fill();
+      // PASS 2C: Hex-level occupation hatch (hex_warfare.js)
+      if(typeof hwDrawHexOccupation==='function'){
+        hwDrawHexOccupation(ctx,h,_hi2,R,wx0,wy0,wx1,wy1);
+      }
     }
 
     // PASS 2A: Army overlay — only in army mode
@@ -979,6 +984,15 @@ function drawMap(){
     }
 
     } // end normal zoom branch
+
+    // PASS X: Hex buildings (hex_warfare.js)
+    if(typeof hwDrawBuildings==='function'){
+      hwDrawBuildings(ctx,R,wx0,wy0,wx1,wy1);
+    }
+    // PASS Y: Hex army counters (hex_warfare.js)
+    if(typeof hwDrawHexArmies==='function'){
+      hwDrawHexArmies(ctx,R,wx0,wy0,wx1,wy1);
+    }
 
     // Province borders fade at low zoom for performance + readability
     const provBorderAlpha = useLOD ? 0 : Math.min(1, Math.max(0, (vp.scale - 0.18) / 0.12));
