@@ -499,9 +499,11 @@ function _mapAreaWidth(){
 function clampViewport(){
   const {minX, maxX, minY, maxY} = _mapBounds;
   const MAW = _mapAreaWidth();
-  const margin = Math.min(MAW, CH) * 0.15;
-  vp.tx = Math.max(MAW-margin-maxX*vp.scale, Math.min(margin-minX*vp.scale, vp.tx));
-  vp.ty = Math.max(CH-margin-maxY*vp.scale, Math.min(margin-minY*vp.scale, vp.ty));
+  // Large margin = can pan far beyond edges (less restrictive)
+  const marginX = MAW * 0.70;
+  const marginY = CH * 0.70;
+  vp.tx = Math.max(MAW-marginX-maxX*vp.scale, Math.min(marginX-minX*vp.scale, vp.tx));
+  vp.ty = Math.max(CH-marginY-maxY*vp.scale, Math.min(marginY-minY*vp.scale, vp.ty));
 }
 
 function zoomBy(f, cx, cy){
@@ -1243,19 +1245,26 @@ function drawMap(){
       const armyOffY  = hasName ? fs*1.0 : 0;
 
       // Province name
+      // Selected province / capital: boost font size when zoomed out
+      // so label stays readable at any zoom level
+      const selBoost = (i === G.sel || p.isCapital)
+        ? Math.max(1, 0.6 / vp.scale)   // at scale=0.6 → ×1.0, at scale=0.3 → ×2.0
+        : 1;
       if(p.isCapital){
-        ctx.font=`700 ${fs+1}px Cinzel,serif`;
+        const capFs = Math.min(fs * selBoost, 28 / vp.scale);
+        ctx.font=`700 ${capFs+1}px Cinzel,serif`;
         ctx.fillStyle='#f0d080';
         ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=4;
+        ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=4/vp.scale;
         ctx.fillText(p.short.length>10?p.short.slice(0,10):p.short, px, py-nameUpOff);
         ctx.shadowBlur=0;
-      } else if(i===G.sel&&vp.scale>0.7){
+      } else if(i===G.sel){
+        const selFs = Math.min(fs * selBoost, 26 / vp.scale);
         const nameStr=(p.name||p.short||'').slice(0,14);
-        ctx.font=`600 ${fs+0.5}px Cinzel,serif`;
+        ctx.font=`600 ${selFs+0.5}px Cinzel,serif`;
         ctx.fillStyle='rgba(240,210,120,.95)';
         ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.shadowColor='rgba(0,0,0,.98)';ctx.shadowBlur=5;
+        ctx.shadowColor='rgba(0,0,0,.98)';ctx.shadowBlur=5/vp.scale;
         ctx.fillText(nameStr, px, py-nameUpOff);
         ctx.shadowBlur=0;
       }
@@ -1358,7 +1367,7 @@ function drawMap(){
 
   ctx.restore();
 
-  // ── Sea zone labels (drawn in screen space, always on top) ──
+  // ── Sea zone labels ──────────────────────────────────────
   if(_seaZonePositions && seaLabelAlpha > 0){
     const selZi2 = (typeof G.selSea === 'number' && G.selSea >= 0) ? G.selSea : -1;
     ctx.save();
@@ -1366,22 +1375,27 @@ function drawMap(){
     ctx.scale(vp.scale, vp.scale);
     _seaZonePositions.forEach((z, zi)=>{
       if(z.x<wx0-80||z.x>wx1+80||z.y<wy0-40||z.y>wy1+40) return;
-      const fs = Math.max(5, Math.min(z.fs||7, 28));
+      // Font size in world units: target ~14px on screen → 14/scale world units
+      const targetPx = 13;
+      const fs = targetPx / vp.scale;
       const isSelLabel = zi === selZi2;
-      ctx.font = `italic ${isSelLabel ? fs+1 : fs}px Cinzel,serif`;
+      ctx.font = `italic ${isSelLabel ? fs*1.15 : fs}px Cinzel,serif`;
       ctx.fillStyle = isSelLabel
-        ? `rgba(255,235,120,${(0.95*seaLabelAlpha).toFixed(2)})`
-        : `rgba(80,160,230,${(0.70*seaLabelAlpha).toFixed(2)})`;
-      ctx.shadowColor = 'rgba(0,0,0,.98)';
-      ctx.shadowBlur = isSelLabel ? 6/vp.scale : 4/vp.scale;
-      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      const name = z.t||'';
-      const spacing = fs*0.28;
-      const widths = name.split('').map(ch=>ctx.measureText(ch).width+spacing);
-      const totalW = widths.reduce((s,w)=>s+w,0)-spacing;
-      let lx = z.x-totalW/2;
-      for(let li=0; li<name.length; li++){
-        ctx.fillText(name[li], lx, z.y); lx+=widths[li];
+        ? `rgba(255,235,120,${(0.98*seaLabelAlpha).toFixed(2)})`
+        : `rgba(140,200,255,${(0.82*seaLabelAlpha).toFixed(2)})`;
+      ctx.shadowColor = 'rgba(0,0,0,1)';
+      ctx.shadowBlur = 6/vp.scale;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const name = (z.t||'').toUpperCase();
+      // Spaced letters for nautical look
+      const spacing = fs * 0.30;
+      const chars = name.split('');
+      const widths = chars.map(ch => ctx.measureText(ch).width + spacing);
+      const totalW = widths.reduce((s,w)=>s+w,0) - spacing;
+      let lx = z.x - totalW/2;
+      for(let li=0; li<chars.length; li++){
+        ctx.fillText(chars[li], lx + widths[li]/2 - spacing/2, z.y);
+        lx += widths[li];
       }
       ctx.shadowBlur=0;
     });
