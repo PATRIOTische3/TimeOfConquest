@@ -855,6 +855,7 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
         <button class="abtn" id="sp-btn-atk" onclick="openAttack()" disabled style="display:none"><span class="ic">⚔</span><span class="al"><span class="am">Attack</span><span class="as" id="sp-atk-sub">Select adjacent enemy territory</span></span></button>
         <button class="abtn" onclick="openDraft()"><span class="ic">🪖</span><span class="al"><span class="am">Conscript Soldiers</span><span class="as">1,000 pop · 1 gold per soldier</span></span></button>
         <button class="abtn" id="sp-btn-move" onclick="toggleMoveMode()" disabled><span class="ic">🚶</span><span class="al"><span class="am">Move Army</span><span class="as" id="sp-move-sub">Select your territory first</span></span></button>
+        <button class="abtn" id="sp-btn-hexmove" onclick="hwOpenHexMoveDialog()" disabled style="display:none"><span class="ic">🗡</span><span class="al"><span class="am">Move Hex Army</span><span class="as" id="sp-hexmove-sub">Click province, then select a hex</span></span></button>
         <button class="abtn" id="sp-btn-naval" onclick="toggleNavalMode()" disabled style="display:none"><span class="ic">⚓</span><span class="al"><span class="am">Naval Transport</span><span class="as">Requires coastal province + port</span></span></button>
         <div class="sp-sec">🎁 Appease Population</div>
         <button class="abtn" onclick="openAppease()"><span class="ic">🎁</span><span class="al"><span class="am">Appease Population</span><span class="as">Raise satisfaction in all provinces</span></span></button>
@@ -1042,8 +1043,8 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
 <script src="engine/events.js?v=1776587082"></script>
 <script src="engine/ai.js?v=1776587082"></script>
 <script src="engine/endturn.js?v=1776587082"></script>
-<script src="engine/ui.js?v=1776587082"></script>
 <script src="engine/hex_warfare.js"></script>
+<script src="engine/ui.js?v=1776587082"></script>
 <script src="multiplayer.js"></script>
 <script>
 // ── SHARED MINI-MAP RENDERER (intro, worlds, setup) ──────────
