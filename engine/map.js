@@ -152,12 +152,23 @@ function buildHexCache(){
 
   _provCentroid = _provCentroid.map(c => c.n > 0 ? {x: c.x/c.n, y: c.y/c.n} : {x:0, y:0});
 
-  // ── Sea zone membership + label positions ─────────────────
-  // Primary: SEA_ZONES[zi].hexIds exported directly from editor (exact membership).
-  // Fallback for old maps without hexIds: proximity assignment from cx/cy centroid.
+  // ── Sea zone / water label positions ─────────────────
+  // Primary: WATER_LABELS exported by editor (simple x/y/name per label)
+  // Fallback: SEA_ZONES with hexIds (old format)
   _seaZonePositions = null;
   _seaZoneBorderEdges = null;
-  if(typeof SEA_ZONES !== 'undefined' && SEA_ZONES?.length){
+
+  if(typeof WATER_LABELS !== 'undefined' && WATER_LABELS?.length){
+    // New format: each label has world-space x/y and name
+    _seaZonePositions = WATER_LABELS.map((lb, i) => ({
+      t: lb.name || '',
+      x: lb.x,
+      y: lb.y,
+      fs: lb.fontSize || 13,
+      hexIds: [],
+      id: lb.id || i,
+    }));
+  } else if(typeof SEA_ZONES !== 'undefined' && SEA_ZONES?.length){
     const zoneHexIds = SEA_ZONES.map(() => []);
 
     const hasExportedHexIds = SEA_ZONES.every(z => Array.isArray(z.hexIds) && z.hexIds.length > 0);
@@ -230,7 +241,7 @@ function buildHexCache(){
       }
       return {t:z.name, x:cx, y:cy, fs:z.fontSize||7, hexIds:ids};
     });
-  }
+  } // end else if SEA_ZONES
 
   _computeMapBounds();
 }
