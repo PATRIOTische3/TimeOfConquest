@@ -1192,6 +1192,16 @@ function loadFromSlot(slot){
   setTimeout(()=>{
     buildHexCache();computeHexRadius();buildCanvas();zoomReset();
     updateHUD();updateIdeoHUD();updateSeasonUI();
+    // Pan to player capital on load
+    const _lCapIdx = PROVINCES.findIndex(p => p.nation === G.playerNation && p.isCapital);
+    if(_lCapIdx >= 0){
+      const _lCx = (_provCentroid && _provCentroid[_lCapIdx]?.x) ? _provCentroid[_lCapIdx].x : PROVINCES[_lCapIdx].cx;
+      const _lCy = (_provCentroid && _provCentroid[_lCapIdx]?.y) ? _provCentroid[_lCapIdx].y : PROVINCES[_lCapIdx].cy;
+      vp.tx = CW/2 - _lCx * vp.scale;
+      vp.ty = CH/2 - _lCy * vp.scale;
+      if(typeof clampViewport==='function') clampViewport();
+      if(typeof scheduleDraw==='function') scheduleDraw();
+    }
     addLog(`${G.leaderName} returns to the throne.`,'event');
   },80);
 }
