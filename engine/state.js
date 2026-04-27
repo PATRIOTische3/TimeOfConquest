@@ -171,6 +171,17 @@ function startGame(){
     buildCanvas();
     zoomReset();
     updateHUD(); updateIdeoHUD(); updateSeasonUI(); updateResCountsInPanel();
+    // Pan to player's capital province immediately on game start
+    const _capIdx = PROVINCES.findIndex(p => p.nation === SC && p.isCapital);
+    if(_capIdx >= 0 && typeof panToProvince === 'function'){
+      // Pan without the "already visible" guard by forcing vp to a far-off position first
+      const _capCx = (_provCentroid && _provCentroid[_capIdx]?.x) ? _provCentroid[_capIdx].x : PROVINCES[_capIdx].cx;
+      const _capCy = (_provCentroid && _provCentroid[_capIdx]?.y) ? _provCentroid[_capIdx].y : PROVINCES[_capIdx].cy;
+      vp.tx = CW/2 - _capCx * vp.scale;
+      vp.ty = CH/2 - _capCy * vp.scale;
+      clampViewport();
+      scheduleDraw();
+    }
     addLog(`${dateStr()}: ${G.leaderName} rises to power.`, 'event');
     G.alliance.forEach(al => {
       addLog(`🤝 ${al.name} alliance active: ${al.members.map(m => NATIONS[m]?.short).join(', ')}`, 'diplo');

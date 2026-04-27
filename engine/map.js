@@ -1276,10 +1276,11 @@ function drawMap(){
       const armyOffY  = hasName ? fs*1.0 : 0;
 
       // Province name
-      // Selected province / capital: boost font size when zoomed out
-      // so label stays readable at any zoom level
+      // Capitals: fixed boost so they're always slightly larger than regular provinces.
+      // Selected province: only shows label at normal zoom; no anti-zoom boost needed.
+      // (Sea labels handle zoom-out visibility; province labels fade in at vp.scale>0.35)
       const selBoost = (i === G.sel || p.isCapital)
-        ? Math.max(1, 0.6 / vp.scale)   // at scale=0.6 → ×1.0, at scale=0.3 → ×2.0
+        ? Math.min(1.6, 1.0 + vp.scale * 0.25)   // grows slightly WITH zoom, max ×1.6
         : 1;
       if(p.isCapital){
         const capFs = Math.min(fs * selBoost, 28 / vp.scale);
@@ -1398,21 +1399,29 @@ function drawMap(){
 
   ctx.restore();
 
-  // ── Sea / water labels — screen-space, static size, rotation ──
+  // ── Sea / water labels — world-space size, shrink on zoom-out, grow on zoom-in ──
+  // Sea labels scale WITH zoom: bigger when zoomed in, smaller when zoomed out.
+  // Province labels (capitals/selected) use the opposite boost so they stay legible at distance.
   if(_seaZonePositions && seaLabelAlpha > 0){
     const selZi2 = (typeof G.selSea === 'number' && G.selSea >= 0) ? G.selSea : -1;
     _seaZonePositions.forEach((z, zi)=>{
       const [sx, sy] = toScreen(z.x, z.y);
       if(sx < -250 || sx > CW+250 || sy < -60 || sy > CH+60) return;
       const isSelLabel = zi === selZi2;
-      const screenFs = Math.max(8, Math.min(z.fs || 13, 22));
+      // Base font in world units × scale → shrinks when zoomed out, grows when zoomed in
+      const baseFsWorld = (z.fs || 13) * 1.8; // world-space base size
+      const screenFs = Math.max(6, Math.min(baseFsWorld * vp.scale, 28));
+      // Fade sea labels further when zoomed in (province labels take over)
+      const seaFade = Math.min(1, Math.max(0, 1 - (vp.scale - 1.2) / 0.6));
+      const alpha = seaLabelAlpha * (isSelLabel ? 0.98 : 0.80) * seaFade;
+      if(alpha <= 0.02) return;
       ctx.save();
       ctx.translate(sx, sy);
       if(z.rotation) ctx.rotate(z.rotation * Math.PI / 180);
-      ctx.font = `italic ${isSelLabel ? screenFs+2 : screenFs}px Cinzel,serif`;
+      ctx.font = `italic ${isSelLabel ? screenFs+1 : screenFs}px Cinzel,serif`;
       ctx.fillStyle = isSelLabel
-        ? `rgba(255,235,120,${(0.98*seaLabelAlpha).toFixed(2)})`
-        : `rgba(140,200,255,${(0.80*seaLabelAlpha).toFixed(2)})`;
+        ? `rgba(255,235,120,${alpha.toFixed(2)})`
+        : `rgba(140,200,255,${alpha.toFixed(2)})`;
       ctx.shadowColor = 'rgba(0,0,0,1)';
       ctx.shadowBlur = 5;
       ctx.textAlign = 'center';
