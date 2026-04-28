@@ -100,13 +100,7 @@ function doAI(fullMonth=true){
         ));
         if(canRecruit>0&&G.army[r]<popCap){
           const actual=Math.min(canRecruit,popCap-G.army[r]);
-          // Hex system: route through hwProcessDraftArrival so troops land on barracks hex.
-          // Falls back to direct G.army increment if hex grid not ready.
-          if(typeof _hexCache!=='undefined'&&_hexCache&&typeof hwProcessDraftArrival==='function'){
-            hwProcessDraftArrival({prov:r, amount:actual, nation:ai});
-          } else {
-            G.army[r]+=actual;
-          }
+          G.army[r]+=actual;
           G.pop[r]=Math.max(500,G.pop[r]-actual);
           G.gold[ai]-=actual; spent+=actual;
         }
@@ -209,6 +203,18 @@ function doAI(fullMonth=true){
           if(dest){const mv=Math.floor(G.army[r]*.4);G.army[r]-=mv;G.army[dest]+=mv;}
         }
       }
+    }
+
+    // ── Hex-level tactics (moves armies on individual hexes) ──
+    // Runs every weekly tick when at war. Provincial AI above handles
+    // strategic decisions (declare war, pick target province);
+    // hwDoAI handles the tactical execution hex-by-hex.
+    if(isAtWar && typeof hwDoAI === 'function'){
+      // Give this AI nation fresh MP before their hex moves
+      for(const a of Object.values(G.hexArmy||{})){
+        if(a && a.nation === ai) a.movePoints = HEX_ARMY_MP;
+      }
+      hwDoAI(ai);
     }
   }
 }

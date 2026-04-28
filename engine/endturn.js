@@ -64,7 +64,9 @@ function endTurn(){
     const satIncomeMod=sat<40?0.80:1.0;
     const reformMod=G.reforming?0.80:1.0;
 
-    let inc=G.income[r];
+    let inc = (typeof hwGetProvIncome === 'function')
+      ? hwGetProvIncome(r, PN)
+      : G.income[r];
     if((G.buildings[r]||[]).includes('factory'))inc=Math.floor(inc*1.8);
     if((G.buildings[r]||[]).includes('palace'))inc=Math.floor(inc*1.15);
     // Tax rate scales income: 25% base = full income, lower = less, higher = more
@@ -172,7 +174,9 @@ function endTurn(){
   // Puppet tribute — collected once per month (not per province)
   G.puppet.forEach(pp=>{
     regsOf(pp).forEach(pr=>{
-      let pi=G.income[pr];
+      let pi = (typeof hwGetProvIncome === 'function')
+        ? hwGetProvIncome(pr, pp)
+        : G.income[pr];
       if((G.buildings[pr]||[]).includes('factory'))pi=Math.floor(pi*1.8);
       G.gold[PN]+=Math.floor(pi*.3);
     });

@@ -295,63 +295,43 @@ function hwAttackHex(fromIdx, toIdx) {
   const toH = _hexCache && _hexCache[toIdx];
   if (!att || att.amount <= 0 || !toH) return null;
 
-  const def = G.hexArmy[toIdx] || { amount: 0, nation: hwHexOwner(toIdx), movePoints: 0 };
-
-  // Defence multiplier: terrain × fortress bonus
+  const def = G.hexArmy[toIdx] || { amount: 0, nation: hwHexOwner(toIdx) };
   const defBonus = (HEX_DEF_BONUS[toH.t] || 1.0)
     * (G.hexBuildings[toIdx]?.type === 'fortress' ? 1.6 : 1.0);
 
-  // ── Потери ────────────────────────────────────────────────────────────────
-  // Атакующий теряет пропорционально численности защитника и рельефу.
-  // Защитник теряет пропорционально численности атакующего, делённой на рельеф.
   let al = Math.min(att.amount,
-    Math.round(def.amount * 0.12 * defBonus + ri(0, Math.round(att.amount * 0.02))));
+    Math.round(def.amount * 0.12 * defBonus * 0.8 + ri(0, Math.round(att.amount * 0.02))));
   let dl = Math.min(def.amount,
     Math.round(att.amount * 0.10 / defBonus + ri(0, Math.round(def.amount * 0.02))));
 
   const newAtt = att.amount - al;
   const newDef = def.amount - dl;
-  const win    = newDef <= 0;
+  const win = newDef <= 0;
 
-  // ── Применить потери атакующему ───────────────────────────────────────────
-  att.amount     = Math.max(0, newAtt);
-  // Атака стоит MP независимо от результата
-  att.movePoints = Math.max(0, (att.movePoints || 0) - (HEX_MOVE_COST[toH.t] || 1));
+  // Применить потери
+  att.amount = Math.max(0, newAtt);
+  att.movePoints = Math.max(0, (att.movePoints||0) - (HEX_MOVE_COST[toH.t]||1));
   if (att.amount <= 0) delete G.hexArmy[fromIdx];
 
-  // ── Результат ─────────────────────────────────────────────────────────────
-  const attNation = att.nation; // сохраняем до возможного удаления
-  const defNation = def.nation;
-  const an = NATIONS[attNation]?.short || '?';
-  const dn = NATIONS[defNation]?.short  || '?';
-
   if (win) {
-    // Защитник уничтожен — атакующий занимает гекс
     delete G.hexArmy[toIdx];
+    const capNation = att.amount > 0 ? att.nation : G.playerNation;
     if (newAtt > 0) {
-      // Победитель заходит на гекс с нулём MP (атака уже потратила очки)
-      G.hexArmy[toIdx] = { amount: newAtt, nation: attNation, movePoints: att.movePoints };
-      // Исходный гекс освобождаем если вся армия ушла
+      G.hexArmy[toIdx] = { amount: newAtt, nation: capNation, movePoints: 0 };
       if (att.amount <= 0) delete G.hexArmy[fromIdx];
     }
-    hwCaptureHex(toIdx, attNation);
-    addLog(`⚔ ${an}→${dn} [${toH.t}]: -${fm(al)}/${fm(dl)} 🏴 captured`, 'combat');
-    if (attNation === G.playerNation)
-      popup(`🏴 Captured! Lost ${fm(al)}, enemy lost ${fm(dl)}`);
+    hwCaptureHex(toIdx, capNation);
   } else {
-    // Защитник выстоял — атакующий остаётся на месте без MP
-    G.hexArmy[toIdx] = { amount: newDef, nation: defNation, movePoints: def.movePoints || 0 };
-    addLog(`⚔ ${an}→${dn} [${toH.t}]: -${fm(al)}/${fm(dl)} 🛡 held`, 'combat');
-    if (attNation === G.playerNation)
-      popup(`🛡 Attack repelled! Lost ${fm(al)}, enemy lost ${fm(dl)}`);
-    else if (defNation === G.playerNation)
-      popup(`🛡 Held! Enemy lost ${fm(dl)}, we lost ${fm(al)}`);
+    G.hexArmy[toIdx] = { amount: newDef, nation: def.nation, movePoints: def.movePoints||0 };
   }
 
-  // ── Синхронизировать G.army для HUD/AI ────────────────────────────────────
+  // Синхронизировать G.army
   if (_hexCache[fromIdx]) hwSyncProvArmy(_hexCache[fromIdx].p);
   if (_hexCache[toIdx])   hwSyncProvArmy(_hexCache[toIdx].p);
 
+  const an = NATIONS[att.nation]?.short || '?';
+  const dn = NATIONS[def.nation]?.short || '?';
+  addLog(`⚔ ${an}→${dn} [${toH.t}]: -${fm(al)}/${fm(dl)} ${win ? '🏴 captured' : '🛡 held'}`, 'combat');
   scheduleDraw();
   return { win, attLoss: al, defLoss: dl };
 }
@@ -702,4 +682,117 @@ function hwBuildMenuHTML(hexIdx) {
     </div>`;
   }
   return html;
+}
+
+// ── ТАКТИЧЕСКИЙ HEX-AI ────────────────────────────────────────────────────────
+// Вызывается из doAI (ai.js) для каждой ИИ нации которая в состоянии войны.
+// Провинциальный AI остаётся для стратегии (объявление войны, выбор цели).
+// Этот модуль реализует тактику на уровне гексов.
+
+function hwDoAI(ai) {
+  if (!_hexCache || !G.hexArmy) return;
+  const aggressive = (G.aiPersonality && G.aiPersonality[ai]) === 'aggressive';
+
+  // Приоритет цели гекса — чем выше тем привлекательнее для захвата
+  function hexPriority(hexIdx) {
+    const h = _hexCache[hexIdx];
+    let score = HEX_POP_WEIGHT[h.t] || 1;                  // население
+    if (G.hexBuildings[hexIdx]?.type === 'barracks') score += 5;  // казарма — лишить противника призыва
+    if (h.t === 'urban') score += 4;                        // города — доход
+    if (G.hexBuildings[hexIdx]?.type === 'fortress') score += 2;  // форт — оборонная ценность
+    return score;
+  }
+
+  // Оборонная привлекательность гекса для ИИ (держать такие гексы выгодно)
+  function defValue(hexIdx) {
+    const h = _hexCache[hexIdx];
+    const bonus = HEX_DEF_BONUS[h.t] || 1.0;
+    return bonus + (G.hexBuildings[hexIdx]?.type === 'fortress' ? 1.6 : 0);
+  }
+
+  // Собираем все армии этой нации
+  const myArmies = Object.entries(G.hexArmy)
+    .filter(([, a]) => a && a.nation === ai && a.amount > 0)
+    .map(([hs, a]) => ({ hexIdx: +hs, army: a }));
+
+  for (const { hexIdx: fromIdx, army } of myArmies) {
+    if ((army.movePoints || 0) <= 0) continue;
+
+    const h = _hexCache[fromIdx];
+    const neighbours = (h.nbIdx || []).filter(ni => !_hexCache[ni]?.sea);
+
+    // Классифицируем соседей
+    const targets = [];
+    for (const ni of neighbours) {
+      const cost = HEX_MOVE_COST[_hexCache[ni].t] || 1;
+      if ((army.movePoints || 0) < cost) continue;         // не хватает MP
+
+      const nOwner = hwHexOwner(ni);
+      const nArmy  = G.hexArmy[ni];
+      const hasEnemy = nArmy && nArmy.amount > 0 && atWar(ai, nArmy.nation);
+      const isEnemyHex = nOwner >= 0 && nOwner !== ai && atWar(ai, nOwner);
+
+      if (!hasEnemy && !isEnemyHex) continue;             // не вражеская территория
+
+      const defBonus = (HEX_DEF_BONUS[_hexCache[ni].t] || 1.0)
+        * (G.hexBuildings[ni]?.type === 'fortress' ? 1.6 : 1.0);
+      const enemyStr = hasEnemy ? (nArmy.amount * defBonus) : 0;
+      const ratio    = enemyStr > 0 ? army.amount / enemyStr : Infinity;
+      const minRatio = aggressive ? 1.2 : 1.8;
+      const priority = hexPriority(ni);
+
+      targets.push({ ni, cost, hasEnemy, ratio, minRatio, priority, enemyStr });
+    }
+
+    if (!targets.length) continue;
+
+    // Сортировка: сначала пустые вражеские гексы (бесплатный захват), потом по приоритету
+    targets.sort((a, b) => {
+      if (!a.hasEnemy && b.hasEnemy) return -1;            // пустой гекс — предпочесть
+      if (a.hasEnemy && !b.hasEnemy) return 1;
+      return b.priority - a.priority;
+    });
+
+    let moved = false;
+    for (const t of targets) {
+      if (t.hasEnemy) {
+        // Атака — проверить соотношение сил
+        if (t.ratio < t.minRatio) {
+          // Оборонительный ИИ не лезет в невыгодный бой,
+          // но отступить на хорошую позицию может
+          if (!aggressive && defValue(fromIdx) < 1.3) {
+            // Ищем соседний оборонительный гекс без врагов
+            const retreat = (h.nbIdx || []).find(ni2 => {
+              if (_hexCache[ni2]?.sea) return false;
+              const o2 = hwHexOwner(ni2);
+              if (o2 !== ai) return false;
+              return defValue(ni2) >= 1.3 && !(G.hexArmy[ni2]?.nation !== ai && G.hexArmy[ni2]?.amount > 0);
+            });
+            if (retreat !== undefined) {
+              const rCost = HEX_MOVE_COST[_hexCache[retreat].t] || 1;
+              if ((army.movePoints || 0) >= rCost) {
+                hwMoveArmy(fromIdx, retreat, army.amount);
+                moved = true; break;
+              }
+            }
+          }
+          continue;  // слишком слабы — пропустить
+        }
+        hwMoveArmy(fromIdx, t.ni, army.amount);
+        moved = true; break;
+      } else {
+        // Пустой вражеский гекс — захватить
+        hwMoveArmy(fromIdx, t.ni, army.amount);
+        moved = true; break;
+      }
+    }
+
+    // Синхронизируем G.army для HUD после всех ходов этой армии
+    if (moved) hwSyncProvArmy(h.p);
+  }
+
+  // Сбрасываем MP для армий этой нации (их ход закончен)
+  for (const a of Object.values(G.hexArmy || {})) {
+    if (a && a.nation === ai) a.movePoints = 0;
+  }
 }

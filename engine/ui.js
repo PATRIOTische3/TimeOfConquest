@@ -248,9 +248,13 @@ function _hwUpdateProvPanel(pi) {
       const hOwner = h ? hwHexOwner(hexIdx) : -1;
       const isOwn = hOwner === G.playerNation;
       const hexArmy = G.hexArmy && G.hexArmy[hexIdx];
+      // Pop share: what % of province population lives on this hex
+      const popShare = (typeof hwHexPopShare === 'function' && hexIdx >= 0)
+        ? Math.round(hwHexPopShare(hexIdx) * 100) : null;
       const hdr = `<div style="font-size:8px;color:#c9a84c;font-family:Cinzel,serif;letter-spacing:1px;margin-bottom:4px">
         HEX [${h ? h.t : '?'}] ${h && h.coastal ? '⚓ COASTAL' : ''}
         ${isOwn ? '<span style="color:#80c080">● YOURS</span>' : '<span style="color:#c06060">● ENEMY</span>'}
+        ${popShare !== null ? `<span style="color:#aaa;font-weight:400"> · 👥 ${popShare}% pop</span>` : ''}
         ${hexArmy && hexArmy.amount > 0 ? `<br><span style="color:#f0d080">⚔ ${fm(hexArmy.amount)} troops</span>` : ''}
       </div>`;
       buildEl.innerHTML = hdr + buildEl.innerHTML;
