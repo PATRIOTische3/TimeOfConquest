@@ -262,16 +262,8 @@ function _hwUpdateProvPanel(pi) {
   }
 }
 
-// Find hex index by {r, c} coords from selHex
-function _hwFindHexIdx(selHex) {
-  if (!selHex || !_hexCache) return -1;
-  // selHex has r, c properties
-  for (let i = 0; i < _hexCache.length; i++) {
-    const h = _hexCache[i];
-    if (h && h.r === selHex.r && h.c === selHex.c) return i;
-  }
-  return -1;
-}
+// hwFindHexIdx is defined in hex_warfare.js
+function _hwFindHexIdx(selHex){ return typeof hwFindHexIdx==='function' ? hwFindHexIdx(selHex) : -1; }
 
 // NOTE: chkBtns() lives in military.js
 
