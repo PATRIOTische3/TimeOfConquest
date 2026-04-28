@@ -192,11 +192,27 @@ function hwStartBuild(hexIdx, type) {
     totalTurns: def.buildTurns,
   };
   _hwBuildProvCache();
+  if(typeof closeModal==='function') closeModal();
   scheduleDraw(); updateHUD();
   if (G.sel >= 0) updateSP(G.sel);
   addLog(`🏗 ${def.name} construction started in ${PROVINCES[_hexCache[hexIdx].p]?.name}`, 'build');
-  popup(`🏗 ${def.name} — ${def.buildTurns} months to complete`);
+  popup(`🏗 ${def.name} — ${def.buildTurns} weeks to complete`);
   return true;
+}
+
+// Отмена строительства на гексе (возврат 50% золота)
+function hwCancelBuild(hexIdx) {
+  const con = G.hexConstruction && G.hexConstruction[hexIdx];
+  if (!con) return;
+  const def = HEX_BUILDING_DEFS[con.type];
+  const refund = Math.floor(def.cost * 0.5);
+  G.gold[G.playerNation] += refund;
+  delete G.hexConstruction[hexIdx];
+  _hwBuildProvCache();
+  if(typeof closeModal==='function') closeModal();
+  scheduleDraw(); updateHUD();
+  if (G.sel >= 0) updateSP(G.sel);
+  popup(`Construction cancelled — ${refund}g refunded`);
 }
 
 // Прогресс строительства — каждый ход
@@ -654,145 +670,66 @@ function hwBuildMenuHTML(hexIdx) {
     return `<div style="font-size:8px;color:#555;padding:3px 0">This hex is not yours</div>`;
   }
 
-  const coastal = (h.nbIdx || []).some(ni => _hexCache[ni]?.sea);
-  const hexArmy = G.hexArmy && G.hexArmy[hexIdx];
+  const coastal  = h.coastal;
+  const hexArmy  = G.hexArmy && G.hexArmy[hexIdx];
+  const con      = G.hexConstruction && G.hexConstruction[hexIdx];
+  const existing = G.hexBuildings && G.hexBuildings[hexIdx];
 
-  let html = `<div style="font-size:8px;color:#c9a84c;font-family:Cinzel,serif;letter-spacing:1px;margin-bottom:4px">
-    HEX [${h.t.toUpperCase()}]${coastal?' ⚓ COASTAL':''}
-    ${hexArmy && hexArmy.amount > 0
-      ? `<span style="color:#f0d080;float:right">⚔ ${fm(hexArmy.amount)}</span>` : ''}
-  </div>`;
+  let html = '';
 
-  for (const [type, def] of Object.entries(HEX_BUILDING_DEFS)) {
-    if (def.coastal && !coastal) continue;
-    const chk = hwCanBuildAt(hexIdx, type, PN);
-    const can = chk === true;
-    html += `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid rgba(42,36,24,.2)">
-      <span style="font-size:13px">${def.icon}</span>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:9px;color:${can?'#e8d5a3':'#555'};font-family:Cinzel,serif">${def.name}</div>
-        <div style="font-size:7px;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${can ? def.desc : chk}</div>
+  // ── Status bar: construction in progress ────────────────────────────────
+  if (con) {
+    const cdef = HEX_BUILDING_DEFS[con.type];
+    const pct  = Math.round((con.totalTurns - con.turnsLeft) / con.totalTurns * 100);
+    html += `<div style="margin-bottom:8px;padding:6px;background:rgba(0,0,0,.3);border-radius:3px;border:1px solid rgba(201,168,76,.2)">
+      <div style="display:flex;justify-content:space-between;font-size:9px;color:#c9a84c;margin-bottom:5px">
+        <span>${cdef?.icon||'🏗'} <b>${cdef?.name||con.type}</b> under construction</span>
+        <span style="color:#aaa">${con.turnsLeft}w left</span>
       </div>
-      <button onclick="hwStartBuild(${hexIdx},'${type}')"
-        style="padding:3px 8px;font-size:8px;font-family:Cinzel,serif;flex-shrink:0;
-          background:${can?'rgba(20,14,4,.85)':'rgba(10,10,10,.4)'};
-          border:1px solid ${can?'rgba(201,168,76,.6)':'rgba(50,50,50,.4)'};
-          color:${can?'#c9a84c':'#3a3a3a'};cursor:${can?'pointer':'not-allowed'}"
-        ${can?'':'disabled'}>${def.cost}g</button>
+      <div style="height:5px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;margin-bottom:5px">
+        <div style="height:100%;background:var(--gold);border-radius:2px;width:${pct}%"></div>
+      </div>
+      <button onclick="hwCancelBuild(${hexIdx})"
+        style="width:100%;padding:3px;font-size:8px;background:rgba(80,20,20,.6);
+          border:1px solid rgba(180,60,60,.4);color:#c06060;cursor:pointer;border-radius:2px">
+        ✕ Cancel (50% refund)
+      </button>
     </div>`;
   }
+
+  // ── Existing building ────────────────────────────────────────────────────
+  if (existing) {
+    const edef = HEX_BUILDING_DEFS[existing.type];
+    html += `<div style="margin-bottom:6px;font-size:9px;color:#80c080">
+      ${edef?.icon||'?'} <b>${edef?.name||existing.type}</b> already built here
+    </div>`;
+  }
+
+  // ── Build options ────────────────────────────────────────────────────────
+  if (!con && !existing) {
+    for (const [type, def] of Object.entries(HEX_BUILDING_DEFS)) {
+      if (def.coastal && !coastal) continue;
+      const chk = hwCanBuildAt(hexIdx, type, PN);
+      const can = chk === true;
+      html += `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid rgba(42,36,24,.2)">
+        <span style="font-size:16px;flex-shrink:0">${def.icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:9px;color:${can?'#e8d5a3':'#555'};font-family:Cinzel,serif">${def.name}
+            <span style="color:#8090a0;font-size:7px;margin-left:4px">⏳ ${def.buildTurns}w</span>
+          </div>
+          <div style="font-size:7px;color:${can?'#666':'#444'};margin-top:1px">${can ? def.desc : chk}</div>
+        </div>
+        <button onclick="hwStartBuild(${hexIdx},'${type}')"
+          style="padding:4px 10px;font-size:9px;font-family:Cinzel,serif;flex-shrink:0;
+            background:${can?'rgba(20,14,4,.85)':'rgba(10,10,10,.4)'};
+            border:1px solid ${can?'rgba(201,168,76,.6)':'rgba(50,50,50,.4)'};
+            color:${can?'#c9a84c':'#3a3a3a'};cursor:${can?'pointer':'not-allowed'};border-radius:2px"
+          ${can?'':'disabled'}>${def.cost}g</button>
+      </div>`;
+    }
+  } else if (!con) {
+    html += `<div style="font-size:8px;color:#555;text-align:center;padding:4px">One building per hex</div>`;
+  }
+
   return html;
-}
-
-// ── ТАКТИЧЕСКИЙ HEX-AI ────────────────────────────────────────────────────────
-// Вызывается из doAI (ai.js) для каждой ИИ нации которая в состоянии войны.
-// Провинциальный AI остаётся для стратегии (объявление войны, выбор цели).
-// Этот модуль реализует тактику на уровне гексов.
-
-function hwDoAI(ai) {
-  if (!_hexCache || !G.hexArmy) return;
-  const aggressive = (G.aiPersonality && G.aiPersonality[ai]) === 'aggressive';
-
-  // Приоритет цели гекса — чем выше тем привлекательнее для захвата
-  function hexPriority(hexIdx) {
-    const h = _hexCache[hexIdx];
-    let score = HEX_POP_WEIGHT[h.t] || 1;                  // население
-    if (G.hexBuildings[hexIdx]?.type === 'barracks') score += 5;  // казарма — лишить противника призыва
-    if (h.t === 'urban') score += 4;                        // города — доход
-    if (G.hexBuildings[hexIdx]?.type === 'fortress') score += 2;  // форт — оборонная ценность
-    return score;
-  }
-
-  // Оборонная привлекательность гекса для ИИ (держать такие гексы выгодно)
-  function defValue(hexIdx) {
-    const h = _hexCache[hexIdx];
-    const bonus = HEX_DEF_BONUS[h.t] || 1.0;
-    return bonus + (G.hexBuildings[hexIdx]?.type === 'fortress' ? 1.6 : 0);
-  }
-
-  // Собираем все армии этой нации
-  const myArmies = Object.entries(G.hexArmy)
-    .filter(([, a]) => a && a.nation === ai && a.amount > 0)
-    .map(([hs, a]) => ({ hexIdx: +hs, army: a }));
-
-  for (const { hexIdx: fromIdx, army } of myArmies) {
-    if ((army.movePoints || 0) <= 0) continue;
-
-    const h = _hexCache[fromIdx];
-    const neighbours = (h.nbIdx || []).filter(ni => !_hexCache[ni]?.sea);
-
-    // Классифицируем соседей
-    const targets = [];
-    for (const ni of neighbours) {
-      const cost = HEX_MOVE_COST[_hexCache[ni].t] || 1;
-      if ((army.movePoints || 0) < cost) continue;         // не хватает MP
-
-      const nOwner = hwHexOwner(ni);
-      const nArmy  = G.hexArmy[ni];
-      const hasEnemy = nArmy && nArmy.amount > 0 && atWar(ai, nArmy.nation);
-      const isEnemyHex = nOwner >= 0 && nOwner !== ai && atWar(ai, nOwner);
-
-      if (!hasEnemy && !isEnemyHex) continue;             // не вражеская территория
-
-      const defBonus = (HEX_DEF_BONUS[_hexCache[ni].t] || 1.0)
-        * (G.hexBuildings[ni]?.type === 'fortress' ? 1.6 : 1.0);
-      const enemyStr = hasEnemy ? (nArmy.amount * defBonus) : 0;
-      const ratio    = enemyStr > 0 ? army.amount / enemyStr : Infinity;
-      const minRatio = aggressive ? 1.2 : 1.8;
-      const priority = hexPriority(ni);
-
-      targets.push({ ni, cost, hasEnemy, ratio, minRatio, priority, enemyStr });
-    }
-
-    if (!targets.length) continue;
-
-    // Сортировка: сначала пустые вражеские гексы (бесплатный захват), потом по приоритету
-    targets.sort((a, b) => {
-      if (!a.hasEnemy && b.hasEnemy) return -1;            // пустой гекс — предпочесть
-      if (a.hasEnemy && !b.hasEnemy) return 1;
-      return b.priority - a.priority;
-    });
-
-    let moved = false;
-    for (const t of targets) {
-      if (t.hasEnemy) {
-        // Атака — проверить соотношение сил
-        if (t.ratio < t.minRatio) {
-          // Оборонительный ИИ не лезет в невыгодный бой,
-          // но отступить на хорошую позицию может
-          if (!aggressive && defValue(fromIdx) < 1.3) {
-            // Ищем соседний оборонительный гекс без врагов
-            const retreat = (h.nbIdx || []).find(ni2 => {
-              if (_hexCache[ni2]?.sea) return false;
-              const o2 = hwHexOwner(ni2);
-              if (o2 !== ai) return false;
-              return defValue(ni2) >= 1.3 && !(G.hexArmy[ni2]?.nation !== ai && G.hexArmy[ni2]?.amount > 0);
-            });
-            if (retreat !== undefined) {
-              const rCost = HEX_MOVE_COST[_hexCache[retreat].t] || 1;
-              if ((army.movePoints || 0) >= rCost) {
-                hwMoveArmy(fromIdx, retreat, army.amount);
-                moved = true; break;
-              }
-            }
-          }
-          continue;  // слишком слабы — пропустить
-        }
-        hwMoveArmy(fromIdx, t.ni, army.amount);
-        moved = true; break;
-      } else {
-        // Пустой вражеский гекс — захватить
-        hwMoveArmy(fromIdx, t.ni, army.amount);
-        moved = true; break;
-      }
-    }
-
-    // Синхронизируем G.army для HUD после всех ходов этой армии
-    if (moved) hwSyncProvArmy(h.p);
-  }
-
-  // Сбрасываем MP для армий этой нации (их ход закончен)
-  for (const a of Object.values(G.hexArmy || {})) {
-    if (a && a.nation === ai) a.movePoints = 0;
-  }
 }

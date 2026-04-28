@@ -77,6 +77,38 @@ function buildTurns(r, key){
 function openBuild(){
   const si=G.sel;
   if(si<0||G.owner[si]!==G.playerNation){popup('Select your territory!');return;}
+
+  // ── Hex system: require a hex to be selected ──────────────────────────────
+  // Building is placed on a specific hex, not the whole province.
+  if(typeof _hexCache !== 'undefined' && _hexCache){
+    if(G.selStage !== 2 || G.selHex == null){
+      popup('Click a hex inside the province first, then Build');return;
+    }
+    const hexIdx = (typeof hwFindHexIdx==='function') ? hwFindHexIdx(G.selHex) : -1;
+    if(hexIdx < 0){popup('Cannot find hex');return;}
+    // Show construction in progress for this hex if any
+    const con = G.hexConstruction && G.hexConstruction[hexIdx];
+    if(con){
+      const def = (typeof HEX_BUILDING_DEFS!=='undefined') ? HEX_BUILDING_DEFS[con.type] : null;
+      openModal('Construction in Progress',
+        `<p class="mx">Building <b>${def?.icon||'🏗'} ${def?.name||con.type}</b></p>
+         <div style="margin:10px 0">
+           <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--dim);margin-bottom:4px"><span>Progress</span><span>${con.totalTurns-con.turnsLeft}/${con.totalTurns} weeks</span></div>
+           <div style="height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden"><div style="height:100%;background:var(--gold);border-radius:3px;width:${Math.round((con.totalTurns-con.turnsLeft)/con.totalTurns*100)}%;transition:width .3s"></div></div>
+         </div>
+         <p class="mx" style="font-size:9px;color:var(--dim)">Completes in <b>${con.turnsLeft}</b> more week${con.turnsLeft!==1?'s':''}.</p>`,
+        `<button class="btn red" onclick="hwCancelBuild(${hexIdx})">✕ Cancel (lose 50% gold)</button>
+         <button class="btn dim" onclick="closeModal()">Close</button>`
+      );
+      return;
+    }
+    // Open hex build dialog as modal
+    if(typeof hwBuildMenuHTML==='function'){
+      const menuHtml = hwBuildMenuHTML(hexIdx);
+      openModal('CONSTRUCT ON HEX', menuHtml, '<button class="btn dim" onclick="closeModal()">Cancel</button>');
+    }
+    return;
+  }
   // Check if construction already queued here
   if(G.construction[si]){
     const c=G.construction[si];

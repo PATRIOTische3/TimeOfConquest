@@ -85,6 +85,52 @@ function chkBtns(){
     const fr3=regsOf(PN).find(r=>G.army[r]>100&&NB[r]?.includes(si));
     if(fr3!==undefined){window._af=fr3;window._at=si;}
   }
+
+  // ── Conscript button: grey when no hex barracks or foreign province ───────
+  const conscriptBtn = document.getElementById('sp-btn-conscript');
+  if (conscriptBtn) {
+    const hexActive = typeof _hexCache !== 'undefined' && _hexCache;
+    let canConscript = isOwn;
+    let conscriptSub = '1,000 pop · 1 gold per soldier';
+    if (hexActive && isOwn) {
+      // Check for barracks in this province
+      const hasBarracks = window._provHexBuild && (window._provHexBuild[si]||[])
+        .some(b => b.type === 'barracks' && (typeof hwHexOwner==='function') && hwHexOwner(b.hexIdx) === PN);
+      if (!hasBarracks) {
+        canConscript = false;
+        conscriptSub = '🪖 No barracks — build one on a hex first';
+      } else if ((G.draftQueue||[]).some(d=>d.prov===si&&d.nation===PN)) {
+        canConscript = false;
+        conscriptSub = '⏳ Already conscripting here';
+      }
+    } else if (!isOwn) {
+      canConscript = false;
+      conscriptSub = 'Select your own province';
+    }
+    conscriptBtn.disabled = !canConscript;
+    const sub = document.getElementById('sp-con-sub');
+    if (sub) sub.textContent = conscriptSub;
+  }
+
+  // ── Build button: grey until hex selected (when hex system active) ────────
+  const buildBtn = document.getElementById('sp-btn-build');
+  if (buildBtn) {
+    const hexActive = typeof _hexCache !== 'undefined' && _hexCache;
+    let canBuild = isOwn;
+    let buildSub = isOwn ? 'Select a hex inside province' : 'Select your territory first';
+    if (hexActive && isOwn) {
+      if (G.selStage === 2 && G.selHex != null) {
+        buildSub = 'Click to build on selected hex';
+        canBuild = true;
+      } else {
+        canBuild = false;
+        buildSub = 'Click a hex inside the province first';
+      }
+    }
+    buildBtn.disabled = !canBuild;
+    const bldSub = document.getElementById('sp-bld-sub');
+    if (bldSub) bldSub.textContent = buildSub;
+  }
 }
 
 
@@ -312,12 +358,6 @@ function confirmDraft(){
   if((G.draftQueue||[]).some(d=>d.prov===r&&d.nation===G.playerNation)){popup('Already conscripting here!');return;}
   if(G.pop[r]<v+1000){popup('Not enough population!');return;}
   if(G.gold[G.playerNation]<v){popup('Not enough gold!');return;}
-  // Guard: hex system active — barracks on a hex is required
-  if(typeof _hexCache !== 'undefined' && _hexCache){
-    const hasBarracks = window._provHexBuild && (window._provHexBuild[r]||[])
-      .some(b => b.type === 'barracks' && hwHexOwner(b.hexIdx) === G.playerNation);
-    if(!hasBarracks){ popup('🪖 No barracks in this province — build one on a hex first'); return; }
-  }
 
   // ── Draft queue: conscription takes time ──────────────
   // Dictators (nazism/fascism/stalinism/militarism/communism): always 1 week

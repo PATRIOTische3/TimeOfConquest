@@ -248,13 +248,9 @@ function _hwUpdateProvPanel(pi) {
       const hOwner = h ? hwHexOwner(hexIdx) : -1;
       const isOwn = hOwner === G.playerNation;
       const hexArmy = G.hexArmy && G.hexArmy[hexIdx];
-      // Pop share: what % of province population lives on this hex
-      const popShare = (typeof hwHexPopShare === 'function' && hexIdx >= 0)
-        ? Math.round(hwHexPopShare(hexIdx) * 100) : null;
       const hdr = `<div style="font-size:8px;color:#c9a84c;font-family:Cinzel,serif;letter-spacing:1px;margin-bottom:4px">
-        HEX [${h ? h.t : '?'}] ${h && h.coastal ? '⚓ COASTAL' : ''}
+        HEX [${h ? h.t : '?'}] ${h && (h.nbIdx||[]).some(ni=>_hexCache&&_hexCache[ni]?.sea) ? '⚓ COASTAL' : ''}
         ${isOwn ? '<span style="color:#80c080">● YOURS</span>' : '<span style="color:#c06060">● ENEMY</span>'}
-        ${popShare !== null ? `<span style="color:#aaa;font-weight:400"> · 👥 ${popShare}% pop</span>` : ''}
         ${hexArmy && hexArmy.amount > 0 ? `<br><span style="color:#f0d080">⚔ ${fm(hexArmy.amount)} troops</span>` : ''}
       </div>`;
       buildEl.innerHTML = hdr + buildEl.innerHTML;
@@ -571,14 +567,46 @@ function onCanvasClick(wx,wy){
   } else {
     const h=(typeof hitHex==='function')?hitHex(wx,wy):null;
     if(G.selStage===1){
-      G.selStage=2;G.selHex=h;scheduleDraw();
-      if(typeof updateSP==='function')updateSP(G.sel);
+      G.selStage=2; G.selHex=h; scheduleDraw();
+      if(typeof updateSP==='function') updateSP(G.sel);
+      if(typeof chkBtns==='function') chkBtns();
+      // If hex system active and clicked hex has our army — open move dialog immediately
+      if(h && typeof _hexCache!=='undefined' && _hexCache && typeof hwFindHexIdx==='function'){
+        const hi = hwFindHexIdx(h);
+        if(hi >= 0){
+          const a = G.hexArmy && G.hexArmy[hi];
+          if(a && a.nation === G.playerNation && a.amount > 0){
+            if(typeof hwOpenHexMoveDialog==='function') hwOpenHexMoveDialog();
+          }
+        }
+      }
     } else if(G.selStage===2){
-      if(h&&G.selHex&&h.r===G.selHex.r&&h.c===G.selHex.c){
-        G.sel=-1;G.selStage=0;G.selHex=null;scheduleDraw();chkBtns();
+      if(h && G.selHex && h.r===G.selHex.r && h.c===G.selHex.c){
+        // Second click on same hex — if has army, reopen move dialog
+        if(typeof _hexCache!=='undefined' && _hexCache && typeof hwFindHexIdx==='function'){
+          const hi = hwFindHexIdx(h);
+          if(hi >= 0){
+            const a = G.hexArmy && G.hexArmy[hi];
+            if(a && a.nation===G.playerNation && a.amount>0){
+              if(typeof hwOpenHexMoveDialog==='function'){ hwOpenHexMoveDialog(); return; }
+            }
+          }
+        }
+        G.sel=-1; G.selStage=0; G.selHex=null; scheduleDraw(); chkBtns();
       } else {
-        G.selHex=h;scheduleDraw();
-        if(typeof updateSP==='function')updateSP(G.sel);
+        G.selHex=h; scheduleDraw();
+        if(typeof updateSP==='function') updateSP(G.sel);
+        if(typeof chkBtns==='function') chkBtns();
+        // Same: if new hex has our army → open move dialog
+        if(h && typeof _hexCache!=='undefined' && _hexCache && typeof hwFindHexIdx==='function'){
+          const hi = hwFindHexIdx(h);
+          if(hi >= 0){
+            const a = G.hexArmy && G.hexArmy[hi];
+            if(a && a.nation===G.playerNation && a.amount>0){
+              if(typeof hwOpenHexMoveDialog==='function') hwOpenHexMoveDialog();
+            }
+          }
+        }
       }
     }
   }
