@@ -312,6 +312,12 @@ function confirmDraft(){
   if((G.draftQueue||[]).some(d=>d.prov===r&&d.nation===G.playerNation)){popup('Already conscripting here!');return;}
   if(G.pop[r]<v+1000){popup('Not enough population!');return;}
   if(G.gold[G.playerNation]<v){popup('Not enough gold!');return;}
+  // Guard: hex system active — barracks on a hex is required
+  if(typeof _hexCache !== 'undefined' && _hexCache){
+    const hasBarracks = window._provHexBuild && (window._provHexBuild[r]||[])
+      .some(b => b.type === 'barracks' && hwHexOwner(b.hexIdx) === G.playerNation);
+    if(!hasBarracks){ popup('🪖 No barracks in this province — build one on a hex first'); return; }
+  }
 
   // ── Draft queue: conscription takes time ──────────────
   // Dictators (nazism/fascism/stalinism/militarism/communism): always 1 week

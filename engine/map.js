@@ -122,6 +122,9 @@ function buildHexCache(){
 
   _hexCache.forEach((h, idx) => {
     h.nbIdx = getNeighbours(h.r, h.c);
+    // Cache coastal flag: land hex that has at least one sea neighbour.
+    // Computed once here so every other system (build checks, UI, AI) just reads h.coastal.
+    h.coastal = !h.sea && h.nbIdx.some(ni => _hexCache[ni]?.sea);
     if(h.sea || h.p < 0) return;
     const c = _provCentroid[h.p];
     if(c){ c.x += h.x; c.y += h.y; c.n++; }

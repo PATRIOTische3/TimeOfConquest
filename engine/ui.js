@@ -249,7 +249,7 @@ function _hwUpdateProvPanel(pi) {
       const isOwn = hOwner === G.playerNation;
       const hexArmy = G.hexArmy && G.hexArmy[hexIdx];
       const hdr = `<div style="font-size:8px;color:#c9a84c;font-family:Cinzel,serif;letter-spacing:1px;margin-bottom:4px">
-        HEX [${h ? h.t : '?'}] ${h && (h.nbIdx||[]).some(ni=>_hexCache&&_hexCache[ni]?.sea) ? '⚓ COASTAL' : ''}
+        HEX [${h ? h.t : '?'}] ${h && h.coastal ? '⚓ COASTAL' : ''}
         ${isOwn ? '<span style="color:#80c080">● YOURS</span>' : '<span style="color:#c06060">● ENEMY</span>'}
         ${hexArmy && hexArmy.amount > 0 ? `<br><span style="color:#f0d080">⚔ ${fm(hexArmy.amount)} troops</span>` : ''}
       </div>`;

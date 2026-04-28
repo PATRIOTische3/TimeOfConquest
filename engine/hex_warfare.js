@@ -295,43 +295,63 @@ function hwAttackHex(fromIdx, toIdx) {
   const toH = _hexCache && _hexCache[toIdx];
   if (!att || att.amount <= 0 || !toH) return null;
 
-  const def = G.hexArmy[toIdx] || { amount: 0, nation: hwHexOwner(toIdx) };
+  const def = G.hexArmy[toIdx] || { amount: 0, nation: hwHexOwner(toIdx), movePoints: 0 };
+
+  // Defence multiplier: terrain × fortress bonus
   const defBonus = (HEX_DEF_BONUS[toH.t] || 1.0)
     * (G.hexBuildings[toIdx]?.type === 'fortress' ? 1.6 : 1.0);
 
+  // ── Потери ────────────────────────────────────────────────────────────────
+  // Атакующий теряет пропорционально численности защитника и рельефу.
+  // Защитник теряет пропорционально численности атакующего, делённой на рельеф.
   let al = Math.min(att.amount,
-    Math.round(def.amount * 0.12 * defBonus * 0.8 + ri(0, Math.round(att.amount * 0.02))));
+    Math.round(def.amount * 0.12 * defBonus + ri(0, Math.round(att.amount * 0.02))));
   let dl = Math.min(def.amount,
     Math.round(att.amount * 0.10 / defBonus + ri(0, Math.round(def.amount * 0.02))));
 
   const newAtt = att.amount - al;
   const newDef = def.amount - dl;
-  const win = newDef <= 0;
+  const win    = newDef <= 0;
 
-  // Применить потери
-  att.amount = Math.max(0, newAtt);
-  att.movePoints = Math.max(0, (att.movePoints||0) - (HEX_MOVE_COST[toH.t]||1));
+  // ── Применить потери атакующему ───────────────────────────────────────────
+  att.amount     = Math.max(0, newAtt);
+  // Атака стоит MP независимо от результата
+  att.movePoints = Math.max(0, (att.movePoints || 0) - (HEX_MOVE_COST[toH.t] || 1));
   if (att.amount <= 0) delete G.hexArmy[fromIdx];
 
+  // ── Результат ─────────────────────────────────────────────────────────────
+  const attNation = att.nation; // сохраняем до возможного удаления
+  const defNation = def.nation;
+  const an = NATIONS[attNation]?.short || '?';
+  const dn = NATIONS[defNation]?.short  || '?';
+
   if (win) {
+    // Защитник уничтожен — атакующий занимает гекс
     delete G.hexArmy[toIdx];
-    const capNation = att.amount > 0 ? att.nation : G.playerNation;
     if (newAtt > 0) {
-      G.hexArmy[toIdx] = { amount: newAtt, nation: capNation, movePoints: 0 };
+      // Победитель заходит на гекс с нулём MP (атака уже потратила очки)
+      G.hexArmy[toIdx] = { amount: newAtt, nation: attNation, movePoints: att.movePoints };
+      // Исходный гекс освобождаем если вся армия ушла
       if (att.amount <= 0) delete G.hexArmy[fromIdx];
     }
-    hwCaptureHex(toIdx, capNation);
+    hwCaptureHex(toIdx, attNation);
+    addLog(`⚔ ${an}→${dn} [${toH.t}]: -${fm(al)}/${fm(dl)} 🏴 captured`, 'combat');
+    if (attNation === G.playerNation)
+      popup(`🏴 Captured! Lost ${fm(al)}, enemy lost ${fm(dl)}`);
   } else {
-    G.hexArmy[toIdx] = { amount: newDef, nation: def.nation, movePoints: def.movePoints||0 };
+    // Защитник выстоял — атакующий остаётся на месте без MP
+    G.hexArmy[toIdx] = { amount: newDef, nation: defNation, movePoints: def.movePoints || 0 };
+    addLog(`⚔ ${an}→${dn} [${toH.t}]: -${fm(al)}/${fm(dl)} 🛡 held`, 'combat');
+    if (attNation === G.playerNation)
+      popup(`🛡 Attack repelled! Lost ${fm(al)}, enemy lost ${fm(dl)}`);
+    else if (defNation === G.playerNation)
+      popup(`🛡 Held! Enemy lost ${fm(dl)}, we lost ${fm(al)}`);
   }
 
-  // Синхронизировать G.army
+  // ── Синхронизировать G.army для HUD/AI ────────────────────────────────────
   if (_hexCache[fromIdx]) hwSyncProvArmy(_hexCache[fromIdx].p);
   if (_hexCache[toIdx])   hwSyncProvArmy(_hexCache[toIdx].p);
 
-  const an = NATIONS[att.nation]?.short || '?';
-  const dn = NATIONS[def.nation]?.short || '?';
-  addLog(`⚔ ${an}→${dn} [${toH.t}]: -${fm(al)}/${fm(dl)} ${win ? '🏴 captured' : '🛡 held'}`, 'combat');
   scheduleDraw();
   return { win, attLoss: al, defLoss: dl };
 }

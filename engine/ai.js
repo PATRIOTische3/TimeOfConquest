@@ -100,7 +100,13 @@ function doAI(fullMonth=true){
         ));
         if(canRecruit>0&&G.army[r]<popCap){
           const actual=Math.min(canRecruit,popCap-G.army[r]);
-          G.army[r]+=actual;
+          // Hex system: route through hwProcessDraftArrival so troops land on barracks hex.
+          // Falls back to direct G.army increment if hex grid not ready.
+          if(typeof _hexCache!=='undefined'&&_hexCache&&typeof hwProcessDraftArrival==='function'){
+            hwProcessDraftArrival({prov:r, amount:actual, nation:ai});
+          } else {
+            G.army[r]+=actual;
+          }
           G.pop[r]=Math.max(500,G.pop[r]-actual);
           G.gold[ai]-=actual; spent+=actual;
         }
