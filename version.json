@@ -6,7 +6,7 @@
     "PATCH — bugfixes, UI tweaks, balance changes",
     "YYMMDD — build date"
   ],
-  "version": "0.11-27042026",
+  "version": "0.12-28042026",
   "e_verupd": "25042026",
-  "changelog": "Fix"
+  "changelog": "Update"
 }
