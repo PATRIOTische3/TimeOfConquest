@@ -398,12 +398,10 @@ function hwResetMovePoints() {
 // ── ДИАЛОГ ДВИЖЕНИЯ ГЕКСОВОЙ АРМИИ ───────────────────────────────────────────
 // Вызывается кнопкой sp-btn-hexmove из index.html
 function hwOpenHexMoveDialog() {
-  if (!G.selHex || G.selStage !== 2) {
-    popup('Select a specific hex first (click province, then a hex inside it)');
-    return;
-  }
-  const fromIdx = hwFindHexIdx(G.selHex);
-  if (fromIdx < 0) { popup('Cannot find hex'); return; }
+  // Prefer explicit selHex; fall back to hexMoveSrc set by toggleMoveMode.
+  let fromIdx = (G.selHex && G.selStage === 2) ? hwFindHexIdx(G.selHex) : -1;
+  if (fromIdx < 0 && G.hexMoveSrc >= 0) fromIdx = G.hexMoveSrc;
+  if (fromIdx < 0) { popup('Select a province with your army first'); return; }
 
   const army = G.hexArmy && G.hexArmy[fromIdx];
   if (!army || army.nation !== G.playerNation || army.amount <= 0) {

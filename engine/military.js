@@ -159,10 +159,19 @@ function toggleMoveMode(){
     if(G.hexMoveMode){ cancelHexMove(); return; }
     cancelHexAtk();
     // Need a selected hex with our army
-    const hexIdx = (G.selHex && typeof hwFindHexIdx==='function') ? hwFindHexIdx(G.selHex) : -1;
+    // Find source hex: prefer explicitly selected hex (selStage=2),
+    // fall back to any hex with our army in the selected province.
+    let hexIdx = (G.selHex && typeof hwFindHexIdx==='function') ? hwFindHexIdx(G.selHex) : -1;
+    if(hexIdx < 0 && G.sel >= 0 && G.hexArmy){
+      const entry = Object.entries(G.hexArmy).find(([hi,a]) =>
+        a && a.nation===G.playerNation && a.amount>0 &&
+        _hexCache[+hi] && _hexCache[+hi].p === G.sel
+      );
+      if(entry) hexIdx = +entry[0];
+    }
     const army = hexIdx >= 0 && G.hexArmy && G.hexArmy[hexIdx];
     if(!army || army.nation !== G.playerNation || army.amount <= 0){
-      popup('Select a hex with your army first'); return;
+      popup('Select a province with your army first'); return;
     }
     G.hexMoveMode = true;
     G.hexMoveSrc  = hexIdx;
@@ -476,10 +485,17 @@ function isAtkSrc(i){
 function toggleHexAtkMode(){
   if(G.hexAtkMode){ cancelHexAtk(); return; }
   cancelHexMove();
-  const hexIdx = (G.selHex && typeof hwFindHexIdx==='function') ? hwFindHexIdx(G.selHex) : -1;
+  let hexIdx = (G.selHex && typeof hwFindHexIdx==='function') ? hwFindHexIdx(G.selHex) : -1;
+  if(hexIdx < 0 && G.sel >= 0 && G.hexArmy){
+    const entry = Object.entries(G.hexArmy).find(([hi,a]) =>
+      a && a.nation===G.playerNation && a.amount>0 &&
+      _hexCache[+hi] && _hexCache[+hi].p === G.sel
+    );
+    if(entry) hexIdx = +entry[0];
+  }
   const army = hexIdx >= 0 && G.hexArmy && G.hexArmy[hexIdx];
   if(!army || army.nation !== G.playerNation || army.amount <= 0){
-    popup('Select a hex with your army first'); return;
+    popup('Select a province with your army first'); return;
   }
   G.hexAtkMode  = true;
   G.hexAtkSrc   = hexIdx;
