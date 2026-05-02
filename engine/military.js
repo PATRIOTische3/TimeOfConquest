@@ -87,13 +87,12 @@ function chkBtns(){
   }
 
   // ── Conscript button: grey when no hex barracks or foreign province ───────
-  const conscriptBtn = document.getElementById('sp-btn-conscript');
-  if (conscriptBtn) {
+  // ── Conscript button — desktop + mobile ─────────────────────────────────────
+  {
     const hexActive = typeof _hexCache !== 'undefined' && _hexCache;
     let canConscript = isOwn;
     let conscriptSub = '1,000 pop · 1 gold per soldier';
     if (hexActive && isOwn) {
-      // Check for barracks in this province
       const hasBarracks = window._provHexBuild && (window._provHexBuild[si]||[])
         .some(b => b.type === 'barracks' && (typeof hwHexOwner==='function') && hwHexOwner(b.hexIdx) === PN);
       if (!hasBarracks) {
@@ -107,14 +106,16 @@ function chkBtns(){
       canConscript = false;
       conscriptSub = 'Select your own province';
     }
-    conscriptBtn.disabled = !canConscript;
+    ['sp-btn-conscript','mob-btn-conscript'].forEach(id=>{
+      const b=document.getElementById(id); if(!b) return;
+      b.disabled = !canConscript;
+    });
     const sub = document.getElementById('sp-con-sub');
     if (sub) sub.textContent = conscriptSub;
   }
 
-  // ── Build button: grey until hex selected (when hex system active) ────────
-  const buildBtn = document.getElementById('sp-btn-build');
-  if (buildBtn) {
+  // ── Build button — desktop + mobile ──────────────────────────────────────
+  {
     const hexActive = typeof _hexCache !== 'undefined' && _hexCache;
     let canBuild = isOwn;
     let buildSub = isOwn ? 'Select a hex inside province' : 'Select your territory first';
@@ -127,7 +128,10 @@ function chkBtns(){
         buildSub = 'Click a hex inside the province first';
       }
     }
-    buildBtn.disabled = !canBuild;
+    ['sp-btn-build','mob-btn-build'].forEach(id=>{
+      const b=document.getElementById(id); if(!b) return;
+      b.disabled = !canBuild;
+    });
     const bldSub = document.getElementById('sp-bld-sub');
     if (bldSub) bldSub.textContent = buildSub;
   }
