@@ -461,6 +461,49 @@ function hexToRgb(hex){
 function onCanvasClick(wx,wy){
   const i=hitProv(wx,wy);
 
+  // ── Hex move mode: клик на подсвеченный гекс → движение ──────────────────
+  if(G.hexMoveMode && G.hexMoveSrc >= 0 && typeof _hexCache !== 'undefined' && _hexCache){
+    const h = typeof hitHex==='function' ? hitHex(wx,wy) : null;
+    if(!h){ cancelHexMove(); return; }
+    const toIdx = typeof hwFindHexIdx==='function' ? hwFindHexIdx(h) : -1;
+    if(toIdx < 0 || _hexCache[toIdx]?.sea){ cancelHexMove(); return; }
+    // Check it's a valid neighbour of src
+    const src = _hexCache[G.hexMoveSrc];
+    if(!(src.nbIdx||[]).includes(toIdx)){ cancelHexMove(); return; }
+    cancelHexMove();
+    // Open move dialog with split slider
+    if(typeof hwOpenHexMoveDialog==='function'){
+      // Temporarily set selHex so hwOpenHexMoveDialog finds the right army
+      G.selHex = _hexCache[G.hexMoveSrc]; G.selStage = 2;
+      hwOpenHexMoveDialog();
+    } else {
+      const army = G.hexArmy && G.hexArmy[G.hexMoveSrc];
+      if(army) hwMoveArmy(G.hexMoveSrc, toIdx, army.amount);
+    }
+    return;
+  }
+
+  // ── Hex attack mode: клик на красный гекс → атака ────────────────────────
+  if(G.hexAtkMode && G.hexAtkSrc >= 0 && typeof _hexCache !== 'undefined' && _hexCache){
+    const h = typeof hitHex==='function' ? hitHex(wx,wy) : null;
+    if(!h){ cancelHexAtk(); return; }
+    const toIdx = typeof hwFindHexIdx==='function' ? hwFindHexIdx(h) : -1;
+    if(toIdx < 0 || _hexCache[toIdx]?.sea){ cancelHexAtk(); return; }
+    const src = _hexCache[G.hexAtkSrc];
+    if(!(src.nbIdx||[]).includes(toIdx)){ cancelHexAtk(); return; }
+    const toOwner = typeof hwHexOwner==='function' ? hwHexOwner(toIdx) : -1;
+    if(toOwner < 0 || toOwner === G.playerNation || !atWar(G.playerNation, toOwner)){
+      cancelHexAtk(); return;
+    }
+    cancelHexAtk();
+    if(typeof hwMoveArmy==='function'){
+      const army = G.hexArmy && G.hexArmy[G.hexAtkSrc];
+      if(army) hwMoveArmy(G.hexAtkSrc, toIdx, army.amount);
+    }
+    scheduleDraw(); if(G.sel>=0&&typeof updateSP==='function') updateSP(G.sel);
+    return;
+  }
+
   // ── Port icon click → enter naval mode ───────────────
   // Check if user clicked near the port icon of a coastal province with port
   if(!G.navalMode && !G.moveMode && !_atkSelectMode){
@@ -570,43 +613,13 @@ function onCanvasClick(wx,wy){
       G.selStage=2; G.selHex=h; scheduleDraw();
       if(typeof updateSP==='function') updateSP(G.sel);
       if(typeof chkBtns==='function') chkBtns();
-      // If hex system active and clicked hex has our army — open move dialog immediately
-      if(h && typeof _hexCache!=='undefined' && _hexCache && typeof hwFindHexIdx==='function'){
-        const hi = hwFindHexIdx(h);
-        if(hi >= 0){
-          const a = G.hexArmy && G.hexArmy[hi];
-          if(a && a.nation === G.playerNation && a.amount > 0){
-            if(typeof hwOpenHexMoveDialog==='function') hwOpenHexMoveDialog();
-          }
-        }
-      }
     } else if(G.selStage===2){
       if(h && G.selHex && h.r===G.selHex.r && h.c===G.selHex.c){
-        // Second click on same hex — if has army, reopen move dialog
-        if(typeof _hexCache!=='undefined' && _hexCache && typeof hwFindHexIdx==='function'){
-          const hi = hwFindHexIdx(h);
-          if(hi >= 0){
-            const a = G.hexArmy && G.hexArmy[hi];
-            if(a && a.nation===G.playerNation && a.amount>0){
-              if(typeof hwOpenHexMoveDialog==='function'){ hwOpenHexMoveDialog(); return; }
-            }
-          }
-        }
         G.sel=-1; G.selStage=0; G.selHex=null; scheduleDraw(); chkBtns();
       } else {
         G.selHex=h; scheduleDraw();
         if(typeof updateSP==='function') updateSP(G.sel);
         if(typeof chkBtns==='function') chkBtns();
-        // Same: if new hex has our army → open move dialog
-        if(h && typeof _hexCache!=='undefined' && _hexCache && typeof hwFindHexIdx==='function'){
-          const hi = hwFindHexIdx(h);
-          if(hi >= 0){
-            const a = G.hexArmy && G.hexArmy[hi];
-            if(a && a.nation===G.playerNation && a.amount>0){
-              if(typeof hwOpenHexMoveDialog==='function') hwOpenHexMoveDialog();
-            }
-          }
-        }
       }
     }
   }

@@ -153,7 +153,29 @@ document.addEventListener('keydown', e=>{
 
 // ── MOVEMENT ──────────────────────────────────────────────
 function toggleMoveMode(){
-  if(G.navalMode)cancelNaval();
+  if(G.navalMode) cancelNaval();
+  // ── Hex system: Move Army button controls hex move mode ───────────────────
+  if(typeof _hexCache !== 'undefined' && _hexCache){
+    if(G.hexMoveMode){ cancelHexMove(); return; }
+    cancelHexAtk();
+    // Need a selected hex with our army
+    const hexIdx = (G.selHex && typeof hwFindHexIdx==='function') ? hwFindHexIdx(G.selHex) : -1;
+    const army = hexIdx >= 0 && G.hexArmy && G.hexArmy[hexIdx];
+    if(!army || army.nation !== G.playerNation || army.amount <= 0){
+      popup('Select a hex with your army first'); return;
+    }
+    G.hexMoveMode = true;
+    G.hexMoveSrc  = hexIdx;
+    ['sp-btn-move','mob-btn-move'].forEach(id=>{
+      const b=document.getElementById(id); if(!b) return;
+      b.classList.add('active-mode');
+      const am=b.querySelector('.am'); if(am) am.textContent='Cancel Move';
+    });
+    scheduleDraw();
+    popup('Move mode — tap a green hex to move there');
+    return;
+  }
+  // ── Provincial fallback ───────────────────────────────────────────────────
   if(G.moveMode){cancelMove();return;}
   const si=G.sel;
   if(si<0||G.owner[si]!==G.playerNation||G.army[si]<1){popup('Select your territory first!');return;}
@@ -166,6 +188,15 @@ function cancelMove(){
   G.moveFrom=-1;G.moveMode=false;
   const mb=document.getElementById('move-banner');if(mb)mb.style.display='none';
   ['sp-btn-move','mob-btn-move'].forEach(id=>{const b=document.getElementById(id);if(b){b.classList.remove('active-mode');const am=b.querySelector('.am');if(am)am.textContent='Move Army';}});
+  scheduleDraw();
+}
+function cancelHexMove(){
+  G.hexMoveMode=false; G.hexMoveSrc=-1;
+  ['sp-btn-move','mob-btn-move'].forEach(id=>{
+    const b=document.getElementById(id); if(!b) return;
+    b.classList.remove('active-mode');
+    const am=b.querySelector('.am'); if(am) am.textContent='Move Army';
+  });
   scheduleDraw();
 }
 // How many troops are available in province (actual minus committed to queues)
@@ -439,7 +470,30 @@ function isAtkSrc(i){
   return _atkSelectMode && _atkTarget>=0 && G.owner[i]===G.playerNation && G.army[i]>100 && NB[i]?.includes(_atkTarget);
 }
 
+// ── Hex attack mode ──────────────────────────────────────────────────────────
+// Нажал Attack → гексы с вражескими армиями рядом с нашей подсвечиваются красным
+// Клик на красный гекс → hwMoveArmy (внутри вызовет hwAttackHex)
+function toggleHexAtkMode(){
+  if(G.hexAtkMode){ cancelHexAtk(); return; }
+  cancelHexMove();
+  const hexIdx = (G.selHex && typeof hwFindHexIdx==='function') ? hwFindHexIdx(G.selHex) : -1;
+  const army = hexIdx >= 0 && G.hexArmy && G.hexArmy[hexIdx];
+  if(!army || army.nation !== G.playerNation || army.amount <= 0){
+    popup('Select a hex with your army first'); return;
+  }
+  G.hexAtkMode  = true;
+  G.hexAtkSrc   = hexIdx;
+  scheduleDraw();
+  popup('Attack mode — tap a red hex to attack');
+}
+function cancelHexAtk(){
+  G.hexAtkMode=false; G.hexAtkSrc=-1;
+  scheduleDraw();
+}
+
 function openAttack(){
+  // Hex system: attack mode highlights adjacent enemy hexes
+  if(typeof _hexCache !== 'undefined' && _hexCache){ toggleHexAtkMode(); return; }
   if(inPeacePeriod()){popup(`Peace period — ${peaceTurnsLeft()} weeks remaining`);return;}
   const si=G.sel;
   if(si<0||G.owner[si]===G.playerNation){popup('Select an enemy territory!');return;}

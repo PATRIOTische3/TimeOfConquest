@@ -122,9 +122,6 @@ function buildHexCache(){
 
   _hexCache.forEach((h, idx) => {
     h.nbIdx = getNeighbours(h.r, h.c);
-    // Cache coastal flag: land hex that has at least one sea neighbour.
-    // Computed once here so every other system (build checks, UI, AI) just reads h.coastal.
-    h.coastal = !h.sea && h.nbIdx.some(ni => _hexCache[ni]?.sea);
     if(h.sea || h.p < 0) return;
     const c = _provCentroid[h.p];
     if(c){ c.x += h.x; c.y += h.y; c.n++; }
@@ -1209,10 +1206,54 @@ function drawMap(){
     }
 
     // PASS 6: Move/attack/naval targets — colored pulse overlay
+    const pulse2=0.15+0.1*Math.sin(Date.now()/180);
     const isMov=G.moveMode&&G.moveFrom>=0;
     const isNav=G.navalMode&&G.navalFrom>=0;
+
+    // ── Hex move/attack highlights ────────────────────────────────────────────
+    if(G.hexMoveMode && G.hexMoveSrc >= 0){
+      const src = _hexCache[G.hexMoveSrc];
+      if(src){
+        // Highlight source hex (bright white)
+        hexPath(ctx,src.x,src.y,R+0.3/vp.scale);
+        ctx.fillStyle=`rgba(255,255,255,${0.35+0.15*Math.sin(Date.now()/180)})`;
+        ctx.fill();
+        // Green: reachable non-enemy neighbours
+        for(const ni of (src.nbIdx||[])){
+          const nh=_hexCache[ni]; if(!nh||nh.sea)continue;
+          if(nh.x<wx0-pad||nh.x>wx1+pad||nh.y<wy0-pad||nh.y>wy1+pad)continue;
+          const cost=HEX_MOVE_COST&&HEX_MOVE_COST[nh.t]||1;
+          const army=G.hexArmy&&G.hexArmy[G.hexMoveSrc];
+          if(!army||(army.movePoints||0)<cost)continue;
+          const no=typeof hwHexOwner==='function'?hwHexOwner(ni):G.owner[nh.p];
+          const isEnemy=no>=0&&no!==G.playerNation;
+          hexPath(ctx,nh.x,nh.y,R+0.3/vp.scale);
+          ctx.fillStyle=isEnemy?`rgba(255,80,80,${pulse2})`:`rgba(80,255,80,${pulse2})`;
+          ctx.fill();
+        }
+      }
+    } else if(G.hexAtkMode && G.hexAtkSrc >= 0){
+      const src = _hexCache[G.hexAtkSrc];
+      if(src){
+        hexPath(ctx,src.x,src.y,R+0.3/vp.scale);
+        ctx.fillStyle=`rgba(255,255,255,${0.35+0.15*Math.sin(Date.now()/180)})`;
+        ctx.fill();
+        // Red: enemy neighbours with armies
+        for(const ni of (src.nbIdx||[])){
+          const nh=_hexCache[ni]; if(!nh||nh.sea)continue;
+          if(nh.x<wx0-pad||nh.x>wx1+pad||nh.y<wy0-pad||nh.y>wy1+pad)continue;
+          const no=typeof hwHexOwner==='function'?hwHexOwner(ni):G.owner[nh.p];
+          if(no<0||no===G.playerNation)continue;
+          if(!atWar(G.playerNation,no))continue;
+          hexPath(ctx,nh.x,nh.y,R+0.3/vp.scale);
+          ctx.fillStyle=`rgba(255,80,80,${pulse2})`;
+          ctx.fill();
+        }
+      }
+    }
+
+    // ── Provincial move/attack/naval highlights ───────────────────────────────
     if(isMov||isNav||_atkSelectMode){
-      const pulse2=0.15+0.1*Math.sin(Date.now()/180);
       for(let pi=0;pi<PROVINCES.length;pi++){
         let col=null;
         if(isMov&&isMoveTgt(pi)) col=`rgba(80,255,80,${pulse2})`;
