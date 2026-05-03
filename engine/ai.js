@@ -172,8 +172,16 @@ function doAI(fullMonth=true){
         const win=send*aio.atk*terrMod*rf(.75,1.25)>G.army[to2]*provTerrainDef(to2)*frt*rf(.75,1.25);
         if(win){
           const al=Math.floor(send*rf(.15,.3));
-          G.army[fr2]-=send;G.army[to2]=Math.max(50,send-al);G.owner[to2]=ai;
+          const armyLeft=Math.max(50,send-al);
+          G.army[fr2]-=send;
+          // ── Hex system: захват гексами, не прямой G.owner ─────────────────
+          if(typeof hwAICaptureProvince==='function' && typeof _hexCache!=='undefined' && _hexCache){
+            hwAICaptureProvince(to2, ai, armyLeft);
+          } else {
+            G.army[to2]=armyLeft; G.owner[to2]=ai;
+          }
           G.instab[to2]=ri(30,60);G.assim[to2]=ri(5,20);
+          // Fortress: 50% chance destroyed (handled inside hwCaptureHex for hex buildings)
           if((G.buildings[to2]||[]).includes('fortress'))
             G.buildings[to2]=(G.buildings[to2]||[]).filter(b=>b!=='fortress');
           if(def===G.playerNation){

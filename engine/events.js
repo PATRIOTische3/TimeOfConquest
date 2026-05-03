@@ -75,7 +75,11 @@ function processResistance(){
 
 function triggerRevolt(r,io){
   const ra=Math.floor(ri(200,800)*(io.revoltScale||1));
-  G.owner[r]=-1;G.army[r]=ra;G.instab[r]=ri(20,45);G.assim[r]=ri(8,28);G.resistance[r]=0;
+  // Revolt: всe гексы провинции переходят к повстанцам (-1)
+  if(typeof hwAICaptureProvince==='function'&&typeof _hexCache!=='undefined'&&_hexCache){
+    hwAICaptureProvince(r,-1,ra);
+  } else { G.owner[r]=-1;G.army[r]=ra; }
+  G.instab[r]=ri(20,45);G.assim[r]=ri(8,28);G.resistance[r]=0;
   addLog(`🔥 Rebellion — ${PROVINCES[r].name} rises against you!`,'revolt');
   popup(`🔥 Rebellion in ${PROVINCES[r].name}!`,3200);
 }

@@ -732,3 +732,43 @@ function hwBuildMenuHTML(hexIdx) {
 
   return html;
 }
+
+// ── AI PROVINCE CAPTURE через гексы ──────────────────────────────────────────
+// Вызывается из doAI вместо прямого G.owner[to]=ai.
+// Захватывает все гексы провинции, размещает армию на первом свободном гексе.
+function hwAICaptureProvince(provIdx, byNation, armyAmount) {
+  if (!_hexCache) {
+    // Hex grid not ready — fall back to direct owner change
+    G.owner[provIdx] = byNation;
+    return;
+  }
+  const hexes = _hwPHexes(provIdx);
+  if (!hexes.length) {
+    G.owner[provIdx] = byNation;
+    return;
+  }
+
+  // 1. Убрать все вражеские армии с гексов провинции
+  for (const hi of hexes) {
+    const a = G.hexArmy[hi];
+    if (a && a.nation !== byNation) delete G.hexArmy[hi];
+  }
+
+  // 2. Захватить каждый гекс (hwCaptureHex обновит G.owner когда все взяты)
+  for (const hi of hexes) hwCaptureHex(hi, byNation);
+
+  // 3. Разместить армию на первом гексе (предпочтительно равнина/поля)
+  if (armyAmount > 0) {
+    const preferred = hexes.slice().sort((a, b) =>
+      (HEX_POP_WEIGHT[_hexCache[b].t] || 1) - (HEX_POP_WEIGHT[_hexCache[a].t] || 1)
+    );
+    const landHex = preferred[0];
+    const existing = G.hexArmy[landHex];
+    if (existing && existing.nation === byNation) {
+      existing.amount += armyAmount;
+    } else {
+      G.hexArmy[landHex] = { nation: byNation, amount: armyAmount, movePoints: 0 };
+    }
+    hwSyncProvArmy(provIdx);
+  }
+}

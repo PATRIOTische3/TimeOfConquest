@@ -87,7 +87,12 @@ function doUltimatum(ai,type){
       if(type==='tribute'){G.gold[PN]+=500;G.gold[ai]-=300;addLog(`💰 ${ownerName(ai)} paid tribute: +500 gold.`,'diplo');popup(`✓ Tribute received!`);}
       else if(type==='territory'){
         const border=regsOf(ai).find(r=>NB[r].some(nb=>G.owner[nb]===PN));
-        if(border>=0){G.owner[border]=PN;G.instab[border]=60;addLog(`⚔ ${PROVINCES[border].name} ceded by ultimatum!`,'diplo');popup(`✓ ${PROVINCES[border].name} ceded!`);}
+        if(border>=0){
+          if(typeof hwAICaptureProvince==='function'&&typeof _hexCache!=='undefined'&&_hexCache){
+            hwAICaptureProvince(border,PN,0);
+          } else { G.owner[border]=PN; }
+          G.instab[border]=60;addLog(`⚔ ${PROVINCES[border].name} ceded by ultimatum!`,'diplo');popup(`✓ ${PROVINCES[border].name} ceded!`);
+        }
       }else if(type==='puppet'){
         G.puppet.push(ai);G.war[PN][ai]=G.war[ai][PN]=false;addLog(`🎭 ${ownerName(ai)} became puppet state!`,'diplo');popup(`✓ ${ownerName(ai)} is now your puppet!`);}
       scheduleDraw();updateHUD();
