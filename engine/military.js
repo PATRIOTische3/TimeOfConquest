@@ -977,7 +977,8 @@ function showEnemyAttackOverlay(ev, done){
   const toName    = PROVINCES[to]?.name  || '?';
   const frName    = PROVINCES[fr]?.short || '?';
   const approxSend = approxForce(send);
-  const approxDef  = approxForce(G.army[to] || 0);
+  // defArmy сохраняется в очередь ДО hwAICaptureProvince — иначе G.army[to] уже перезаписан
+  const approxDef  = approxForce(ev.defArmy !== undefined ? ev.defArmy : (G.army[to] || 0));
   const resColor   = win ? '#ff8060' : '#a0c880';
   const resText    = win
     ? `☠ ${atkerName} seized ${toName}!`

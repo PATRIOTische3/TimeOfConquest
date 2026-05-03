@@ -173,21 +173,22 @@ function doAI(fullMonth=true){
         if(win){
           const al=Math.floor(send*rf(.15,.3));
           const armyLeft=Math.max(50,send-al);
+          // Snapshot защитной армии ДО захвата — showEnemyAttackOverlay читает G.army[to] 
+          // уже после hwAICaptureProvince которая перезаписывает G.army через hwSyncProvArmy.
+          const defArmySnap=G.army[to2]||0;
           G.army[fr2]-=send;
-          // ── Hex system: захват гексами, не прямой G.owner ─────────────────
-          if(typeof hwAICaptureProvince==='function' && typeof _hexCache!=='undefined' && _hexCache){
-            hwAICaptureProvince(to2, ai, armyLeft);
+          if(typeof hwAICaptureProvince==='function'&&typeof _hexCache!=='undefined'&&_hexCache){
+            hwAICaptureProvince(to2,ai,armyLeft);
           } else {
             G.army[to2]=armyLeft; G.owner[to2]=ai;
           }
           G.instab[to2]=ri(30,60);G.assim[to2]=ri(5,20);
-          // Fortress: 50% chance destroyed (handled inside hwCaptureHex for hex buildings)
           if((G.buildings[to2]||[]).includes('fortress'))
             G.buildings[to2]=(G.buildings[to2]||[]).filter(b=>b!=='fortress');
           if(def===G.playerNation){
             addLog(`⚔ ${ownerName(ai)} seized ${PROVINCES[to2].name}!`,'war');
             if(!G._enemyAttackQueue)G._enemyAttackQueue=[];
-            G._enemyAttackQueue.push({fr:fr2,to:to2,atker:ai,send,win:true,al});
+            G._enemyAttackQueue.push({fr:fr2,to:to2,atker:ai,send,win:true,al,defArmy:defArmySnap});
           }
           if(def>=0&&regsOf(def).length===0)G.war[ai][def]=G.war[def][ai]=false;
           if(PROVINCES[to2]&&PROVINCES[to2].isCapital&&def>=0)G.capitalPenalty[ai]=3;
