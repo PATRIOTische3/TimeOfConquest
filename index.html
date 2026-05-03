@@ -853,15 +853,14 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;b
       <div id="sp-actions">
         <div class="sp-sec">⚔ Military Actions</div>
         <button class="abtn" id="sp-btn-atk" onclick="openAttack()" disabled style="display:none"><span class="ic">⚔</span><span class="al"><span class="am">Attack</span><span class="as" id="sp-atk-sub">Select adjacent enemy territory</span></span></button>
-        <button class="abtn" onclick="openDraft()"><span class="ic">🪖</span><span class="al"><span class="am">Conscript Soldiers</span><span class="as">1,000 pop · 1 gold per soldier</span></span></button>
+        <button class="abtn" id="sp-btn-conscript" onclick="openDraft()"><span class="ic">🪖</span><span class="al"><span class="am">Conscript Soldiers</span><span class="as" id="sp-con-sub">1,000 pop · 1 gold per soldier</span></span></button>
         <button class="abtn" id="sp-btn-move" onclick="toggleMoveMode()" disabled><span class="ic">🚶</span><span class="al"><span class="am">Move Army</span><span class="as" id="sp-move-sub">Select your territory first</span></span></button>
-        <button class="abtn" id="sp-btn-hexmove" onclick="hwOpenHexMoveDialog()" disabled style="display:none"><span class="ic">🗡</span><span class="al"><span class="am">Move Hex Army</span><span class="as" id="sp-hexmove-sub">Click province, then select a hex</span></span></button>
         <button class="abtn" id="sp-btn-naval" onclick="toggleNavalMode()" disabled style="display:none"><span class="ic">⚓</span><span class="al"><span class="am">Naval Transport</span><span class="as">Requires coastal province + port</span></span></button>
         <div class="sp-sec">🎁 Appease Population</div>
         <button class="abtn" onclick="openAppease()"><span class="ic">🎁</span><span class="al"><span class="am">Appease Population</span><span class="as">Raise satisfaction in all provinces</span></span></button>
         <div class="sp-sec">🏗 Economy &amp; Building</div>
         <button class="abtn" onclick="openTaxation()"><span class="ic">💰</span><span class="al"><span class="am">Economy &amp; Taxation</span><span class="as" id="sp-tax-sub">Set tax rates</span></span></button>
-        <button class="abtn" onclick="openBuild()"><span class="ic">🏗</span><span class="al"><span class="am">Construct Building</span><span class="as" id="sp-bld-sub">Select your territory first</span></span></button>
+        <button class="abtn" id="sp-btn-build" onclick="openBuild()"><span class="ic">🏗</span><span class="al"><span class="am">Construct Building</span><span class="as" id="sp-bld-sub">Select your territory first</span></span></button>
         <button class="abtn" onclick="openLoan()"><span class="ic">🏦</span><span class="al"><span class="am">Take a Loan</span><span class="as" id="sp-loan-sub">World Bank · 500 / 1000 / 2000g</span></span></button>
         <div class="sp-sec">🤝 Diplomacy</div>
         <button class="abtn" onclick="openAllianceMenu()"><span class="ic">🤝</span><span class="al"><span class="am">Alliances & Non-Aggression</span><span class="as" id="sp-ally-sub">Form pacts, alliances, ultimatums</span></span></button>
