@@ -397,9 +397,10 @@ function hwResetMovePoints() {
 
 // ── ДИАЛОГ ДВИЖЕНИЯ ГЕКСОВОЙ АРМИИ ───────────────────────────────────────────
 // Вызывается кнопкой sp-btn-hexmove из index.html
-function hwOpenHexMoveDialog() {
-  // Prefer explicit selHex; fall back to hexMoveSrc set by toggleMoveMode.
-  let fromIdx = (G.selHex && G.selStage === 2) ? hwFindHexIdx(G.selHex) : -1;
+function hwOpenHexMoveDialog(fromIdxOverride) {
+  // Accept direct fromIdx (from move mode interceptor) or find via selHex/hexMoveSrc
+  let fromIdx = (fromIdxOverride !== undefined && fromIdxOverride >= 0) ? fromIdxOverride : -1;
+  if (fromIdx < 0) fromIdx = (G.selHex && G.selStage === 2) ? hwFindHexIdx(G.selHex) : -1;
   if (fromIdx < 0 && G.hexMoveSrc >= 0) fromIdx = G.hexMoveSrc;
   if (fromIdx < 0) { popup('Select a province with your army first'); return; }
 

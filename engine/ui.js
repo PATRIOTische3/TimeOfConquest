@@ -462,43 +462,42 @@ function onCanvasClick(wx,wy){
   const i=hitProv(wx,wy);
 
   // ── Hex move mode: клик на подсвеченный гекс → движение ──────────────────
-  if(G.hexMoveMode && G.hexMoveSrc >= 0 && typeof _hexCache !== 'undefined' && _hexCache){
+  if(G.hexMoveMode && typeof _hexCache !== 'undefined' && _hexCache){
+    const fromIdx = G.hexMoveSrc;
     const h = typeof hitHex==='function' ? hitHex(wx,wy) : null;
     if(!h){ cancelHexMove(); return; }
     const toIdx = typeof hwFindHexIdx==='function' ? hwFindHexIdx(h) : -1;
     if(toIdx < 0 || _hexCache[toIdx]?.sea){ cancelHexMove(); return; }
-    // Check it's a valid neighbour of src
-    const src = _hexCache[G.hexMoveSrc];
-    if(!(src.nbIdx||[]).includes(toIdx)){ cancelHexMove(); return; }
+    const src = fromIdx >= 0 ? _hexCache[fromIdx] : null;
+    if(!src || !(src.nbIdx||[]).includes(toIdx)){ cancelHexMove(); return; }
+    // Сохраняем src до cancelHexMove который сбросит hexMoveSrc
     cancelHexMove();
-    // Open move dialog with split slider
     if(typeof hwOpenHexMoveDialog==='function'){
-      // Temporarily set selHex so hwOpenHexMoveDialog finds the right army
-      G.selHex = _hexCache[G.hexMoveSrc]; G.selStage = 2;
-      hwOpenHexMoveDialog();
+      hwOpenHexMoveDialog(fromIdx);
     } else {
-      const army = G.hexArmy && G.hexArmy[G.hexMoveSrc];
-      if(army) hwMoveArmy(G.hexMoveSrc, toIdx, army.amount);
+      const army = G.hexArmy && G.hexArmy[fromIdx];
+      if(army) hwMoveArmy(fromIdx, toIdx, army.amount);
     }
     return;
   }
 
   // ── Hex attack mode: клик на красный гекс → атака ────────────────────────
-  if(G.hexAtkMode && G.hexAtkSrc >= 0 && typeof _hexCache !== 'undefined' && _hexCache){
+  if(G.hexAtkMode && typeof _hexCache !== 'undefined' && _hexCache){
+    const fromIdx = G.hexAtkSrc;
     const h = typeof hitHex==='function' ? hitHex(wx,wy) : null;
     if(!h){ cancelHexAtk(); return; }
     const toIdx = typeof hwFindHexIdx==='function' ? hwFindHexIdx(h) : -1;
     if(toIdx < 0 || _hexCache[toIdx]?.sea){ cancelHexAtk(); return; }
-    const src = _hexCache[G.hexAtkSrc];
-    if(!(src.nbIdx||[]).includes(toIdx)){ cancelHexAtk(); return; }
+    const src = fromIdx >= 0 ? _hexCache[fromIdx] : null;
+    if(!src || !(src.nbIdx||[]).includes(toIdx)){ cancelHexAtk(); return; }
     const toOwner = typeof hwHexOwner==='function' ? hwHexOwner(toIdx) : -1;
     if(toOwner < 0 || toOwner === G.playerNation || !atWar(G.playerNation, toOwner)){
       cancelHexAtk(); return;
     }
     cancelHexAtk();
     if(typeof hwMoveArmy==='function'){
-      const army = G.hexArmy && G.hexArmy[G.hexAtkSrc];
-      if(army) hwMoveArmy(G.hexAtkSrc, toIdx, army.amount);
+      const army = G.hexArmy && G.hexArmy[fromIdx];
+      if(army) hwMoveArmy(fromIdx, toIdx, army.amount);
     }
     scheduleDraw(); if(G.sel>=0&&typeof updateSP==='function') updateSP(G.sel);
     return;
