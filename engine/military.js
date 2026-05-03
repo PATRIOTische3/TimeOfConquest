@@ -12,76 +12,70 @@ function chkBtns(){
   const isOwn  = si>=0 && G.owner[si]===PN;
   const isEnemy= si>=0 && G.owner[si]>=0 && G.owner[si]!==PN;
 
-  // ── Unified Move/Attack button ────────────────────────
-  const canMove = isOwn && G.army[si]>=1;
+  // ── Hex system: check if selected province has any of our hex armies ────────
+  const hexActive = typeof _hexCache !== 'undefined' && _hexCache;
+  let hexHasArmy = false;
+  if(hexActive && isOwn && G.hexArmy){
+    hexHasArmy = Object.entries(G.hexArmy).some(([hi,a])=>
+      a && a.nation===PN && a.amount>0 && _hexCache[+hi] && _hexCache[+hi].p===si
+    );
+  }
+
+  // ── Move / Attack button ──────────────────────────────────────────────────
+  // Hex system: Move = move hex armies.  Provincial fallback when no hex grid.
+  const canMove = hexActive ? (isOwn && hexHasArmy) : (isOwn && G.army[si]>=1);
   const canAtk  = !peace && isEnemy &&
-    regsOf(PN).some(r=>G.army[r]>100&&NB[r]?.includes(si));
+    (hexActive
+      // Hex: we have an army adjacent to an enemy hex in that province
+      ? Object.entries(G.hexArmy||{}).some(([hi,a])=>{
+          if(!a||a.nation!==PN||a.amount<=0)return false;
+          const h=_hexCache[+hi]; if(!h)return false;
+          return (h.nbIdx||[]).some(ni=>{
+            const nh=_hexCache[ni]; if(!nh||nh.sea)return false;
+            return nh.p===si && (typeof hwHexOwner==='function' ? hwHexOwner(ni) : G.owner[nh.p])!==PN;
+          });
+        })
+      : regsOf(PN).some(r=>G.army[r]>100&&NB[r]?.includes(si))
+    );
   const isAttackContext = !isOwn && isEnemy;
   const btnEnabled = canMove || canAtk;
 
   ['sp-btn-move','mob-btn-move'].forEach(id=>{
-    const b=document.getElementById(id);
-    if(!b)return;
-    b.disabled=!btnEnabled;
+    const b=document.getElementById(id); if(!b)return;
+    b.disabled = !btnEnabled;
     const am=b.querySelector('.am');
     const as=b.querySelector('.as');
     const ic=b.querySelector('.ic');
-    if(isAttackContext){
+    const inMoveMode = G.hexMoveMode || G.moveMode;
+    if(isAttackContext && canAtk){
       b.classList.add('war-btn');
       if(ic)ic.textContent='⚔';
       if(am)am.textContent='Attack';
       b.onclick=function(){openAttack();};
+      if(as){
+        if(peace) as.textContent=`Peace — ${peaceTurnsLeft()} weeks left`;
+        else as.textContent = hexActive ? 'Select enemy hex to attack' : 'No army on border';
+      }
     } else {
       b.classList.remove('war-btn');
       if(ic)ic.textContent='🚶';
-      if(am)am.textContent=G.moveMode?'Cancel Move':'Move Army';
+      if(am)am.textContent = inMoveMode ? 'Cancel Move' : 'Move Army';
       b.onclick=function(){toggleMoveMode();};
-    }
-    if(as){
-      if(isAttackContext&&canAtk){
-        const fr2=regsOf(PN).find(r=>G.army[r]>100&&NB[r]?.includes(si));
-        as.textContent=fr2!==undefined?`${PROVINCES[fr2].short}→${PROVINCES[si].short}`:'No army on border';
-      } else if(isAttackContext&&peace){
-        as.textContent=`Peace — ${peaceTurnsLeft()} weeks left`;
-      } else if(isAttackContext){
-        as.textContent='No army on border';
-      } else {
-        as.textContent=canMove?'Click adjacent territory':'Select your territory';
-      }
+      if(as) as.textContent = canMove
+        ? (hexActive ? 'Tap a hex, then Move Army' : 'Click adjacent territory')
+        : 'Select your territory';
     }
   });
 
   // Hide old separate attack buttons (merged into move/attack)
-  ['btn-atk','sp-btn-atk'].forEach(id=>{
-    const b=document.getElementById(id);
-    if(b)b.style.display='none';
+  ['btn-atk','sp-btn-atk','sp-btn-hexmove'].forEach(id=>{
+    const b=document.getElementById(id); if(b)b.style.display='none';
   });
-  // Hide naval buttons (naval triggered via port icon on map)
   ['sp-btn-naval','mob-btn-naval'].forEach(id=>{
-    const b=document.getElementById(id);
-    if(b)b.style.display='none';
+    const b=document.getElementById(id); if(b)b.style.display='none';
   });
 
-  // Hex warfare move button — show when a hex is selected with army
-  const hexMoveBtn = document.getElementById('sp-btn-hexmove');
-  if (hexMoveBtn) {
-    let hexHasArmy = false;
-    if (G.selStage === 2 && G.selHex && typeof _hexCache !== 'undefined' && _hexCache) {
-      for (let i = 0; i < _hexCache.length; i++) {
-        if (_hexCache[i].r === G.selHex.r && _hexCache[i].c === G.selHex.c) {
-          const a = G.hexArmy && G.hexArmy[i];
-          if (a && a.nation === PN && a.amount > 0) { hexHasArmy = true; }
-          break;
-        }
-      }
-    }
-    hexMoveBtn.style.display = (isOwn && G.selStage === 2) ? 'flex' : 'none';
-    hexMoveBtn.disabled = !hexHasArmy;
-    const hms = document.getElementById('sp-hexmove-sub');
-    if (hms) hms.textContent = hexHasArmy ? 'Move selected hex army' : 'Select a hex with your army';
-  }
-
-  if(canAtk){
+  if(!hexActive && canAtk){
     const fr3=regsOf(PN).find(r=>G.army[r]>100&&NB[r]?.includes(si));
     if(fr3!==undefined){window._af=fr3;window._at=si;}
   }

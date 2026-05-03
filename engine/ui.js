@@ -472,12 +472,14 @@ function onCanvasClick(wx,wy){
     if(!src || !(src.nbIdx||[]).includes(toIdx)){ cancelHexMove(); return; }
     // Сохраняем src до cancelHexMove который сбросит hexMoveSrc
     cancelHexMove();
-    if(typeof hwOpenHexMoveDialog==='function'){
-      hwOpenHexMoveDialog(fromIdx);
-    } else {
+    // Двигаем напрямую — никакого промежуточного диалога
+    if(typeof hwMoveArmy==='function'){
       const army = G.hexArmy && G.hexArmy[fromIdx];
-      if(army) hwMoveArmy(fromIdx, toIdx, army.amount);
+      if(army && army.amount > 0) hwMoveArmy(fromIdx, toIdx, army.amount);
     }
+    scheduleDraw();
+    if(G.sel>=0 && typeof updateSP==='function') updateSP(G.sel);
+    if(typeof chkBtns==='function') chkBtns();
     return;
   }
 
