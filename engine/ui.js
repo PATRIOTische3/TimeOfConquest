@@ -248,10 +248,18 @@ function _hwUpdateProvPanel(pi) {
       const hOwner = h ? hwHexOwner(hexIdx) : -1;
       const isOwn = hOwner === G.playerNation;
       const hexArmy = G.hexArmy && G.hexArmy[hexIdx];
+      // Supply status display (Шаг 9)
+      const supplyStatus = hexIdx >= 0 && G.hexSupply ? G.hexSupply[hexIdx] : null;
+      const supplyWeeks  = hexIdx >= 0 && G.hexSupplyWeeks ? (G.hexSupplyWeeks[hexIdx]||0) : 0;
+      const supplyHTML   = !supplyStatus || supplyStatus==='full' ? '' :
+        supplyStatus==='cut'
+          ? ` <span style="color:#ff6040;font-weight:700">⚠ SURROUNDED${supplyWeeks>0?' '+supplyWeeks+'w':''}</span>`
+          : ` <span style="color:#ffcc40">⚡ PARTIAL SUPPLY</span>`;
+      const coastal = h && h.coastal;
       const hdr = `<div style="font-size:8px;color:#c9a84c;font-family:Cinzel,serif;letter-spacing:1px;margin-bottom:4px">
-        HEX [${h ? h.t : '?'}] ${h && (h.nbIdx||[]).some(ni=>_hexCache&&_hexCache[ni]?.sea) ? '⚓ COASTAL' : ''}
+        HEX [${h ? h.t : '?'}] ${coastal ? '⚓ COASTAL' : ''}
         ${isOwn ? '<span style="color:#80c080">● YOURS</span>' : '<span style="color:#c06060">● ENEMY</span>'}
-        ${hexArmy && hexArmy.amount > 0 ? `<br><span style="color:#f0d080">⚔ ${fm(hexArmy.amount)} troops</span>` : ''}
+        ${hexArmy && hexArmy.amount > 0 ? `<br><span style="color:#f0d080">⚔ ${fm(hexArmy.amount)} troops</span>${supplyHTML}` : ''}
       </div>`;
       buildEl.innerHTML = hdr + buildEl.innerHTML;
     } else {

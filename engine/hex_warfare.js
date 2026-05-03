@@ -449,9 +449,326 @@ function hwOpenHexMoveDialog(fromIdxOverride) {
 }
 
 // ── КОНЕЦ ХОДА ────────────────────────────────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  СИСТЕМА СНАБЖЕНИЯ  (Шаги 1-3)
+//  Шаг 1: BFS проверка — есть ли путь по своим гексам до тыла
+//  Шаг 2: G.hexSupply{} — статусы, обновляются каждую неделю
+//  Шаг 3: Визуализация — окружённые армии мигают ⚠
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Константы снабжения
+var HEX_SUPPLY = {
+  FULL:     'full',      // открытый путь к тылу
+  PARTIAL:  'partial',   // путь есть но через вражеские соседи (1 гекс зазора)
+  CUT:      'cut',       // полное окружение
+};
+
+// Сколько недель без снабжения до эффекта и капитуляции
+var HEX_SUPPLY_GRACE  = 2;  // недель до начала потерь
+var HEX_SUPPLY_DECAY  = 0.06; // потери армии в неделю при CUT (6%)
+var HEX_SUPPLY_SURRENDER = 8; // недель до капитуляции
+
+// ── Шаг 1: BFS проверка снабжения одного гекса ───────────────────────────────
+// Возвращает 'full' | 'partial' | 'cut'
+// "Тыл" = любой гекс нации nation без вражеских армий в провинции с казармой
+//         ИЛИ прибрежный гекс этой нации с портом (морское снабжение, Шаг 6)
+function hwSupplyCheck(fromIdx, nation) {
+  if (!_hexCache) return HEX_SUPPLY.FULL;
+  const h0 = _hexCache[fromIdx];
+  if (!h0 || h0.sea) return HEX_SUPPLY.FULL;
+
+  // BFS по гексам нации — ищем путь до "тыла"
+  // Тыл = гекс нации у которого есть хотя бы один своей нации сосед
+  // на расстоянии > 3 гексов от fromIdx (т.е. не просто рядом)
+  const visited = new Set([fromIdx]);
+  const queue   = [fromIdx];
+  let depth = 0;
+  const MAX_DEPTH = 30; // ограничение BFS
+
+  while (queue.length && depth < MAX_DEPTH) {
+    const next = [];
+    for (const cur of queue) {
+      const hc = _hexCache[cur];
+      if (!hc) continue;
+      for (const ni of (hc.nbIdx || [])) {
+        if (visited.has(ni)) continue;
+        visited.add(ni);
+        const nh = _hexCache[ni];
+        if (!nh || nh.sea) continue;
+        const nOwner = hwHexOwner(ni);
+        if (nOwner !== nation) continue; // только свои гексы
+        // Проверяем — это "тыловой" гекс?
+        // Тыловой = нет вражеских армий рядом (хотя бы 2 своих соседа)
+        const ownNeighbours = (nh.nbIdx || []).filter(x => {
+          const xh = _hexCache[x]; if (!xh || xh.sea) return false;
+          return hwHexOwner(x) === nation;
+        }).length;
+        if (ownNeighbours >= 2 && cur !== fromIdx) return HEX_SUPPLY.FULL;
+        next.push(ni);
+      }
+    }
+    queue.length = 0;
+    queue.push(...next);
+    depth++;
+  }
+
+  // Путь не найден — проверяем "partial" (есть свои соседи у fromIdx)
+  const ownAdj = (h0.nbIdx || []).filter(ni => {
+    const nh = _hexCache[ni];
+    return nh && !nh.sea && hwHexOwner(ni) === nation;
+  }).length;
+
+  return ownAdj > 0 ? HEX_SUPPLY.PARTIAL : HEX_SUPPLY.CUT;
+}
+
+// ── Шаги 2, 4, 5, 6, 7: Обновление снабжения + эффекты ─────────────────────
+
+// Шаг 6: морское снабжение — прибрежный гекс нации с портом считается тылом
+function hwHasNavalSupply(fromIdx, nation) {
+  if (!_hexCache || !G.hexBuildings) return false;
+  // Ищем порт этой нации в радиусе BFS по морским гексам
+  const h0 = _hexCache[fromIdx];
+  if (!h0) return false;
+  // Сначала — есть ли прибрежный гекс нации рядом с морем
+  const visited = new Set([fromIdx]);
+  const queue = [fromIdx];
+  let depth = 0;
+  while (queue.length && depth < 20) {
+    const next = [];
+    for (const cur of queue) {
+      const hc = _hexCache[cur]; if (!hc) continue;
+      for (const ni of (hc.nbIdx || [])) {
+        if (visited.has(ni)) continue; visited.add(ni);
+        const nh = _hexCache[ni]; if (!nh) continue;
+        if (nh.sea) { next.push(ni); continue; } // плывём по морю
+        if (hwHexOwner(ni) !== nation) continue;
+        // Нашли свой прибрежный гекс — есть ли на нём порт?
+        if (G.hexBuildings[ni]?.type === 'port') return true;
+      }
+    }
+    queue.length = 0; queue.push(...next); depth++;
+  }
+  return false;
+}
+
+// Шаг 7: рельеф замедляет голодание — сколько бонусных недель даёт местность
+function hwSupplyTerrainBonus(hexIdx) {
+  const h = _hexCache && _hexCache[hexIdx]; if (!h) return 0;
+  // Горы/джунгли/болота — легче укрыться и добывать пропитание
+  const bonus = { mountain:3, jungle:2, forest:2, swamp:2, marsh:2, highland:1, hills:1, urban:4 };
+  return bonus[h.t] || 0;
+}
+
+function hwUpdateSupply() {
+  if (!_hexCache || !G.hexArmy) return;
+  if (!G.hexSupply)      G.hexSupply = {};
+  if (!G.hexSupplyWeeks) G.hexSupplyWeeks = {};
+
+  const PN = G.playerNation;
+  const toNotify    = []; // только что окружены
+  const toSurrender = []; // капитулируют
+
+  for (const [hs, army] of Object.entries(G.hexArmy)) {
+    const hexIdx = +hs;
+    if (!army || army.amount <= 0) {
+      delete G.hexSupply[hexIdx]; delete G.hexSupplyWeeks[hexIdx]; continue;
+    }
+
+    const prev   = G.hexSupply[hexIdx] || HEX_SUPPLY.FULL;
+    let   status = hwSupplyCheck(hexIdx, army.nation);
+
+    // Шаг 6: морское снабжение снимает CUT если есть порт в досягаемости
+    if (status === HEX_SUPPLY.CUT && hwHasNavalSupply(hexIdx, army.nation)) {
+      status = HEX_SUPPLY.PARTIAL;
+    }
+
+    G.hexSupply[hexIdx] = status;
+
+    if (status === HEX_SUPPLY.CUT) {
+      G.hexSupplyWeeks[hexIdx] = (G.hexSupplyWeeks[hexIdx] || 0) + 1;
+      if (prev !== HEX_SUPPLY.CUT && army.nation === PN) toNotify.push(hexIdx);
+
+      const weeks      = G.hexSupplyWeeks[hexIdx];
+      // Шаг 7: рельеф продлевает grace period
+      const terrBonus  = hwSupplyTerrainBonus(hexIdx);
+      const effectiveGrace = HEX_SUPPLY_GRACE + terrBonus;
+      const effectiveSurrender = HEX_SUPPLY_SURRENDER + terrBonus;
+
+      // Шаг 4: потери армии после grace period
+      if (weeks > effectiveGrace) {
+        const decayRate = HEX_SUPPLY_DECAY;
+        const lost = Math.max(1, Math.floor(army.amount * decayRate));
+        army.amount = Math.max(0, army.amount - lost);
+        if (army.nation === PN) {
+          const h = _hexCache[hexIdx];
+          const pname = PROVINCES[h.p]?.name || '?';
+          addLog(`☠ Surrounded army in ${pname} starving: −${fm(lost)} (${weeks}w)`, 'war');
+        }
+      }
+
+      // Шаг 5: капитуляция
+      if (weeks >= effectiveSurrender || army.amount <= 0) {
+        toSurrender.push({ hexIdx, army: { ...army } });
+        army.amount = 0;
+      }
+
+    } else {
+      // Снабжение восстановлено — сбросить счётчик
+      if ((G.hexSupplyWeeks[hexIdx] || 0) > 0) {
+        if (army.nation === PN) {
+          const h = _hexCache[hexIdx];
+          addLog(`✅ Supply restored to army in ${PROVINCES[h.p]?.name || '?'}`, 'info');
+        }
+        G.hexSupplyWeeks[hexIdx] = 0;
+      }
+    }
+  }
+
+  // Шаг 5: обработка капитуляций
+  for (const { hexIdx, army } of toSurrender) {
+    const h = _hexCache[hexIdx];
+    const pname = PROVINCES[h.p]?.name || '?';
+    const captor = _findCaptor(hexIdx, army.nation);
+
+    delete G.hexArmy[hexIdx];
+    delete G.hexSupply[hexIdx];
+    delete G.hexSupplyWeeks[hexIdx];
+
+    if (captor >= 0) {
+      // Захватчик получает 30% войск как пленных
+      const prisoners = Math.floor(army.amount * 0.3);
+      if (prisoners > 0) {
+        const captorHex = _findNearestFriendlyHex(hexIdx, captor);
+        if (captorHex >= 0) {
+          const ca = G.hexArmy[captorHex];
+          if (ca && ca.nation === captor) ca.amount += prisoners;
+          else G.hexArmy[captorHex] = { nation: captor, amount: prisoners, movePoints: 0 };
+        }
+      }
+      hwCaptureHex(hexIdx, captor);
+      hwSyncProvArmy(h.p);
+    }
+
+    if (army.nation === PN) {
+      addLog(`🏳 Army surrendered in ${pname} after ${G.hexSupplyWeeks[hexIdx]||0}+ weeks surrounded!`, 'war');
+      popup(`🏳 Army in ${pname} has surrendered!`, 4000);
+    } else if (captor === PN) {
+      addLog(`🏳 Enemy army surrendered in ${pname}!`, 'info');
+      popup(`🏳 Enemy surrendered in ${pname}! +${Math.floor(army.amount*0.3)} prisoners`, 3000);
+    }
+  }
+
+  // ── Шаг 10: Нотификации ──────────────────────────────────────────────────────
+
+  // Только что окружены (CUT)
+  for (const hi of toNotify) {
+    const h = _hexCache[hi];
+    const terrBonus  = hwSupplyTerrainBonus(hi);
+    const grace      = HEX_SUPPLY_GRACE + terrBonus;
+    const surrender  = HEX_SUPPLY_SURRENDER + terrBonus;
+    const pname      = PROVINCES[h.p]?.name || '?';
+    const terrain    = h.t || '?';
+    const bonusTxt   = terrBonus > 0 ? ` (${terrain} +${terrBonus}w)` : '';
+    addLog(
+      `⚠ Army in <b>${pname}</b> SURROUNDED${bonusTxt} — losses start w${grace+1}, surrenders w${surrender}`,
+      'war'
+    );
+    popup(`⚠ Surrounded in ${pname}! ${grace}w before attrition, ${surrender}w to surrender`, 4500);
+  }
+
+  // Предупреждение о частичном снабжении (PARTIAL) — только первый раз
+  if (!G._hwPartialNotified) G._hwPartialNotified = new Set();
+  for (const [hs, status] of Object.entries(G.hexSupply)) {
+    const hexIdx = +hs;
+    const army = G.hexArmy[hexIdx];
+    if (!army || army.nation !== PN) continue;
+    if (status === HEX_SUPPLY.PARTIAL && !G._hwPartialNotified.has(hexIdx)) {
+      G._hwPartialNotified.add(hexIdx);
+      const h = _hexCache[hexIdx];
+      const pname = PROVINCES[h.p]?.name || '?';
+      addLog(`⚡ Army in ${pname} — supply line threatened! Enemy closing in.`, 'war');
+    } else if (status !== HEX_SUPPLY.PARTIAL) {
+      G._hwPartialNotified.delete(hexIdx); // сбросить если вышли из partial
+    }
+  }
+
+  // Восстановление снабжения — уже в теле цикла выше (addLog там)
+}
+
+// Найти ближайшую нацию-захватчика (враг у которого больше всего гексов рядом)
+function _findCaptor(hexIdx, excludeNation) {
+  const h = _hexCache[hexIdx]; if (!h) return -1;
+  const counts = {};
+  for (const ni of (h.nbIdx || [])) {
+    const o = hwHexOwner(ni);
+    if (o >= 0 && o !== excludeNation) counts[o] = (counts[o]||0) + 1;
+  }
+  let best = -1, bestN = 0;
+  for (const [n, cnt] of Object.entries(counts)) {
+    if (cnt > bestN) { bestN = cnt; best = +n; }
+  }
+  return best;
+}
+
+// Найти ближайший гекс нации для размещения пленных
+function _findNearestFriendlyHex(fromIdx, nation) {
+  const h = _hexCache[fromIdx]; if (!h) return -1;
+  for (const ni of (h.nbIdx || [])) {
+    if (hwHexOwner(ni) === nation) return ni;
+  }
+  return -1;
+}
+
+// ── Шаг 3: Визуализация — ⚠ над окружёнными армиями ─────────────────────────
+// Вызывается из hwDrawHexArmies после отрисовки счётчика армии
+function hwDrawSupplyWarnings(ctx, R, wx0, wy0, wx1, wy1) {
+  if (!G.hexSupply || !_hexCache) return;
+  const sc = vp.scale; if (sc < 0.25) return;
+  const pulse = 0.55 + 0.45 * Math.abs(Math.sin(Date.now() / 600)); // пульсация
+
+  for (const [hs, status] of Object.entries(G.hexSupply)) {
+    if (status === HEX_SUPPLY.FULL) continue;
+    const hexIdx = +hs;
+    const army = G.hexArmy && G.hexArmy[hexIdx];
+    if (!army || army.amount <= 0) continue;
+    const h = _hexCache[hexIdx];
+    if (!h || h.sea || h.x<wx0-R*2||h.x>wx1+R*2||h.y<wy0-R*2||h.y>wy1+R*2) continue;
+
+    const weeks = G.hexSupplyWeeks[hexIdx] || 0;
+    const isCut = status === HEX_SUPPLY.CUT;
+
+    // Иконка ⚠ над бейджем армии
+    const ix = h.x + R*0.50; // совпадает с бейджем
+    const iy = h.y + R*0.00; // выше бейджа
+
+    ctx.globalAlpha = (isCut ? pulse : 0.7) * Math.min(1,(sc-0.25)/0.15);
+    ctx.font = `bold ${Math.max(5, R*0.42)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 3;
+
+    if (isCut) {
+      // Красный мигающий ⚠ + счётчик недель
+      ctx.fillStyle = `rgb(255,${Math.round(80+60*pulse)},40)`;
+      ctx.fillText('⚠', ix, iy);
+      if (weeks > 0 && sc > 0.5) {
+        ctx.font = `bold ${Math.max(4, R*0.28)}px Cinzel,serif`;
+        ctx.fillStyle = 'rgba(255,150,80,0.9)';
+        ctx.fillText(`${weeks}w`, ix, iy + R*0.35);
+      }
+    } else {
+      // Жёлтый статичный ⚡ для partial
+      ctx.fillStyle = 'rgba(255,220,60,0.8)';
+      ctx.fillText('⚡', ix, iy);
+    }
+    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+  }
+}
+
 function hwEndTurn() {
   hwTickConstruction();
   hwResetMovePoints();
+  hwUpdateSupply();   // Шаг 2: обновить статусы снабжения
   _hwPHCTick = -1;
   _hatchCache = {};
 }
@@ -610,6 +927,8 @@ function hwDrawHexArmies(ctx, R, wx0, wy0, wx1, wy1) {
     ctx.fillText(fm(army.amount), bx, by);
     ctx.shadowBlur = 0; ctx.globalAlpha = 1;
   }
+  // Шаг 3: поверх армий — иконки снабжения
+  hwDrawSupplyWarnings(ctx, R, wx0, wy0, wx1, wy1);
 }
 
 function _hwRR(ctx,x,y,w,h,r){
@@ -733,23 +1052,248 @@ function hwBuildMenuHTML(hexIdx) {
   return html;
 }
 
-// ── AI PROVINCE CAPTURE через гексы ──────────────────────────────────────────
-function hwAICaptureProvince(provIdx, byNation, armyAmount) {
-  if (!_hexCache) { G.owner[provIdx]=byNation; return; }
-  const hexes = _hwPHexes(provIdx);
-  if (!hexes.length) { G.owner[provIdx]=byNation; return; }
-  for (const hi of hexes) {
-    const a = G.hexArmy[hi];
-    if (a && a.nation !== byNation) delete G.hexArmy[hi];
+// ══════════════════════════════════════════════════════════════════════════════
+//  ШАГ 8: ТАКТИЧЕСКИЙ HEX-AI С УЧЁТОМ СНАБЖЕНИЯ
+//  hwDoAI(nation) вызывается из doAI (ai.js) каждую неделю для наций в войне.
+//
+//  Три приоритета в порядке важности:
+//  1. ЗАМКНУТЬ КОТЁЛ — если враг окружён (CUT) → добивать, не давать вырваться
+//  2. АТАКА — двигаться к цели, атаковать слабые гексы, обходить сильные
+//  3. ОБОРОНА — держать выгодный рельеф, отступать если плохо
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Стратегическая ценность гекса для захвата
+function _hwHexPriority(hexIdx) {
+  const h = _hexCache[hexIdx]; if (!h) return 0;
+  let s = HEX_POP_WEIGHT[h.t] || 1;
+  if (G.hexBuildings[hexIdx]?.type === 'barracks') s += 6;  // лишить призыва
+  if (G.hexBuildings[hexIdx]?.type === 'fortress') s += 3;  // укрепление
+  if (G.hexBuildings[hexIdx]?.type === 'port')     s += 4;  // отрезать морское снабжение
+  if (h.t === 'urban') s += 4;
+  // Бонус если враг на этом гексе окружён — приоритет добивания
+  const armyThere = G.hexArmy[hexIdx];
+  if (armyThere && armyThere.amount > 0) {
+    const supStatus = G.hexSupply && G.hexSupply[hexIdx];
+    if (supStatus === 'cut')     s += 8;   // окружён — добить!
+    if (supStatus === 'partial') s += 3;
   }
-  for (const hi of hexes) hwCaptureHex(hi, byNation);
-  if (armyAmount > 0) {
-    const best = hexes.slice().sort((a,b)=>
-      (HEX_POP_WEIGHT[_hexCache[b].t]||1)-(HEX_POP_WEIGHT[_hexCache[a].t]||1)
-    )[0];
-    const ex = G.hexArmy[best];
-    if (ex && ex.nation===byNation) ex.amount+=armyAmount;
-    else G.hexArmy[best]={nation:byNation,amount:armyAmount,movePoints:0};
-    hwSyncProvArmy(provIdx);
+  return s;
+}
+
+// Оборонная ценность гекса (держать выгодно)
+function _hwDefValue(hexIdx) {
+  const h = _hexCache[hexIdx]; if (!h) return 1;
+  return (HEX_DEF_BONUS[h.t] || 1.0)
+    * (G.hexBuildings[hexIdx]?.type === 'fortress' ? 1.6 : 1.0);
+}
+
+// BFS: найти кратчайший путь от fromIdx к любому гексу из targetSet
+// Возвращает первый шаг на пути, или -1 если пути нет
+function _hwBFSStep(fromIdx, targetSet, nation) {
+  if (targetSet.has(fromIdx)) return fromIdx;
+  const visited = new Map([[fromIdx, -1]]); // idx → parent
+  const queue = [fromIdx];
+  while (queue.length) {
+    const cur = queue.shift();
+    const h = _hexCache[cur]; if (!h) continue;
+    for (const ni of (h.nbIdx || [])) {
+      if (visited.has(ni) || _hexCache[ni]?.sea) continue;
+      const nOwner = hwHexOwner(ni);
+      // Можем проходить через свои гексы и атаковать вражеские
+      const passable = nOwner === nation || (nOwner >= 0 && atWar(nation, nOwner)) || nOwner < 0;
+      if (!passable) continue;
+      visited.set(ni, cur);
+      if (targetSet.has(ni)) {
+        // Восстанавливаем первый шаг
+        let step = ni;
+        while (visited.get(step) !== fromIdx) step = visited.get(step);
+        return step;
+      }
+      queue.push(ni);
+    }
+  }
+  return -1;
+}
+
+// Найти гексы провинции-цели (вражеские граничные гексы)
+function _hwTargetHexes(targetProv, attackerNation) {
+  const hexes = _hwPHexes(targetProv);
+  return new Set(hexes.filter(hi => {
+    const o = hwHexOwner(hi);
+    return o !== attackerNation && (o < 0 || atWar(attackerNation, o));
+  }));
+}
+
+function hwDoAI(nation) {
+  if (!_hexCache || !G.hexArmy) return;
+  const aggressive = G.aiPersonality && G.aiPersonality[nation] === 'aggressive';
+
+  // Собираем все армии нации с MP > 0
+  const myArmies = Object.entries(G.hexArmy)
+    .filter(([, a]) => a && a.nation === nation && a.amount > 0 && (a.movePoints || 0) > 0)
+    .map(([hs, a]) => ({ hexIdx: +hs, army: a }));
+
+  if (!myArmies.length) return;
+
+  // Определяем цель: провинция ближайшего врага с наивысшим приоритетом
+  // Используем G.aiTarget[nation] если уже выбрана, иначе выбираем
+  if (!G.aiTarget) G.aiTarget = {};
+  if (G.aiTarget[nation] === undefined || Math.random() < 0.08) {
+    // Пересмотр цели с 8% шансом каждую неделю
+    let bestProv = -1, bestScore = -1;
+    const myProvs = new Set(regsOf(nation));
+    for (const { hexIdx } of myArmies) {
+      const h = _hexCache[hexIdx];
+      // Смотрим вражеские провинции в радиусе 3 BFS-шагов
+      const visited = new Set([hexIdx]);
+      const q = [hexIdx];
+      for (let d = 0; d < 5 && q.length; d++) {
+        const nq = [];
+        for (const cur of q) {
+          for (const ni of (_hexCache[cur]?.nbIdx || [])) {
+            if (visited.has(ni) || _hexCache[ni]?.sea) continue;
+            visited.add(ni); nq.push(ni);
+            const np = _hexCache[ni]?.p;
+            if (np == null || np < 0) continue;
+            const nOwner = G.owner[np];
+            if (nOwner === nation || areAllies(nation, nOwner)) continue;
+            if (nOwner >= 0 && !atWar(nation, nOwner)) continue;
+            // Считаем суммарный приоритет провинции
+            const provHexes = _hwPHexes(np);
+            let score = provHexes.reduce((s, hi) => s + _hwHexPriority(hi), 0);
+            // Приоритет окружённых армий в провинции
+            const hasEncircled = provHexes.some(hi => {
+              const a = G.hexArmy[hi];
+              return a && a.nation !== nation && G.hexSupply?.[hi] === 'cut';
+            });
+            if (hasEncircled) score += 15;
+            if (score > bestScore) { bestScore = score; bestProv = np; }
+          }
+        }
+        q.length = 0; q.push(...nq);
+      }
+    }
+    G.aiTarget[nation] = bestProv;
+  }
+
+  const targetProv = G.aiTarget[nation];
+  const targetHexes = targetProv >= 0 ? _hwTargetHexes(targetProv, nation) : new Set();
+
+  for (const { hexIdx: fromIdx, army } of myArmies) {
+    if ((army.movePoints || 0) <= 0) continue;
+    const h = _hexCache[fromIdx];
+    const neighbours = (h.nbIdx || []).filter(ni => !_hexCache[ni]?.sea);
+
+    // ── ПРИОРИТЕТ 1: ЗАМКНУТЬ КОТЁЛ ────────────────────────────────────────
+    // Если у соседнего вражеского гекса статус CUT — атаковать в первую очередь
+    const encircledTargets = neighbours.filter(ni => {
+      const cost = HEX_MOVE_COST[_hexCache[ni]?.t] || 1;
+      if ((army.movePoints || 0) < cost) return false;
+      const a = G.hexArmy[ni];
+      if (!a || a.amount <= 0 || !atWar(nation, a.nation)) return false;
+      return G.hexSupply?.[ni] === 'cut'; // окружён
+    });
+
+    if (encircledTargets.length) {
+      // Атакуем слабейшего окружённого
+      encircledTargets.sort((a, b) => (G.hexArmy[a]?.amount || 0) - (G.hexArmy[b]?.amount || 0));
+      const tgt = encircledTargets[0];
+      const defBonus = (HEX_DEF_BONUS[_hexCache[tgt].t] || 1.0)
+        * (G.hexBuildings[tgt]?.type === 'fortress' ? 1.6 : 1.0);
+      // Окружённые ослаблены — снижаем порог атаки
+      const ratio = army.amount / Math.max(1, (G.hexArmy[tgt]?.amount || 1) * defBonus);
+      if (ratio >= 0.8) { // атакуем даже с невыгодным соотношением
+        hwMoveArmy(fromIdx, tgt, army.amount);
+        hwSyncProvArmy(h.p);
+        continue;
+      }
+    }
+
+    // ── ПРИОРИТЕТ 2: АТАКА К ЦЕЛИ ──────────────────────────────────────────
+    if (targetProv >= 0 && targetHexes.size > 0) {
+      // Классифицируем соседей
+      const attackable = [], movable = [];
+      for (const ni of neighbours) {
+        const nh = _hexCache[ni]; if (!nh) continue;
+        const cost = HEX_MOVE_COST[nh.t] || 1;
+        if ((army.movePoints || 0) < cost) continue;
+        const nOwner = hwHexOwner(ni);
+        const nArmy  = G.hexArmy[ni];
+        const hasEnemyArmy = nArmy && nArmy.amount > 0 && atWar(nation, nArmy.nation);
+        const isEnemyHex   = nOwner >= 0 && nOwner !== nation && atWar(nation, nOwner);
+
+        if (hasEnemyArmy) {
+          const defBonus = (HEX_DEF_BONUS[nh.t] || 1.0)
+            * (G.hexBuildings[ni]?.type === 'fortress' ? 1.6 : 1.0);
+          const ratio = army.amount / Math.max(1, nArmy.amount * defBonus);
+          const minRatio = aggressive ? 1.2 : 1.8;
+          if (ratio >= minRatio) attackable.push({ ni, ratio, priority: _hwHexPriority(ni) });
+        } else if (isEnemyHex || nOwner < 0) {
+          movable.push({ ni, priority: _hwHexPriority(ni), isTarget: targetHexes.has(ni) });
+        }
+      }
+
+      // Сначала пробуем захватить пустой вражеский гекс цели
+      const emptyTarget = movable.filter(x => x.isTarget).sort((a,b) => b.priority - a.priority)[0];
+      if (emptyTarget) {
+        hwMoveArmy(fromIdx, emptyTarget.ni, army.amount);
+        hwSyncProvArmy(h.p);
+        // Шаг 10: нотификация если игрок теряет гекс
+        if (hwHexOwner(emptyTarget.ni) === G.playerNation) {
+          // уже обработано в hwCaptureHex
+        }
+        continue;
+      }
+
+      // Потом атакуем вражескую армию (приоритет — окружённые и слабые)
+      attackable.sort((a,b) => b.priority - a.priority);
+      if (attackable.length) {
+        const tgt = attackable[0];
+        hwMoveArmy(fromIdx, tgt.ni, army.amount);
+        hwSyncProvArmy(h.p);
+        continue;
+      }
+
+      // Движение к цели через BFS если нет прямых ходов
+      const nextStep = _hwBFSStep(fromIdx, targetHexes, nation);
+      if (nextStep >= 0 && nextStep !== fromIdx) {
+        const cost = HEX_MOVE_COST[_hexCache[nextStep]?.t] || 1;
+        if ((army.movePoints || 0) >= cost) {
+          hwMoveArmy(fromIdx, nextStep, army.amount);
+          hwSyncProvArmy(h.p);
+          continue;
+        }
+      }
+
+      // Пустые вражеские не у цели тоже подходят
+      const emptyAny = movable.sort((a,b) => b.priority - a.priority)[0];
+      if (emptyAny) {
+        hwMoveArmy(fromIdx, emptyAny.ni, army.amount);
+        hwSyncProvArmy(h.p);
+        continue;
+      }
+    }
+
+    // ── ПРИОРИТЕТ 3: ОБОРОНА И ОТСТУПЛЕНИЕ ─────────────────────────────────
+    if (!aggressive && _hwDefValue(fromIdx) < 1.3) {
+      // Ищем лучший оборонительный гекс среди соседей
+      const defTargets = neighbours
+        .filter(ni => {
+          const nh = _hexCache[ni]; if (!nh) return false;
+          const cost = HEX_MOVE_COST[nh.t] || 1;
+          if ((army.movePoints || 0) < cost) return false;
+          return hwHexOwner(ni) === nation && !G.hexArmy[ni];
+        })
+        .sort((a,b) => _hwDefValue(b) - _hwDefValue(a));
+      if (defTargets.length && _hwDefValue(defTargets[0]) > _hwDefValue(fromIdx) + 0.2) {
+        hwMoveArmy(fromIdx, defTargets[0], army.amount);
+        hwSyncProvArmy(h.p);
+      }
+    }
+  }
+
+  // Сбрасываем MP этой нации в 0 (ход завершён)
+  for (const a of Object.values(G.hexArmy || {})) {
+    if (a && a.nation === nation) a.movePoints = 0;
   }
 }

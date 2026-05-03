@@ -166,6 +166,8 @@ function startGame(){
   // Store campaign label so autoSave targets the right slot
   // Init hex warfare engine (must be after buildHexCache in setTimeout, but seed data now)
   G.hexOwner = {}; G.hexArmy = {}; G.hexBuildings = {}; G.hexConstruction = {};
+  G.hexSupply = {}; G.hexSupplyWeeks = {};
+  G.aiTarget = {}; G._hwPartialNotified = new Set();
 
   window._tocCampLabel = (document.getElementById('camp-title-display')?.textContent||'').trim().toUpperCase() || G.leaderName;
 
