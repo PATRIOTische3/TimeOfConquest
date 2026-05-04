@@ -124,106 +124,107 @@ function doAI(fullMonth=true){
     // ── Income (AI 78% efficiency, second pass — removed duplicate; was orphaned code)
     } // end fullMonth
 
-    // ── Attack (runs EVERY week) ─────────────────────────
-    // Aggressive: 30% weekly chance; Defensive: 10% (both higher when at war)
-    const atkChance=isAtWar?(aggressive?0.55:0.35):(aggressive?0.14:0.05);
-    if(!inPeacePeriod()&&Math.random()<atkChance){
-      const tgts=[];
+    // ── War declaration / ceasefire break (runs EVERY week) ────────────────
+    // Стратегические решения остаются на провинциальном уровне:
+    // объявление войны и нарушение перемирия.
+    // Тактика (движение армий, бой) полностью на hwDoAI через гексы.
+    if(!inPeacePeriod()){
       for(const r of ar){
         if(G.army[r]<200)continue;
         for(const nb of (NB[r]||[])){
           const nbo=G.owner[nb];
-          if(nbo===ai||areAllies(ai,nbo))continue;
-          if(nbo>=0&&G.pact[ai][nbo]){
-            // Ceasefire break: only 4% weekly chance, only if aggressive personality
+          if(nbo===ai||areAllies(ai,nbo)||nbo<0)continue;
+          if(G.pact[ai][nbo]){
+            // Нарушение перемирия: 4% шанс, только агрессивные
             const cfKey=`${Math.min(ai,nbo)}_${Math.max(ai,nbo)}`;
-            const isCeasefire=G.ceasefire&&G.ceasefire[cfKey];
-            const canBreak=isCeasefire&&aggressive&&Math.random()<0.04;
-            if(!canBreak)continue;
-            // Break the ceasefire
-            G.pact[ai][nbo]=G.pact[nbo][ai]=false;
-            G.pLeft[ai][nbo]=G.pLeft[nbo][ai]=0;
-            if(G.ceasefire)delete G.ceasefire[cfKey];
-            if(nbo===G.playerNation){
-              addLog(`⚔ ${ownerName(ai)} broke the ceasefire!`,'war');
-              popup(`⚠ ${ownerName(ai)} broke the ceasefire!`,3500);
+            if(G.ceasefire&&G.ceasefire[cfKey]&&aggressive&&Math.random()<0.04){
+              G.pact[ai][nbo]=G.pact[nbo][ai]=false;
+              G.pLeft[ai][nbo]=G.pLeft[nbo][ai]=0;
+              delete G.ceasefire[cfKey];
+              if(nbo===G.playerNation){
+                addLog(`⚔ ${ownerName(ai)} broke the ceasefire!`,'war');
+                popup(`⚠ ${ownerName(ai)} broke the ceasefire!`,3500);
+              }
+            }
+            continue;
+          }
+          // Объявление войны если соотношение сил позволяет
+          if(!atWar(ai,nbo)&&!G.pact[ai][nbo]){
+            const myStr=ar.reduce((s,x)=>s+G.army[x],0);
+            const theirStr=regsOf(nbo).reduce((s,x)=>s+G.army[x],0);
+            const warThreshold=aggressive?1.3:2.0;
+            if(myStr>theirStr*warThreshold&&Math.random()<(aggressive?0.06:0.02)){
+              G.war[ai][nbo]=G.war[nbo][ai]=true;
+              if(nbo===G.playerNation){
+                addLog(`⚔ ${ownerName(ai)} declared war!`,'war');
+                popup(`⚠ ${ownerName(ai)} declared WAR!`,4000);
+              }
             }
           }
-          // Prefer capitals and provinces with buildings
-          const hasCap=PROVINCES[nb]&&PROVINCES[nb].isCapital;
-          const hasBld=(G.buildings[nb]||[]).length>0;
-          const ratio=G.army[r]/Math.max(1,G.army[nb]);
-          const minRatio=aggressive?1.2:1.8;
-          if(ratio>=minRatio){
-            const score=ratio*(hasCap?2.5:1)*(hasBld?1.5:1);
-            tgts.push([r,nb,score]);
-          }
-        }
-      }
-      if(tgts.length){
-        tgts.sort((a,b)=>b[2]-a[2]);
-        const [fr2,to2]=tgts[0];
-        const def=G.owner[to2];
-        const sendFrac=aggressive?0.55:0.4;
-        const send=Math.max(1,Math.floor(G.army[fr2]*sendFrac));
-        if(def>=0&&def!==ai){G.war[ai][def]=true;G.war[def][ai]=true;}
-        const frt=(G.buildings[to2]||[]).includes('fortress')?1.6:1;
-        const terrMod=s.winterTerrain?.includes(PROVINCES[to2]?.terrain)?s.moveMod:1.0;
-        const win=send*aio.atk*terrMod*rf(.75,1.25)>G.army[to2]*provTerrainDef(to2)*frt*rf(.75,1.25);
-        if(win){
-          const al=Math.floor(send*rf(.15,.3));
-          const armyLeft=Math.max(50,send-al);
-          // Snapshot защитной армии ДО захвата — showEnemyAttackOverlay читает G.army[to] 
-          // уже после hwAICaptureProvince которая перезаписывает G.army через hwSyncProvArmy.
-          const defArmySnap=G.army[to2]||0;
-          G.army[fr2]-=send;
-          if(typeof hwAICaptureProvince==='function'&&typeof _hexCache!=='undefined'&&_hexCache){
-            hwAICaptureProvince(to2,ai,armyLeft);
-          } else {
-            G.army[to2]=armyLeft; G.owner[to2]=ai;
-          }
-          G.instab[to2]=ri(30,60);G.assim[to2]=ri(5,20);
-          if((G.buildings[to2]||[]).includes('fortress'))
-            G.buildings[to2]=(G.buildings[to2]||[]).filter(b=>b!=='fortress');
-          if(def===G.playerNation){
-            addLog(`⚔ ${ownerName(ai)} seized ${PROVINCES[to2].name}!`,'war');
-            if(!G._enemyAttackQueue)G._enemyAttackQueue=[];
-            G._enemyAttackQueue.push({fr:fr2,to:to2,atker:ai,send,win:true,al,defArmy:defArmySnap});
-          }
-          if(def>=0&&regsOf(def).length===0)G.war[ai][def]=G.war[def][ai]=false;
-          if(PROVINCES[to2]&&PROVINCES[to2].isCapital&&def>=0)G.capitalPenalty[ai]=3;
-        }else{
-          G.army[fr2]=Math.max(0,G.army[fr2]-Math.floor(send*rf(.1,.28)));
-          G.army[to2]=Math.max(50,G.army[to2]-Math.floor(G.army[to2]*rf(.08,.25)));
-          if(def===G.playerNation&&Math.random()<0.35){
-            if(!G._enemyAttackQueue)G._enemyAttackQueue=[];
-            G._enemyAttackQueue.push({fr:fr2,to:to2,atker:ai,send,win:false,al:0});
-          }
         }
       }
     }
 
-    // ── Retreat from interior (weekly, 10% chance) ────────
-    if(Math.random()<.1){
-      for(const r of ar){
-        const isBorder=(NB[r]||[]).some(nb=>G.owner[nb]!==ai);
-        if(!isBorder&&G.army[r]>600){
-          const dest=ar.find(d=>d!==r&&(NB[d]||[]).some(nb=>G.owner[nb]!==ai));
-          if(dest){const mv=Math.floor(G.army[r]*.4);G.army[r]-=mv;G.army[dest]+=mv;}
-        }
-      }
-    }
-
-    // ── Hex-level tactics (moves armies on individual hexes) ──
-    // Runs every weekly tick when at war. Provincial AI above handles
-    // strategic decisions (declare war, pick target province);
-    // hwDoAI handles the tactical execution hex-by-hex.
-    if(isAtWar && typeof hwDoAI === 'function'){
-      // Give this AI nation fresh MP before their hex moves
+    // ── Hex tactics: всё движение и бой через hwDoAI ─────────────────────────
+    // Провинциальный бой (G.army[fr]-=send, G.owner[to]=ai) ОТКЛЮЧЁН
+    // когда активна hex-система. Армии двигаются и воюют по гексам.
+    if(typeof hwDoAI==='function' && typeof _hexCache!=='undefined' && _hexCache){
+      // Выдать свежие MP всем армиям нации перед ходом
       for(const a of Object.values(G.hexArmy||{})){
-        if(a && a.nation === ai) a.movePoints = HEX_ARMY_MP;
+        if(a && a.nation===ai) a.movePoints=HEX_ARMY_MP;
       }
       hwDoAI(ai);
+    } else if(isAtWar && !inPeacePeriod()){
+      // ── FALLBACK: провинциальный бой (только без hex-системы) ────────────
+      const atkChance=isAtWar?(aggressive?0.55:0.35):(aggressive?0.14:0.05);
+      if(Math.random()<atkChance){
+        const tgts=[];
+        for(const r of ar){
+          if(G.army[r]<200)continue;
+          for(const nb of (NB[r]||[])){
+            const nbo=G.owner[nb];
+            if(nbo===ai||areAllies(ai,nbo))continue;
+            if(nbo>=0&&G.pact[ai][nbo])continue;
+            const ratio=G.army[r]/Math.max(1,G.army[nb]);
+            if(ratio>=(aggressive?1.2:1.8)){
+              const score=ratio*(PROVINCES[nb]?.isCapital?2.5:1)*((G.buildings[nb]||[]).length?1.5:1);
+              tgts.push([r,nb,score]);
+            }
+          }
+        }
+        if(tgts.length){
+          tgts.sort((a,b)=>b[2]-a[2]);
+          const [fr2,to2]=tgts[0];
+          const def=G.owner[to2];
+          const send=Math.max(1,Math.floor(G.army[fr2]*(aggressive?0.55:0.4)));
+          if(def>=0&&def!==ai){G.war[ai][def]=true;G.war[def][ai]=true;}
+          const frt=(G.buildings[to2]||[]).includes('fortress')?1.6:1;
+          const terrMod=s.winterTerrain?.includes(PROVINCES[to2]?.terrain)?s.moveMod:1.0;
+          const win=send*aio.atk*terrMod*rf(.75,1.25)>G.army[to2]*provTerrainDef(to2)*frt*rf(.75,1.25);
+          if(win){
+            const al=Math.floor(send*rf(.15,.3));
+            const defSnap=G.army[to2]||0;
+            G.army[fr2]-=send;G.army[to2]=Math.max(50,send-al);G.owner[to2]=ai;
+            G.instab[to2]=ri(30,60);G.assim[to2]=ri(5,20);
+            if((G.buildings[to2]||[]).includes('fortress'))
+              G.buildings[to2]=(G.buildings[to2]||[]).filter(b=>b!=='fortress');
+            if(def===G.playerNation){
+              addLog(`⚔ ${ownerName(ai)} seized ${PROVINCES[to2].name}!`,'war');
+              if(!G._enemyAttackQueue)G._enemyAttackQueue=[];
+              G._enemyAttackQueue.push({fr:fr2,to:to2,atker:ai,send,win:true,al,defArmy:defSnap});
+            }
+            if(def>=0&&regsOf(def).length===0)G.war[ai][def]=G.war[def][ai]=false;
+            if(PROVINCES[to2]?.isCapital&&def>=0)G.capitalPenalty[ai]=3;
+          }else{
+            G.army[fr2]=Math.max(0,G.army[fr2]-Math.floor(send*rf(.1,.28)));
+            G.army[to2]=Math.max(50,G.army[to2]-Math.floor(G.army[to2]*rf(.08,.25)));
+            if(def===G.playerNation&&Math.random()<0.35){
+              if(!G._enemyAttackQueue)G._enemyAttackQueue=[];
+              G._enemyAttackQueue.push({fr:fr2,to:to2,atker:ai,send,win:false,al:0});
+            }
+          }
+        }
+      }
     }
   }
 }

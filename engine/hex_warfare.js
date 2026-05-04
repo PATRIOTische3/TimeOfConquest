@@ -53,6 +53,31 @@ function hwInit() {
   if (!G.hexConstruction) G.hexConstruction = {};
   _hwBuildProvCache();
   _hwPHCTick = -1;
+  // Разместить армии всех наций на гексах при старте
+  hwSpawnAllArmies();
+}
+
+// Размещает G.army[r] каждой нации на лучшем гексе провинции.
+// Вызывается один раз при hwInit (старт игры) и при hwOnLoad (загрузка).
+// "Лучший" гекс = наибольший HEX_POP_WEIGHT (город > поля > горы).
+function hwSpawnAllArmies() {
+  if (!_hexCache) return;
+  for (let pi = 0; pi < PROVINCES.length; pi++) {
+    const owner = G.owner[pi];
+    if (owner < 0) continue;           // повстанцы — пропускаем
+    const amount = G.army[pi] || 0;
+    if (amount <= 0) continue;
+    // Не перезаписывать уже существующие hex-армии (при загрузке сохранения)
+    const hexes = _hwPHexes(pi);
+    const alreadyPlaced = hexes.some(hi => G.hexArmy[hi] && G.hexArmy[hi].amount > 0);
+    if (alreadyPlaced) continue;
+    // Выбрать лучший гекс
+    const best = hexes.slice().sort((a,b)=>
+      (HEX_POP_WEIGHT[_hexCache[b].t]||1)-(HEX_POP_WEIGHT[_hexCache[a].t]||1)
+    )[0];
+    if (best === undefined) continue;
+    G.hexArmy[best] = { nation: owner, amount, movePoints: 0 };
+  }
 }
 
 function hwOnLoad() {
@@ -62,6 +87,7 @@ function hwOnLoad() {
   if (!G.hexConstruction) G.hexConstruction = {};
   _hwBuildProvCache();
   _hwPHCTick = -1;
+  hwSpawnAllArmies();
 }
 
 // Кэш: провинция → [{hexIdx, type}]
@@ -329,24 +355,42 @@ function hwAttackHex(fromIdx, toIdx) {
   att.movePoints = Math.max(0, (att.movePoints||0) - (HEX_MOVE_COST[toH.t]||1));
   if (att.amount <= 0) delete G.hexArmy[fromIdx];
 
+  const attNation = att.nation;
+  const defNation = def.nation;
+  const defSnap   = def.amount;
+
   if (win) {
     delete G.hexArmy[toIdx];
-    const capNation = att.amount > 0 ? att.nation : G.playerNation;
+    const capNation = att.amount > 0 ? attNation : defNation;
     if (newAtt > 0) {
-      G.hexArmy[toIdx] = { amount: newAtt, nation: capNation, movePoints: 0 };
+      G.hexArmy[toIdx] = { amount: newAtt, nation: capNation, movePoints: att.movePoints };
       if (att.amount <= 0) delete G.hexArmy[fromIdx];
     }
     hwCaptureHex(toIdx, capNation);
+
+    // Анимация для игрока
+    if (attNation === G.playerNation) {
+      popup(`🏴 Captured [${toH.t}]! Lost ${fm(al)}, enemy lost ${fm(dl)}`);
+    } else if (defNation === G.playerNation) {
+      if (!G._enemyAttackQueue) G._enemyAttackQueue = [];
+      G._enemyAttackQueue.push({ fr:fromIdx, to:toIdx, atker:attNation,
+        send:newAtt+al, win:true, al, defArmy:defSnap, isHex:true });
+    }
   } else {
-    G.hexArmy[toIdx] = { amount: newDef, nation: def.nation, movePoints: def.movePoints||0 };
+    G.hexArmy[toIdx] = { amount: newDef, nation: defNation, movePoints: def.movePoints||0 };
+
+    if (attNation === G.playerNation)
+      popup(`🛡 Held [${toH.t}]! Lost ${fm(al)}, enemy lost ${fm(dl)}`);
+    else if (defNation === G.playerNation)
+      popup(`🛡 Repelled! Enemy lost ${fm(dl)}, we lost ${fm(al)}`);
   }
 
   // Синхронизировать G.army
   if (_hexCache[fromIdx]) hwSyncProvArmy(_hexCache[fromIdx].p);
   if (_hexCache[toIdx])   hwSyncProvArmy(_hexCache[toIdx].p);
 
-  const an = NATIONS[att.nation]?.short || '?';
-  const dn = NATIONS[def.nation]?.short || '?';
+  const an = NATIONS[attNation]?.short || '?';
+  const dn = NATIONS[defNation]?.short  || '?';
   addLog(`⚔ ${an}→${dn} [${toH.t}]: -${fm(al)}/${fm(dl)} ${win ? '🏴 captured' : '🛡 held'}`, 'combat');
   scheduleDraw();
   return { win, attLoss: al, defLoss: dl };
