@@ -17,6 +17,10 @@ function updateHUD(){
   });
   const avgSat=mr.length?Math.round(tsat/mr.length):70;
   const debt=G.loans.reduce((s,l)=>s+l.amount,0);
+  // Use hex-accurate total army (includes occupation forces)
+  if(typeof hwPlayerTotalArmy==='function' && typeof _hexCache!=='undefined' && _hexCache){
+    ta = hwPlayerTotalArmy();
+  }
   sEl('h-date',dateStr());
   sEl('h-gld',fa(G.gold[G.playerNation]));
   sEl('h-pop',fm(tp));
@@ -197,7 +201,9 @@ function updateSP(i){
   sEl('sp-naval-sub',canNaval?`${navalRch} ports in range`:'Need port + coastal');
   // Mobile
   sEl('ri-nm',p.name);sHTML('ri-bdg',bdg);sEl('ri-ow',o>=0?ownerName(o):'Rebels');
-  sEl('ri-ar',fa(G.army[i]));sEl('ri-pp',fm(G.pop[i]));sEl('ri-in',inc+'/mo');sEl('ri-as',o===G.playerNation?Math.round(G.assim[i])+'%':'—');
+  // Show player occupation army when viewing enemy province we occupy
+  const _occArmy = G.hexArmyPlayer && G.hexArmyPlayer[i];
+  sEl('ri-ar', _occArmy ? fa(_occArmy)+' ⚔' : fa(G.army[i]));sEl('ri-pp',fm(G.pop[i]));sEl('ri-in',inc+'/mo');sEl('ri-as',o===G.playerNation?Math.round(G.assim[i])+'%':'—');
   sHTML('ri-res',resHtml);sHTML('ri-blds',bldHtml);
   const riif=document.getElementById('ri-if'),riiv=document.getElementById('ri-iv');
   if(riif){riif.style.width=inst+'%';riif.style.background=inst>70?'#c82808':inst>40?'#c08020':'#389828';}
@@ -248,18 +254,10 @@ function _hwUpdateProvPanel(pi) {
       const hOwner = h ? hwHexOwner(hexIdx) : -1;
       const isOwn = hOwner === G.playerNation;
       const hexArmy = G.hexArmy && G.hexArmy[hexIdx];
-      // Supply status display (Шаг 9)
-      const supplyStatus = hexIdx >= 0 && G.hexSupply ? G.hexSupply[hexIdx] : null;
-      const supplyWeeks  = hexIdx >= 0 && G.hexSupplyWeeks ? (G.hexSupplyWeeks[hexIdx]||0) : 0;
-      const supplyHTML   = !supplyStatus || supplyStatus==='full' ? '' :
-        supplyStatus==='cut'
-          ? ` <span style="color:#ff6040;font-weight:700">⚠ SURROUNDED${supplyWeeks>0?' '+supplyWeeks+'w':''}</span>`
-          : ` <span style="color:#ffcc40">⚡ PARTIAL SUPPLY</span>`;
-      const coastal = h && h.coastal;
       const hdr = `<div style="font-size:8px;color:#c9a84c;font-family:Cinzel,serif;letter-spacing:1px;margin-bottom:4px">
-        HEX [${h ? h.t : '?'}] ${coastal ? '⚓ COASTAL' : ''}
+        HEX [${h ? h.t : '?'}] ${h && (h.nbIdx||[]).some(ni=>_hexCache&&_hexCache[ni]?.sea) ? '⚓ COASTAL' : ''}
         ${isOwn ? '<span style="color:#80c080">● YOURS</span>' : '<span style="color:#c06060">● ENEMY</span>'}
-        ${hexArmy && hexArmy.amount > 0 ? `<br><span style="color:#f0d080">⚔ ${fm(hexArmy.amount)} troops</span>${supplyHTML}` : ''}
+        ${hexArmy && hexArmy.amount > 0 ? `<br><span style="color:#f0d080">⚔ ${fm(hexArmy.amount)} troops</span>` : ''}
       </div>`;
       buildEl.innerHTML = hdr + buildEl.innerHTML;
     } else {
@@ -356,7 +354,9 @@ function showProvPopup(i, screenX, screenY){
   if(isOurs){
     armyStr = avail_army < G.army[i] ? `${fm(avail_army)}/${fm(G.army[i])}` : fm(G.army[i]);
   } else if(o>=0&&(areAllies(PN,o)||G.puppet.includes(o))){
-    armyStr = fm(G.army[i]);
+    // Show occupation army if we're in an enemy province
+    const occArmy = G.hexArmyPlayer && G.hexArmyPlayer[i];
+    armyStr = occArmy ? fm(occArmy) + ' ⚔' : fm(G.army[i]);
   } else {
     const intel=typeof getArmyIntel==='function'?getArmyIntel(i):{visible:false,value:null};
     if(!intel.visible||intel.value==null) armyStr='?';

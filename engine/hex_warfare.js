@@ -67,9 +67,9 @@ function hwSpawnAllArmies() {
     if (owner < 0) continue;           // повстанцы — пропускаем
     const amount = G.army[pi] || 0;
     if (amount <= 0) continue;
-    // Не перезаписывать уже существующие hex-армии (при загрузке сохранения)
     const hexes = _hwPHexes(pi);
-    const alreadyPlaced = hexes.some(hi => G.hexArmy[hi] && G.hexArmy[hi].amount > 0);
+    // Пропускаем только если армия именно этой нации уже размещена
+    const alreadyPlaced = hexes.some(hi => G.hexArmy[hi]?.nation === owner && G.hexArmy[hi].amount > 0);
     if (alreadyPlaced) continue;
     // Выбрать лучший гекс
     const best = hexes.slice().sort((a,b)=>
@@ -286,13 +286,38 @@ function hwProcessDraftArrival(entry) {
 }
 
 // Синхронизировать G.army[pi] из hexArmy (для HUD и AI)
+// Считаем ВСЕ дружественные армии на гексах провинции, не только владельца.
+// Оккупационные войска (наша армия в чужой провинции) тоже отображаются.
 function hwSyncProvArmy(pi) {
   if (!_hexCache) return;
-  let total = 0;
+  // Для отображения в HUD считаем армии владельца провинции
+  // + армии игрока если он там оккупирует
+  const owner = G.owner[pi];
+  const PN = G.playerNation;
+  let ownerTotal = 0, playerTotal = 0;
   for (const [hs, a] of Object.entries(G.hexArmy || {})) {
-    if (_hexCache[+hs]?.p === pi && a.nation === G.owner[pi]) total += a.amount;
+    const hi = +hs;
+    if (_hexCache[hi]?.p !== pi) continue;
+    if (a.nation === owner)  ownerTotal  += a.amount;
+    if (a.nation === PN && PN !== owner) playerTotal += a.amount;
   }
-  G.army[pi] = total;
+  // G.army[pi] отражает армию владельца (для AI и провинциального HUD)
+  G.army[pi] = ownerTotal;
+  // Отдельно храним оккупационные войска игрока для корректного отображения
+  if (!G.hexArmyPlayer) G.hexArmyPlayer = {};
+  if (playerTotal > 0) G.hexArmyPlayer[pi] = playerTotal;
+  else delete G.hexArmyPlayer[pi];
+}
+
+// Суммарная армия игрока (все гексы включая оккупированные)
+function hwPlayerTotalArmy() {
+  if (!G.hexArmy) return 0;
+  let total = 0;
+  const PN = G.playerNation;
+  for (const a of Object.values(G.hexArmy)) {
+    if (a && a.nation === PN) total += a.amount;
+  }
+  return total;
 }
 
 // ── ЗАХВАТ ГЕКСА ─────────────────────────────────────────────────────────────
@@ -410,8 +435,30 @@ function hwMoveArmy(fromIdx, toIdx, amount) {
   }
 
   const toArmy = G.hexArmy[toIdx];
-  if (toArmy && toArmy.amount > 0 && toArmy.nation !== army.nation) {
-    if (!atWar(army.nation, toArmy.nation)) { popup('Not at war'); return false; }
+  const toOwner = hwHexOwner(toIdx);
+
+  // Автоматическое объявление войны при вторжении на чужой гекс
+  const isEnemy = toOwner >= 0 && toOwner !== army.nation;
+  const enemyArmy = toArmy && toArmy.amount > 0 && toArmy.nation !== army.nation;
+  const enemyNation = enemyArmy ? toArmy.nation : (isEnemy ? toOwner : -1);
+
+  if (enemyNation >= 0 && !atWar(army.nation, enemyNation) && !areAllies(army.nation, enemyNation)) {
+    G.war[army.nation][enemyNation] = true;
+    G.war[enemyNation][army.nation] = true;
+    if (G.pact[army.nation]?.[enemyNation]) {
+      G.pact[army.nation][enemyNation] = G.pact[enemyNation][army.nation] = false;
+      G.pLeft[army.nation][enemyNation] = G.pLeft[enemyNation][army.nation] = 0;
+    }
+    if (army.nation === G.playerNation) {
+      addLog(`⚔ War declared on ${NATIONS[enemyNation]?.name||'?'} by invasion!`, 'war');
+      popup(`⚔ War declared on ${NATIONS[enemyNation]?.short||'?'}!`, 3000);
+    } else if (enemyNation === G.playerNation) {
+      addLog(`⚔ ${NATIONS[army.nation]?.name||'?'} invaded your territory!`, 'war');
+      popup(`⚠ ${NATIONS[army.nation]?.short||'?'} invaded!`, 3500);
+    }
+  }
+
+  if (enemyArmy) {
     return hwAttackHex(fromIdx, toIdx);
   }
 
