@@ -244,22 +244,30 @@ function _hwUpdateProvPanel(pi) {
   }
 
   if (G.selStage === 2 && G.selHex !== null && G.selHex !== undefined) {
-    // G.selHex stores {r, c, x, y} — get hexIdx from _hexCache
     const hexIdx = _hwFindHexIdx(G.selHex);
-    if (hexIdx >= 0 && typeof hwBuildMenuHTML === 'function') {
-      buildEl.style.display = 'block';
-      buildEl.innerHTML = hwBuildMenuHTML(hexIdx);
-      // Show hex info header
+    if (hexIdx >= 0) {
       const h = _hexCache && _hexCache[hexIdx];
       const hOwner = h ? hwHexOwner(hexIdx) : -1;
       const isOwn = hOwner === G.playerNation;
       const hexArmy = G.hexArmy && G.hexArmy[hexIdx];
-      const hdr = `<div style="font-size:8px;color:#c9a84c;font-family:Cinzel,serif;letter-spacing:1px;margin-bottom:4px">
-        HEX [${h ? h.t : '?'}] ${h && (h.nbIdx||[]).some(ni=>_hexCache&&_hexCache[ni]?.sea) ? '⚓ COASTAL' : ''}
-        ${isOwn ? '<span style="color:#80c080">● YOURS</span>' : '<span style="color:#c06060">● ENEMY</span>'}
-        ${hexArmy && hexArmy.amount > 0 ? `<br><span style="color:#f0d080">⚔ ${fm(hexArmy.amount)} troops</span>` : ''}
+      // Supply status
+      const supplyStatus = G.hexSupply?.[hexIdx];
+      const supplyWeeks  = G.hexSupplyWeeks?.[hexIdx] || 0;
+      const supplyHTML   = !supplyStatus || supplyStatus==='full' ? '' :
+        supplyStatus==='cut'
+          ? ` <span style="color:#ff6040;font-weight:700">⚠ SURROUNDED${supplyWeeks>0?' '+supplyWeeks+'w':''}</span>`
+          : ` <span style="color:#ffcc40">⚡ PARTIAL SUPPLY</span>`;
+      // Pop share
+      const popShare = typeof hwHexPopShare==='function'
+        ? Math.round(hwHexPopShare(hexIdx)*100) : null;
+      buildEl.style.display = 'block';
+      buildEl.innerHTML = `<div style="font-size:8px;color:#c9a84c;font-family:Cinzel,serif;letter-spacing:1px">
+        HEX [${h ? h.t : '?'}]${h?.coastal?' ⚓ COASTAL':''}
+        ${isOwn ? '<span style="color:#80c080"> ● YOURS</span>' : '<span style="color:#c06060"> ● ENEMY</span>'}
+        ${popShare !== null ? `<span style="color:#aaa;font-weight:400"> · 👥 ${popShare}%</span>` : ''}
+        ${hexArmy && hexArmy.amount > 0 ? `<br><span style="color:#f0d080">⚔ ${fm(hexArmy.amount)} troops</span>${supplyHTML}` : ''}
       </div>`;
-      buildEl.innerHTML = hdr + buildEl.innerHTML;
+      // Buildings shown via Construct Building button — no duplicate list here
     } else {
       buildEl.style.display = 'none';
     }

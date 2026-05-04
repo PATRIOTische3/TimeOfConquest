@@ -434,13 +434,17 @@ function hwMoveArmy(fromIdx, toIdx, amount) {
     popup(`Need ${cost} MP (have ${army.movePoints||0})`); return false;
   }
 
-  const toArmy = G.hexArmy[toIdx];
-  const toOwner = hwHexOwner(toIdx);
+  const toArmy  = G.hexArmy[toIdx];
+  // hwHexOwner возвращает кто КОНТРОЛИРУЕТ гекс (учитывает G.hexOwner исключения).
+  // Важно: если мы захватили гекс — hwHexOwner вернёт нашу нацию.
+  const toController = hwHexOwner(toIdx);
+  const toOwner      = toController; // алиас для читаемости
 
-  // Автоматическое объявление войны при вторжении на чужой гекс
-  const isEnemy = toOwner >= 0 && toOwner !== army.nation;
+  // Враждебный гекс = контролируется чужой нацией с которой мы в войне
+  // ИЛИ там стоит вражеская армия
   const enemyArmy = toArmy && toArmy.amount > 0 && toArmy.nation !== army.nation;
-  const enemyNation = enemyArmy ? toArmy.nation : (isEnemy ? toOwner : -1);
+  const isHostile = toController >= 0 && toController !== army.nation && atWar(army.nation, toController);
+  const enemyNation = enemyArmy ? toArmy.nation : (isHostile ? toController : -1);
 
   if (enemyNation >= 0 && !atWar(army.nation, enemyNation) && !areAllies(army.nation, enemyNation)) {
     G.war[army.nation][enemyNation] = true;
@@ -1218,6 +1222,29 @@ function _hwTargetHexes(targetProv, attackerNation) {
 function hwDoAI(nation) {
   if (!_hexCache || !G.hexArmy) return;
   const aggressive = G.aiPersonality && G.aiPersonality[nation] === 'aggressive';
+
+  // Синхронизировать: подтянуть армии из G.army[r] которые ещё не в G.hexArmy.
+  // ИИ призывает через G.army[r] напрямую — нужно разместить на гексах.
+  for (let pi = 0; pi < PROVINCES.length; pi++) {
+    if (G.owner[pi] !== nation) continue;
+    const amount = G.army[pi] || 0;
+    if (amount <= 0) continue;
+    const hexes = _hwPHexes(pi);
+    const placed = hexes.reduce((s, hi) => {
+      const a = G.hexArmy[hi]; return s + (a && a.nation === nation ? a.amount : 0);
+    }, 0);
+    const diff = amount - placed;
+    if (diff <= 10) continue; // нет новых войск
+    // Найти лучший гекс нации в провинции
+    const myHexes = hexes.filter(hi => hwHexOwner(hi) === nation);
+    if (!myHexes.length) continue;
+    const best = myHexes.sort((a,b) =>
+      (HEX_POP_WEIGHT[_hexCache[b].t]||1)-(HEX_POP_WEIGHT[_hexCache[a].t]||1)
+    )[0];
+    const ex = G.hexArmy[best];
+    if (ex && ex.nation === nation) ex.amount += diff;
+    else G.hexArmy[best] = { nation, amount: diff, movePoints: 0 };
+  }
 
   // Собираем все армии нации с MP > 0
   const myArmies = Object.entries(G.hexArmy)
